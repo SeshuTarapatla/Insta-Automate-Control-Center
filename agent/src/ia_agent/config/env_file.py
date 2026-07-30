@@ -12,6 +12,7 @@ class EnvData:
     entity_queue: list[str]
     limits: dict[str, int]
     raw_lines: list[str]
+    explicit_keys: set[str]
 
 
 def _strip_quotes(value: str) -> str:
@@ -30,6 +31,7 @@ def load(path: Path) -> EnvData | None:
     switches: dict[str, str] = {}
     limits: dict[str, int] = {}
     entity_queue: list[str] = []
+    explicit_keys: set[str] = set()
 
     for line in raw_lines:
         trimmed = line.strip()
@@ -40,23 +42,35 @@ def load(path: Path) -> EnvData | None:
         key = key.strip()
         value = _strip_quotes(value.strip())
 
+        if key not in SCHEMA:
+            continue
+        explicit_keys.add(key)
+
         if key == "ENTITY_QUEUE":
             entity_queue = [e.strip() for e in value.split(",") if e.strip()]
         elif key in SWITCH_KEYS and value in ("0", "1"):
             switches[key] = value
-        elif key in SCHEMA and SCHEMA[key].type == ConfigType.INT:
+        elif SCHEMA[key].type == ConfigType.INT:
             try:
                 limits[key] = int(value)
             except ValueError:
                 limits[key] = SCHEMA[key].default  # type: ignore[assignment]
 
-    # Missing limit keys fall back to their schema default, so callers always see
-    # the effective value the flows will use via Limit.get().
+    # Missing keys fall back to their schema default, so callers always see the
+    # effective value the flows will use via Limit.get().
     for key, spec in SCHEMA.items():
         if spec.type == ConfigType.INT:
             limits.setdefault(key, spec.default)  # type: ignore[arg-type]
+        elif spec.type == ConfigType.BOOL01:
+            switches.setdefault(key, str(spec.default))
 
-    return EnvData(switches=switches, entity_queue=entity_queue, limits=limits, raw_lines=raw_lines)
+    return EnvData(
+        switches=switches,
+        entity_queue=entity_queue,
+        limits=limits,
+        raw_lines=raw_lines,
+        explicit_keys=explicit_keys,
+    )
 
 
 def save(

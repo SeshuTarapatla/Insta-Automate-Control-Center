@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from ia_agent.api.config import router as config_router
 from ia_agent.api.health import router as health_router
 from ia_agent.api.ws import create_ws_router
 from ia_agent.auth import BearerAuthMiddleware, load_or_create_token
@@ -30,5 +31,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="ia-agent", lifespan=lifespan)
     app.add_middleware(BearerAuthMiddleware, token=token)
     app.include_router(health_router)
+    app.include_router(config_router)
     app.include_router(create_ws_router(bus, token))
     return app
