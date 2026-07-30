@@ -1,0 +1,35 @@
+[project]
+name = "ia-agent"
+version = "0.1.0"
+description = "Long-lived Windows service that supervises Insta-Automate's core services and serves the control center."
+readme = "README.md"
+authors = [
+    { name = "SeshuTarapatla", email = "seshu.tarapatla@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28",
+    "pydantic>=2.12",
+    "python-dotenv>=1.2.2",
+    "watchfiles>=1.0",
+    "adbutils>=2.12.0",
+    "psutil>=6.1",
+    "sqlmodel>=0.0.38",
+    "psycopg2-binary>=2.9.11",
+    "kubernetes>=35.0.0",
+    "telethon>=1.42.0",
+    "my-modules",
+    "pillow>=12.2.0",
+]
+
+[project.scripts]
+ia-agent = "ia_agent:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+my-modules = { git = "https://github.com/SeshuTarapatla/my-modules.git" }
