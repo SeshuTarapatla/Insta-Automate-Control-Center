@@ -2,9 +2,9 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 complete**, **Phase 1 in progress** — CP
-1.1 (config engine: `env_file.py`, `schema.py`, the `config.env` watcher, a minimal `/ws`) is
-committed; manually verified live against the real `IA_DIR/config.env` in-session, not yet
-separately re-verified by the user. Next up is CP 1.2 (Config API).
+1.1 (config engine) and CP 1.2 (`GET/PATCH /api/config`, `GET /api/config/schema`) are committed;
+both manually verified live against the real `IA_DIR/config.env` in-session (including the plan's
+own FOLLOW 60→80 test), not yet separately re-verified by the user. Next up is CP 1.3 (Limits UI).
 
 ---
 
