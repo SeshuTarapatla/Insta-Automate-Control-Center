@@ -1,0 +1,68 @@
+import 'package:flutter/material.dart';
+
+import '../features/placeholder_page.dart';
+import 'connection_banner.dart';
+import 'title_bar.dart';
+
+class _Destination {
+  const _Destination(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+const _destinations = [
+  _Destination('Overview', Icons.dashboard_outlined),
+  _Destination('Flows', Icons.account_tree_outlined),
+  _Destination('Live', Icons.sensors_outlined),
+  _Destination('Services', Icons.dns_outlined),
+  _Destination('Library', Icons.photo_library_outlined),
+  _Destination('Insights', Icons.insights_outlined),
+  _Destination('Settings', Icons.settings_outlined),
+];
+
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int _selected = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          const TitleBar(),
+          const Divider(height: 1),
+          const ConnectionBanner(),
+          Expanded(
+            child: Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _selected,
+                  onDestinationSelected: (i) => setState(() => _selected = i),
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(d.icon),
+                        label: Text(d.label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: PlaceholderPage(title: _destinations[_selected].label),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

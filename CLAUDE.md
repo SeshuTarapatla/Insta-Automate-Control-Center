@@ -1,7 +1,9 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **planned, no code written yet.**
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 (Foundations) underway** — CP 0.1
+(repo scaffold) and CP 0.2 (agent skeleton) are committed; CP 0.3 (Flutter shell) is built and
+in manual testing with the user.
 
 ---
 
@@ -13,9 +15,10 @@ pipeline that drives a real Android phone over ADB, stores rows in Postgres and 
 
 It ships as **two parts, both in this repo**:
 
-- `app/` — the Flutter Windows client.
+- `app/` — the Flutter Windows client. Pubspec name `ia_control_center`, org `com.instaautomate`.
 - `agent/` — `ia-agent`, a Python/FastAPI service that is the long-lived Windows process. It
   supervises the core services, serves the pods and the phone, and outlives the UI window.
+  `uv` project; console script `ia-agent`; bearer token at `%LOCALAPPDATA%\ia-agent\token`.
 
 ---
 
@@ -107,6 +110,9 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
 3. Phone notifications over a LAN WebSocket held by an Android foreground service, with Telegram
    kept as the guaranteed fallback when nothing is listening.
 4. The desktop app gets full image review/curation parity with the mobile app.
+5. The desktop app's "Start agent" action uses raw Win32 `CreateProcess` (`CREATE_NO_WINDOW`) via
+   `package:win32`, not `dart:io`'s `Process.start` — the latter flashes a visible console window
+   because `uv`/`python` are console-subsystem executables and `dart:io` doesn't expose that flag.
 
 ---
 

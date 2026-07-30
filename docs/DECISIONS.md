@@ -5,6 +5,24 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 0 implementation session
+
+### D5 · Launch ia-agent via raw Win32 `CreateProcess` with `CREATE_NO_WINDOW`
+**Chosen:** the desktop app's *Start agent* action calls `package:win32`'s `CreateProcess`
+directly over FFI, passing `CREATE_NO_WINDOW`, instead of `dart:io`'s `Process.start`.
+**Rejected:** `Process.start(..., mode: ProcessStartMode.detached)` — `uv`/`python` are
+console-subsystem executables, and `dart:io` never exposes Windows' `CREATE_NO_WINDOW` creation
+flag, so a bare `Process.start` flashes a visible terminal window every time the button is
+pressed.
+**Why:** caught during CP 0.3 manual testing — clicking *Start agent* popped a console window,
+which is exactly the `wt.exe`-shortcut experience this project exists to replace (see
+EXPECTATION.md's no-compromise-on-UI/UX rule and CLAUDE.md §Rules #6).
+**Cost:** two new Flutter dependencies (`win32`, `ffi`) and one raw-FFI call site
+(`app/lib/core/agent_launcher.dart`) that has to track the `win32` package's API shape (pinned to
+6.3.0's extension-type-based bindings at time of writing).
+
+---
+
 ## 2026-07-30 — Planning session
 
 ### D4 · Desktop gets full curation parity

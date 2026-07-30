@@ -33,3 +33,4 @@ Important things to remembers:
 5. You should plan in phases and implement stuff in a checkpoints so that I can keep up test things and then commit
 6. For every meaningful session you should remind me of thing like this sessions goal is done open a new session You have to notify me.
 7. All my projects are present locally at `D:/Coding`
+8. Any testing related to app like screenshots and button clicking and actions. I'll do it manually and update you. You dont try to do it yourself. Just start the app and I'll check kill it and update you.
