@@ -5,6 +5,22 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 1 implementation session (CP 1.1)
+
+### D6 · `/ws` broadcasts every event to every client, no channel filtering yet
+**Chosen:** the new `/ws` endpoint (`api/ws.py`, `events/bus.py`) sends every published event,
+tagged `{channel, data}`, to every connected client. There is no client-side subscribe protocol.
+**Rejected:** building ARCHITECTURE §3.2's full per-channel subscription + replay-cursor model now.
+**Why:** `config.changed` is the only channel that exists so far, so subscription filtering has
+nothing to filter yet. Building it against one channel risks guessing the wrong shape for the
+eight others (`services.status`, `flow.events`, `library.changes`, ...) that show up in later
+phases.
+**Cost:** every connected client gets every event once more channels exist — revisit when a
+second channel lands (Phase 2's `services.status` is the likely trigger) and add subscribe/
+unsubscribe + replay then, not speculatively.
+
+---
+
 ## 2026-07-31 — Phase 0 implementation session
 
 ### D5 · Launch ia-agent via raw Win32 `CreateProcess` with `CREATE_NO_WINDOW`

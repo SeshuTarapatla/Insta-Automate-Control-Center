@@ -1,8 +1,10 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 (Foundations) complete** — CP 0.1, 0.2 and
-0.3 are committed and user-verified. Next up is Phase 1 (Config control), starting at CP 1.1.
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 complete**, **Phase 1 in progress** — CP
+1.1 (config engine: `env_file.py`, `schema.py`, the `config.env` watcher, a minimal `/ws`) is
+committed; manually verified live against the real `IA_DIR/config.env` in-session, not yet
+separately re-verified by the user. Next up is CP 1.2 (Config API).
 
 ---
 
