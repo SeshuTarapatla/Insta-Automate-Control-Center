@@ -1,9 +1,8 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 (Foundations) underway** — CP 0.1
-(repo scaffold) and CP 0.2 (agent skeleton) are committed; CP 0.3 (Flutter shell) is built and
-in manual testing with the user.
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 (Foundations) complete** — CP 0.1, 0.2 and
+0.3 are committed and user-verified. Next up is Phase 1 (Config control), starting at CP 1.1.
 
 ---
 
