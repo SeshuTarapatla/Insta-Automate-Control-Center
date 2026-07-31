@@ -5,6 +5,45 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (CP 3.3, agent client in the pod)
+
+### D26 · `IA_AGENT_URL` stays a live `Config` key; only `IA_AGENT_TOKEN` moves to `vars.py`
+
+**Chosen:** `controllers/agent.py`'s `AgentClient` has three methods — `heartbeat(state)`,
+`emit(event)`, `notify(msg, ...)` — each POSTing to the agent and swallowing every exception,
+returning the documented empty/false value on any failure (`[]`, `None`, `False`). The base URL is
+read fresh on every call via `Config.get("IA_AGENT_URL")` (already a live `Config` key since CP
+3.1, defaulting to `http://172.19.16.1:8787`), not a new `vars.py` entry — it changes with no pod
+restart, same as every other `config.env` key, which is strictly better than an env var for
+something that isn't a secret. `IA_AGENT_TOKEN` **is** new in `vars.py` (`getenv`-only, no
+`config.env` fallback), because `config.env` is Syncthing-replicated to the phone (§4 intro) — a
+bearer token has no business in a file that leaves the machine. `httpx` is now a direct dependency
+(was only transitive, via `prefect`) since this repo imports it directly for the first time.
+
+**Verified:** against a genuinely unreachable port (connection refused) — `heartbeat` → `[]`,
+`emit` → `None`, `notify` → `False`, no exception escapes. Then against the real running `ia-agent`
+on this machine, whose `/api/scheduler/heartbeat` and `/api/notify` don't exist yet (CP 3.4 and CP
+6.1 build them) — both 404 and both still swallow cleanly, proving the failure path works
+end-to-end against a real server, not just a closed socket.
+
+**Rejected:** the ARCHITECTURE §8 cross-repo table's original sketch of putting both
+`IA_AGENT_URL` and `IA_AGENT_TOKEN` in `vars.py` — written before CP 3.1 existed and before
+`IA_AGENT_URL` was already a `Config` key. Doubling it into `vars.py` too would create two sources
+of truth for the same value. §8 corrected in the same commit.
+
+**Why:** the whole point of Phase 1 and Phase 3 is that `config.env` edits apply live; an env-var
+`IA_AGENT_URL` would silently reintroduce a "needs a pod restart" exception to that rule for no
+reason — a URL isn't sensitive the way a bearer token is.
+
+**How to apply:** CP 3.4 builds the receiving `/api/scheduler/heartbeat` endpoint agent-side and
+wires `Prefect.serve()` to actually call `AgentClient.heartbeat()` on a 2 s loop, draining its
+returned commands into whatever `wait_until` (D25) checks. CP 4.2/4.3 wire `emit()` into the flow
+task instrumentation points. CP 6.1/6.2 build `/api/notify` and the `Notifier` facade that calls
+`AgentClient.notify()`. None of that requires touching `agent.py` itself unless the payload shapes
+change.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.2, config-driven scheduler)
 
 ### D25 · `wait_until` takes a config key, not a resolved seconds value, and gates `continue`

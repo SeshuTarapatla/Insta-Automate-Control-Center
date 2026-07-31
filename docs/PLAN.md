@@ -421,10 +421,19 @@ anything. **Not yet built:** countdown publishing and `run_now`/`skip_wait` comm
 `wait_until` always returns `"elapsed"` until CP 3.3's `AgentClient` and CP 3.4's heartbeat
 endpoint exist for it to check against.
 
-### CP 3.3 — Agent client in the pod 🟡
+### CP 3.3 — Agent client in the pod 🟡 ✅ done
 New `controllers/agent.py`: `AgentClient` with heartbeat (2 s), event emit, notify — every
 method swallows failures so the agent being down is invisible to the pipeline. Heartbeat
 publishes the per-flow state block from ARCHITECTURE §4.3 and drains commands from the response.
+
+**What landed** — `AgentClient.heartbeat/emit/notify`, each POSTing to the agent and swallowing
+every exception (`[]`/`None`/`False` on failure — see D26). Verified against both a genuinely
+unreachable port and the real running `ia-agent`, whose `/api/scheduler/heartbeat` and `/api/notify`
+don't exist until CP 3.4/6.1 — both 404 cleanly through the same swallow path. `IA_AGENT_URL`
+deliberately stays a live `Config` key (CP 3.1) rather than moving to `vars.py`; only
+`IA_AGENT_TOKEN` is new there, since it's a secret and `config.env` syncs to the phone. `httpx`
+promoted from a transitive to a direct dependency. **Not yet wired into `Prefect.serve()`** — the
+2 s heartbeat loop and command draining is CP 3.4's job, once the agent has something to receive it.
 
 ### CP 3.4 — Scheduler mirror in the agent 🟢
 `POST /api/scheduler/heartbeat`, in-memory state store, command queue, `flows.state` WS channel,

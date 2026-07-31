@@ -422,7 +422,7 @@ center is accepted (see [../CLAUDE.md](../CLAUDE.md) §Rules).
 
 | Repo | Branch | Changes |
 |---|---|---|
-| `Insta-Automate` | `feat/control-center` | `models/meta.py` typed `Config`; `controllers/prefect.py` config-driven + interruptible waits + heartbeat; new `controllers/agent.py` (client) and `controllers/notify.py` (facade); `emit()` instrumentation in `tasks/ia.py` + `tasks/ollama.py`; `vars.py` `IA_AGENT_URL`/`IA_AGENT_TOKEN`; `models/docker.py` env additions; fix the stale `config.env` comment |
+| `Insta-Automate` | `feat/control-center` | `models/meta.py` typed `Config`; `controllers/prefect.py` config-driven + interruptible waits + heartbeat; new `controllers/agent.py` (client, CP 3.3) and `controllers/notify.py` (facade); `emit()` instrumentation in `tasks/ia.py` + `tasks/ollama.py`; `vars.py` `IA_AGENT_TOKEN` (secret, env-only — `IA_AGENT_URL` stays a live `Config` key instead, since it isn't sensitive and doesn't need a pod restart to change, see CP 3.3); `models/docker.py` env additions; fix the stale `config.env` comment |
 | `flutter/Insta-Automate-Client` | `feat/lan-agent` | QR scan, agent client, foreground-service WS, local notifications, config writes via agent when connected |
 | `Helmcharts/Insta-Automate` | `feat/control-center` | surface `IA_AGENT_URL`/`IA_AGENT_TOKEN` as deployment env (from `values.yaml`) so changing them needs no image rebuild |
 | `wsl-bridge` | — | **no changes**; supervised as-is |
