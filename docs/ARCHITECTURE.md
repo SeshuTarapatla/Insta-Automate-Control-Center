@@ -260,16 +260,29 @@ NOTIFY_POLICY=app_first       # app_first | both | telegram_only
 ### 4.2 Interruptible waiting
 
 `Limit` in `models/meta.py` is generalised into a typed `Config` accessor (`Limit` kept as an
-alias so nothing breaks). Every `asyncio.sleep(long)` in the scheduler becomes:
+alias so nothing breaks) — landed in CP 3.1. Every `asyncio.sleep(long)` in the scheduler becomes,
+landed in CP 3.2:
 
 ```python
-async def wait_until(self, flow: str, seconds: float) -> str:
-    """Sleep in TICK increments. Each tick: re-read config (so an edited delay
-    re-targets the deadline live), publish the countdown, and return early if a
-    run_now / skip_wait command arrived. Returns the wake reason."""
+async def wait_until(self, flow: str, key: str) -> str:
+    """Sleep in Config.get("TICK") increments, re-reading Config.get(key) every
+    tick so an edited delay re-targets the deadline live. Returns the wake
+    reason - "elapsed" is the only one until CP 3.3/3.4 wire a command queue
+    through the agent."""
 ```
 
-This is what makes the UI's countdown rings truthful and the "Skip wait" button possible.
+Takes the **config key name**, not a resolved seconds value — `seconds` was the original sketch,
+but re-reading a captured number can't re-target anything; re-reading the *key* on every tick is
+what makes an edited `FOLLOW_WAIT` actually shorten or extend a wait already in progress. Every
+scheduler trigger loop's hardcoded `wait`/`buffer`/`sleep` calls this now instead
+(`controllers/prefect.py`), and the day-rollover fall-through is fixed alongside it: each trigger
+loop's gate check now `continue`s back to the top after `wait_day_change()` instead of falling
+through into the same iteration's trigger logic on stale pre-rollover state.
+
+Publishing the countdown and honouring `run_now`/`skip_wait` commands are **not yet implemented** —
+they need the command queue CP 3.3 (agent client in the pod) and CP 3.4 (scheduler mirror in the
+agent) build. Until then `wait_until` always returns `"elapsed"`; this is what makes the UI's
+countdown rings truthful and the "Skip wait" button possible once CP 3.3-3.5 land.
 
 ### 4.3 Scheduler state, published every tick
 

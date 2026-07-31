@@ -7,12 +7,17 @@ Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
 lives in a detached service-host process, so a service survives the agent dying any way (D23).
-**Phase 3 is open, CP 3.1 done** (Trigger delays & conditions, in `Insta-Automate` on
+**Phase 3 is open, CP 3.1–3.2 done** (Trigger delays & conditions, in `Insta-Automate` on
 `feat/control-center`). `Limit` in `models/meta.py` is generalised into typed `Config`
 (`Limit = Config` alias, no call sites changed), carrying every key from ARCHITECTURE §4.1 with
 coded defaults for the ones not yet in `config.env`. Q3 is answered: `PROFILES/REELS/POSTS` really
 are the live daily scan caps, and the `config.env` comment that said otherwise is fixed (D24).
-Next up: CP 3.2 — wire the scheduler's hardcoded waits to `Config.get(...)`.
+`controllers/prefect.py`'s five trigger loops now sleep through `wait_until(flow, key)`, which
+re-reads its `Config` key every tick so an edited delay re-targets a wait already in progress
+(D25); the day-rollover fall-through is fixed with a `continue`, and `SCRAPE_BACKPRESSURE_FACTOR`
+replaces the hardcoded `* 3`. Countdown publishing and `run_now`/`skip_wait` commands are not yet
+wired — that needs CP 3.3's `AgentClient` and CP 3.4's heartbeat endpoint. Next up: CP 3.3 — the
+agent client in the pod.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

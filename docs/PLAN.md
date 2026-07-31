@@ -400,7 +400,7 @@ so this was verified by import sanity-check (all five call-site modules import c
 identity holds, new keys resolve to their defaults with dotenv's expected warnings for absent
 keys) rather than `pytest`.
 
-### CP 3.2 — Config-driven scheduler 🟡
+### CP 3.2 — Config-driven scheduler 🟡 ✅ done
 In `controllers/prefect.py`:
 - every hardcoded `wait` / `buffer` / `sleep` → `Config.get(...)`;
 - `wait_until()` interruptible sleep (TICK granularity, re-reads config, returns wake reason);
@@ -409,6 +409,17 @@ In `controllers/prefect.py`:
   `wait_day_change()` before evaluating the gate;
 - `SCAN_WAIT` cooldown between scan runs (default `0` = today's behaviour, so this is a no-op
   until you set it — see Q2).
+
+**What landed** — `wait_until(self, flow: str, key: str)` (deliberately keyed, not a resolved
+`seconds` float — see D25) replaces every hardcoded sleep across all five trigger loops plus
+`keep_telegram_alive` and `wait_day_change`. Verified by direct call: `SCAN_WAIT=0` returns
+`"elapsed"` immediately (today's no-cooldown behaviour, unchanged), and a short live target
+(`TICK=0.05`, `CLASSIFY_POLL_WAIT=0.12`) ticks and re-reads config correctly. The day-rollover fix
+is a `continue` right after `wait_day_change()` in `entity_scan_trigger`, `entity_scrape_trigger`,
+and `entity_follow_trigger`, so the next loop iteration re-fetches fresh state before evaluating
+anything. **Not yet built:** countdown publishing and `run_now`/`skip_wait` command handling —
+`wait_until` always returns `"elapsed"` until CP 3.3's `AgentClient` and CP 3.4's heartbeat
+endpoint exist for it to check against.
 
 ### CP 3.3 — Agent client in the pod 🟡
 New `controllers/agent.py`: `AgentClient` with heartbeat (2 s), event emit, notify — every

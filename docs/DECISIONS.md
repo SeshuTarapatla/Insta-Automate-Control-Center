@@ -5,6 +5,44 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (CP 3.2, config-driven scheduler)
+
+### D25 · `wait_until` takes a config key, not a resolved seconds value, and gates `continue`
+
+**Chosen:** `Prefect.wait_until(self, flow: str, key: str) -> str` — every hardcoded
+`wait`/`buffer`/`sleep` in `controllers/prefect.py`'s five trigger loops now calls it with the
+matching `Config` key (`INGEST_POLL_WAIT`, `CLASSIFY_POLL_WAIT`, `SCAN_WAIT`/`SCAN_POLL_WAIT`,
+`SCRAPE_WAIT`/`SCRAPE_BUFFER`, `FOLLOW_WAIT`/`FOLLOW_BUFFER`, `TG_KEEPALIVE_WAIT`), and
+`wait_day_change` reads `DAY_CHANGE_POLL` the same way. It sleeps in `Config.get("TICK")`
+increments, re-reading `Config.get(key)` on every tick — the loop condition itself
+(`elapsed < (target := Config.get(key))`) is what lets an edited delay shorten or lengthen a wait
+already in progress. `SCRAPE_BACKPRESSURE_FACTOR` replaces the hardcoded `* 3` in
+`entity_scrape_trigger`'s gate. The three day-limited loops (`entity_scan_trigger`,
+`entity_scrape_trigger`, `entity_follow_trigger`) now `continue` immediately after
+`wait_day_change()` returns, so the next iteration re-fetches `Scan`/`Scrape`/`Follow` fresh and
+re-evaluates the gate before doing anything else, rather than falling through into that same
+iteration's trigger logic on the pre-rollover object.
+
+**Rejected:** `wait_until(self, flow: str, seconds: float)` as ARCHITECTURE §4.2 originally
+sketched it — a resolved `float` is a snapshot; re-reading a snapshot re-reads nothing. Only
+passing the *key* lets each tick go back to `config.env` itself. Also rejected: publishing a
+countdown and checking for `run_now`/`skip_wait` commands inside `wait_until` now — no command
+queue exists to check yet (that's CP 3.3's `AgentClient` and CP 3.4's heartbeat endpoint), so
+`wait_until` always returns `"elapsed"` for now rather than a half-built command-check against
+nothing. ARCHITECTURE.md §4.2 updated to match the real signature and note what's still missing.
+
+**Why:** the plan's own CP 3.2 bullets ask for both "re-reads config" (needs the key) and
+"SCAN_WAIT cooldown, default 0 = today's behaviour, no-op until set" — verified: `SCAN_WAIT=0`
+makes `elapsed < target` false on the first check, so the wait returns immediately, identical to
+today's absence of a scan cooldown.
+
+**How to apply:** CP 3.3/3.4 extend `wait_until`, they don't replace it — add a command-check hook
+(e.g. drain a queue `Prefect` owns) that short-circuits the `while elapsed < target` loop and
+returns a reason other than `"elapsed"`, and a countdown publish call inside the same loop body.
+Don't reintroduce a `seconds` parameter anywhere in this path.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.1, typed live config)
 
 ### D24 · `Limit` is generalised into `Config` by aliasing, not renaming call sites
