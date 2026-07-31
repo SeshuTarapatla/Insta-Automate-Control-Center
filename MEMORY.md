@@ -60,6 +60,14 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Agent restart must never stop a service** — supervised processes outlive the agent; PID files
   (guarded by `create_time` against PID reuse) are what the next run adopts. Stopping is only ever
   an explicit operator action. D1's stated cost, D10.
+- **…but only when the agent exits gracefully — a tree-kill takes every supervised service with it**
+  — measured 2026-07-31: all three had been taken over during the CP 2.4 test, killing the agent's
+  process tree left the machine with no adb, no vl-server and no wsl-bridge. **Never kill the agent
+  with a tree-kill while it supervises anything**; stop it gracefully, or restart the services
+  afterwards (`adb -a start-server`, `Insta-Automate\.venv\Scripts\python.exe scripts\start_vl_server.py`,
+  `wsl-bridge\.venv\Scripts\wsl-bridge.exe`, each detached). Whether a single-process kill does the
+  same is untested and is CP 2.5's problem, since restart-on-failure would otherwise cycle every
+  service each time it fires.
 - **The agent is the only supervisor** — services' own restart loops are switched off
   (`start_vl_server.py --no-autorestart`; adb runs `nodaemon`, not the forking `start-server`).
   Nested supervisors resurrect processes underneath a stop and hide their restart counts in an

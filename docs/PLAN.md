@@ -303,6 +303,17 @@ Note the standing rule this sits under: **verify Windows launch paths by exit co
 effect before shipping them** — `CreateProcess` returning success hid a total no-op through two CP
 1.3 test rounds (D7).
 
+**A second question, found the hard way on 2026-07-31 and load-bearing for this checkpoint:**
+killing the agent's *process tree* kills every service it supervises. That happened for real at the
+end of the CP 2.4 session — all three had been taken over during the test, the agent was killed, and
+the machine was left with no adb, no vl-server and no wsl-bridge until they were restarted by hand.
+D10 promises services outlive the agent, and they do when it exits gracefully; a hard kill is
+different. **Measure whether killing the agent process alone does the same** (it plausibly does —
+each service is attached to a pseudo-console the agent owns) **before enabling restart-on-failure on
+the task**, or the healing meant to protect the agent will cycle all three services every time it
+fires. If it does, spawning services so they survive the agent — a job object with breakaway, or
+handing them off — becomes part of this checkpoint rather than a later one.
+
 **Also still to decide:** whether the three services' `autostart` switches get turned on as part of
 installing the task (they are off today), and whether install/remove is exposed in the UI or left as
 an agent-side one-off. The switches already persist in `services.json` and the UI already writes

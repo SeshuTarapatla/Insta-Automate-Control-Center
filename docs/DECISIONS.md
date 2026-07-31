@@ -168,6 +168,14 @@ a pipeline outage — the opposite of what this project is for. Stopping a servi
 operator action.
 **Cost:** a service can outlive the agent that started it, so a stale PID file is possible; the
 `create_time` guard makes a stale file discardable rather than dangerous.
+**Measured limit, found 2026-07-31 by doing it:** this holds for a *graceful* exit only. Killing the
+agent's **process tree** takes every supervised service with it — all three were taken over during
+the CP 2.4 test, and killing the agent that way left the machine with no adb, no vl-server and no
+wsl-bridge (restarted by hand; PID files were left behind, which is exactly the stale-file case the
+`create_time` guard exists for). Not yet measured: whether killing the agent process *alone* (Task
+Manager's "End task") does the same, which it plausibly does since each service is attached to a
+pseudo-console the agent owns. **CP 2.5 has to answer that before it turns on restart-on-failure**,
+because a logon task that restarts a crashed agent would otherwise cycle all three services with it.
 
 ### D9 · Supervisor state is guarded by a per-service re-entrant lock
 **Chosen:** every operator action (`start`/`stop`/`restart`/`takeover`) holds an `RLock`, and
