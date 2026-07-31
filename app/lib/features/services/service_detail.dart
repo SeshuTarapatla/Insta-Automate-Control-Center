@@ -7,6 +7,10 @@ import 'service_terminal.dart';
 import 'services_controller.dart';
 import 'status_dot.dart';
 
+/// The terminal never shrinks below this, however cramped the window: a pane
+/// squeezed to a couple of rows is worse than one you have to scroll to.
+const _minTerminalHeight = 220.0;
+
 /// What actually stops working while a service is down. A confirmation without
 /// a consequence is not a confirmation — same rule as the flow switches.
 const _stopConsequence = {
@@ -143,18 +147,42 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
     final status = widget.status;
     final theme = Theme.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _header(theme, status),
-        const SizedBox(height: 16),
-        _stats(theme, status),
-        const SizedBox(height: 12),
-        _switches(theme, status),
-        if (status.hasTest) ...[const SizedBox(height: 12), _testPanel(theme, status)],
-        const SizedBox(height: 16),
-        Expanded(child: ServiceTerminal(key: ValueKey(status.name), status: status)),
-      ],
+    // At the 1024 px minimum window this pane is ~550 wide, where the stat
+    // chips wrap onto four rows and every card's text wraps with them — the
+    // panels above the terminal can genuinely want more height than the window
+    // has. Capping them at "everything except the terminal's floor" means they
+    // scroll among themselves instead of pushing the terminal off the bottom,
+    // and because the cap is a maximum rather than a share, a tall window still
+    // gives the terminal every pixel the panels do not use.
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: (constraints.maxHeight - _minTerminalHeight - 16).clamp(
+                0.0,
+                double.infinity,
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(theme, status),
+                  const SizedBox(height: 16),
+                  _stats(theme, status),
+                  const SizedBox(height: 12),
+                  _switches(theme, status),
+                  if (status.hasTest) ...[const SizedBox(height: 12), _testPanel(theme, status)],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(child: ServiceTerminal(key: ValueKey(status.name), status: status)),
+        ],
+      ),
     );
   }
 
@@ -174,7 +202,17 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
                 children: [
                   StatusDot(state: status.state, size: 12),
                   const SizedBox(width: 10),
-                  Text(status.label, style: theme.textTheme.headlineSmall),
+                  // Flexible, not fixed: at the 1024 px minimum window the
+                  // action buttons leave this row little to work with, and the
+                  // name is the part that can afford to ellipsize.
+                  Flexible(
+                    child: Text(
+                      status.label,
+                      style: theme.textTheme.headlineSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     status.state.label.toUpperCase(),
@@ -194,7 +232,10 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
           ),
         ),
         const SizedBox(width: 16),
-        _actions(status),
+        // A Row lays its non-flexible children out first, against the full
+        // width — without a cap the button Wrap could take the lot and leave
+        // the name nothing to render into.
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: _actions(status)),
       ],
     );
   }
@@ -377,18 +418,88 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
               color: test == null ? scheme.onSurfaceVariant : null,
             ),
           ),
-          if (test != null && test.metrics.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final entry in test.metrics.entries)
-                  _MetricChip(label: entry.key.replaceAll('_', ' '), value: '${entry.value}'),
-              ],
+          if (test != null && test.metrics.isNotEmpty) ..._metrics(theme, test),
+        ],
+      ),
+    );
+  }
+}
+
+/// A test reports whatever it measured, and the values are not all the same
+/// shape: `231` and a 100-character model blob path both arrive as metrics.
+/// Numbers read well as chips; a path does not — as a chip it either runs off
+/// the card or squeezes every other chip out of the row. So the long ones drop
+/// to their own full-width line underneath.
+List<Widget> _metrics(ThemeData theme, TestOutcome test) {
+  const inlineLimit = 40;
+  final entries = test.metrics.entries.toList();
+  final short = entries.where((entry) => '${entry.value}'.length <= inlineLimit);
+  final long = entries.where((entry) => '${entry.value}'.length > inlineLimit);
+
+  return [
+    if (short.isNotEmpty) ...[
+      const SizedBox(height: 10),
+      // Wrap hands its children unbounded width, so even a chip that is meant
+      // to be short is told the line width it has to fit inside.
+      LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final entry in short)
+              _MetricChip(
+                label: entry.key.replaceAll('_', ' '),
+                value: '${entry.value}',
+                maxWidth: constraints.maxWidth,
+              ),
+          ],
+        ),
+      ),
+    ],
+    for (final entry in long) ...[
+      const SizedBox(height: 8),
+      _MetricLine(label: entry.key.replaceAll('_', ' '), value: '${entry.value}'),
+    ],
+  ];
+}
+
+class _MetricLine extends StatelessWidget {
+  const _MetricLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Tooltip(
+      message: value,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(fontFamily: 'Consolas'),
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -500,40 +611,54 @@ class _SwitchCard extends StatelessWidget {
 }
 
 class _MetricChip extends StatelessWidget {
-  const _MetricChip({required this.label, required this.value});
+  const _MetricChip({required this.label, required this.value, required this.maxWidth});
 
   final String label;
   final String value;
+
+  /// The width of the line the chip sits on. A chip never exceeds it: the value
+  /// ellipsizes and the full text moves to the tooltip.
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontFamily: 'Consolas',
-              fontFeatures: const [FontFeature.tabularFigures()],
+    final chip = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontFamily: 'Consolas',
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+
+    // Only where it can actually be cut off — a tooltip on `231` is noise.
+    return value.length > 24 ? Tooltip(message: value, child: chip) : chip;
   }
 }

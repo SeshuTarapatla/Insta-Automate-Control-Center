@@ -54,7 +54,7 @@ class _DependenciesTabState extends ConsumerState<DependenciesTab> {
               for (final dependency in snapshot.inGroup(group))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _DependencyRow(dependency: dependency),
+                  child: DependencyRow(dependency: dependency),
                 ),
               const SizedBox(height: 18),
             ],
@@ -134,8 +134,10 @@ class _DependenciesTabState extends ConsumerState<DependenciesTab> {
   }
 }
 
-class _DependencyRow extends StatelessWidget {
-  const _DependencyRow({required this.dependency});
+/// Public for the layout test: a failing dependency's sentence is the longest
+/// text on the screen, and it has to survive the narrow pane.
+class DependencyRow extends StatelessWidget {
+  const DependencyRow({super.key, required this.dependency});
 
   final Dependency dependency;
 
@@ -166,7 +168,12 @@ class _DependencyRow extends StatelessWidget {
           const SizedBox(width: 12),
           SizedBox(
             width: 140,
-            child: Text(dependency.label, style: theme.textTheme.bodyMedium),
+            child: Text(
+              dependency.label,
+              style: theme.textTheme.bodyMedium,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           Expanded(
             child: Text(

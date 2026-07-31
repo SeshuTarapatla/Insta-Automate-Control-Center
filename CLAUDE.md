@@ -18,9 +18,10 @@ shortcut still owns them and the agent observes rather than spawns. `GET /api/de
 tab on the Services screen (D16).
 
 The **Services** screen (`app/lib/features/services/`) is master–detail: tiles left, actions +
-probe/test metrics + self-heal + terminal right, with *Dependencies* as a second tab. Payload
-shapes the app decodes are pinned by `agent/tests/test_ui_contract.py` — keep its field tables in
-step with `app/lib/core/service_models.dart` and `dependency_models.dart`.
+probe/test metrics + self-heal + terminal right, with *Dependencies* as a second tab. Two things
+pin it: `agent/tests/test_ui_contract.py` for the payload shapes the app decodes (keep its field
+tables in step with `app/lib/core/service_models.dart` and `dependency_models.dart`), and
+`app/test/services_layout_test.dart` for overflow, which nothing else can see (D19).
 
 ---
 
@@ -95,7 +96,10 @@ Supporting: `D:\Coding\my-modules` (logger, postgres, kubernetes, scrcpy, win32,
    on `feat/control-center` (or `feat/lan-agent` for the mobile client) and are **never merged**
    until the control center is accepted. Never commit to `main` in another repo.
 4. **Build in phases, stop at checkpoints.** Each `CP` in the plan is a commit boundary with a
-   manual test the user runs before moving on.
+   manual test the user runs **before** the commit. The test is the checkpoint — do not commit a UI
+   checkpoint ahead of it, not even with "awaiting your test" in the message (done once, in CP 2.4;
+   do not repeat). For UI work, `flutter test` runs as part of that gate: overflow is a paint-time
+   error that `flutter analyze` and every agent-side test are blind to.
 5. **The user drives the app, never you.** (EXPECTATION.md #8 — this is absolute.) Do **not**
    click, navigate, screenshot, or otherwise drive the Flutter app, and do not use the `run`
    skill's GUI-driving patterns on it. The laptop has a single screen with VS Code maximized, so

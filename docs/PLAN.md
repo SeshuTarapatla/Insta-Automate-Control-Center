@@ -206,7 +206,7 @@ Notes for whoever touches this next:
 - Syncthing missing is a **warn**, not a fail — it means the phone stops seeing new images, not
   that a run breaks. Disk warns under 25 GB, fails under 8 GB.
 
-### CP 2.4 — Services UI 🟢 ✅ built, awaiting your test
+### CP 2.4 — Services UI 🟢 ✅ done, user-verified
 Status tiles (state, uptime, restart count, probe latency), Start / Stop / Restart / Test, and a
 **self-heal toggle per tile** (off means a crashed service stays down with its exit code and final
 output on screen — D12).
@@ -246,6 +246,22 @@ every action, replay/live/`since=` sequence continuity with no gaps, `resize` ac
 child's console (173×24 read back from inside the process), the test outcome and its metrics, the
 external/takeover shape, and the 409 `detail` sentence the UI shows. The existing suites still pass
 (57/57, 32/32, 26/26). The GUI itself is yours to test — see the checklist below.
+
+**Found in your test, and now guarded:** a 43 px overflow in the metrics row — vl-server's `model`
+metric is the resolved blob path, ~110 characters, and `Wrap` hands its children unbounded width.
+Long values now take their own full-width line with the whole path in a tooltip. Chasing it with
+`app/test/services_layout_test.dart` (10 cases) turned up three more the screenshot could not show:
+a **199 px vertical** overflow at the 1024 px minimum window (the panels above the terminal want
+~850 px there, so `Expanded` was handed negative space — they are now capped at everything except
+the terminal's 220 px floor and scroll among themselves, a maximum rather than a share, so a tall
+window still gives the terminal every spare pixel), a 30 px overflow in a tile, and a header that
+its own buttons could starve.
+
+Two things worth keeping: **overflow is a paint-time error**, invisible to `flutter analyze` and to
+every agent-side test, so `flutter test` is now part of this checkpoint's gate. And **test at the
+size the screen actually produces** — the first version of that test used 560 and 1400 px and
+reproduced none of it; the reported bug needs ~1250, which is what a maximized 1920 window leaves
+after the rail and the tile list.
 
 **Test (yours):** open **Services**. All three services should read `external` with a *Take over*
 button and a card explaining that the startup shortcut owns them. Take over **wsl-bridge** (the

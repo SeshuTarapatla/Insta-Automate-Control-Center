@@ -70,17 +70,31 @@ class ServiceTile extends ConsumerWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text(
-                    status.state.label,
-                    style: theme.textTheme.labelMedium?.copyWith(color: color),
+                  // The state and its origin badge give way to the uptime
+                  // rather than pushing it off the tile: at 300 px "Restarting"
+                  // beside an "external" badge already fills the row.
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            status.state.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelMedium?.copyWith(color: color),
+                          ),
+                        ),
+                        if (status.origin == ServiceOrigin.adopted ||
+                            status.origin == ServiceOrigin.external) ...[
+                          const SizedBox(width: 6),
+                          Flexible(child: _Pill(text: status.origin.label)),
+                        ],
+                      ],
+                    ),
                   ),
-                  if (status.origin == ServiceOrigin.adopted ||
-                      status.origin == ServiceOrigin.external) ...[
-                    const SizedBox(width: 6),
-                    _Pill(text: status.origin.label),
-                  ],
-                  const Spacer(),
-                  if (status.liveUptimeS != null)
+                  if (status.liveUptimeS != null) ...[
+                    const SizedBox(width: 8),
                     Text(
                       formatUptime(status.liveUptimeS!),
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -88,6 +102,7 @@ class ServiceTile extends ConsumerWidget {
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
+                  ],
                 ],
               ),
               const SizedBox(height: 6),
@@ -138,6 +153,8 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
     );

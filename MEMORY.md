@@ -31,7 +31,7 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
   CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests) and
   2.3 (dependency panel) done and Claude-verified; CP 2.4 (Services UI, with the dependency panel
-  as its second tab) built and awaiting the user's manual test. Only CP 2.5 (agent autostart) left.
+  as its second tab) done and user-verified. Only CP 2.5 (agent autostart) left in the phase.
 - **`insta-automate` is the scheduler, `insta-automate-worker` runs the flows** — helm `server.yaml`
   runs `ia prefect serve` (trigger loops); `worker.yaml` runs the Prefect worker. Both pods carry
   the same `app: insta-automate` label and one name prefixes the other, so match pods by stripping
@@ -89,6 +89,16 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   where Python's dict access shrugs (`as int?` on a float, `as bool?` on 0/1, a renamed key), so the
   field tables there are transcribed from `app/lib/core/service_models.dart` and
   `dependency_models.dart` and must be kept in step with them.
+- **Overflow is a paint-time error, so `flutter test` is part of a UI checkpoint's gate** —
+  `flutter analyze` cannot see it and neither can any agent-side test; the CP 2.4 one was found in
+  the user's screenshot. `app/test/services_layout_test.dart` renders the widgets at three pane
+  widths with the awkward real values. **Test at the size the screen actually produces**: that test
+  first used 560 and 1400 px panes and reproduced nothing — the reported bug needs ~1250, the width
+  a maximized 1920 window leaves after the rail and the tile list. D19.
+- **Never commit a UI checkpoint before the user has tested it** — CP 2.4 was committed with
+  "awaiting your test" in the message, which is still a commit and still wrong; the manual test *is*
+  the checkpoint. Build, analyze, start, hand over, then wait for the verdict. CLAUDE.md rule 4 and
+  EXPECTATION.md #8. **Violated once in the CP 2.4 session — do not repeat.**
 - **Always use `AppSnackBar`, never `ScaffoldMessenger` directly** —
   `app/lib/core/app_snack_bar.dart` clears before showing. The default messenger *queues*, so
   several quick edits played back-to-back and looked like a bar that never dismissed (CP 1.3 bug).

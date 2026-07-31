@@ -7,6 +7,29 @@ session can tell a settled question from an open one.
 
 ## 2026-07-31 — Phase 2 implementation session (CP 2.4, Services UI)
 
+### D19 · The panels above the terminal are capped; the terminal keeps a floor
+**Chosen:** the detail pane is `LayoutBuilder` → a `ConstrainedBox(maxHeight: available − 220 − 16)`
+holding a `SingleChildScrollView` of the header/stats/switches/test panels, then `Expanded` for the
+terminal. Layout regressions are caught by `app/test/services_layout_test.dart`, which renders the
+widgets at three pane widths with deliberately awkward values and fails on the first pixel over.
+**Rejected:** the plain `Column` + `Expanded(terminal)` this shipped with (overflowed by 199 px at
+the minimum window); scrolling the whole pane with the terminal at a guessed fraction of the
+viewport (leaves dead space under the terminal in a tall window); and `SliverFillRemaining`, which
+collapses the terminal to nothing exactly when the panels are the ones overflowing.
+**Why:** at the 1024 px minimum window the pane is ~550 wide, the stat chips wrap onto four rows and
+every card's text wraps with them — the panels genuinely want more height than the window has, so
+`Expanded` was being handed negative space. Capping them with a *maximum* rather than a share is
+what keeps both ends honest: cramped, they scroll and the terminal still gets 220 px; roomy, they
+take their natural height and the terminal gets every remaining pixel with no gap.
+**Cost:** two scroll regions in one pane at small sizes. Accepted because the terminal is the thing
+you are watching, and it staying put while the panels scroll is the behaviour you want.
+**Worth remembering:** this was found because the user's screenshot showed a 43 px overflow in the
+metrics row and the test written to chase it found three more. Overflow is a *paint-time* error —
+`flutter analyze` cannot see it, and neither can any agent-side test. The first version of that test
+used 560 and 1400 px panes and reproduced none of it: the reported bug needs ~1250 px, the width a
+maximized 1920 window leaves. Test at the size the real screen produces, not at round numbers.
+
+
 ### D18 · The agent's ring is the terminal's source of truth; the client dedupes by `seq`
 **Chosen:** the pane replays `GET /services/{name}/logs` on mount, holds back any live chunks that
 arrive while that request is in flight, merges both by sequence number, and drops anything it has
