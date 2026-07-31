@@ -1,14 +1,21 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
-**Phase 2 — CP 2.1–2.6 done, CP 2.4 and CP 2.5 user-verified (the reboot test passed: everything
-started as expected), CP 2.6 verified live by Claude**. The `wt.exe` startup shortcut is gone: an
-`ia-agent` **logon task** starts
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted** (accepted
+2026-07-31 — the user accepted Phase 2 outright without a separate CP 2.6 verification pass). The
+`wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
 lives in a detached service-host process, so a service survives the agent dying any way (D23).
-**Phase 2 is complete; the next session opens Phase 3.**
+**Phase 3 is open, CP 3.1 done** (Trigger delays & conditions, in `Insta-Automate` on
+`feat/control-center`). `Limit` in `models/meta.py` is generalised into typed `Config`
+(`Limit = Config` alias, no call sites changed), carrying every key from ARCHITECTURE §4.1 with
+coded defaults for the ones not yet in `config.env`. Q3 is answered: `PROFILES/REELS/POSTS` really
+are the live daily scan caps, and the `config.env` comment that said otherwise is fixed (D24).
+Next up: CP 3.2 — wire the scheduler's hardcoded waits to `Config.get(...)`.
+
+All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
+2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
@@ -42,37 +49,6 @@ probe/test metrics + self-heal + terminal right, with *Dependencies* as a second
 pin it: `agent/tests/test_ui_contract.py` for the payload shapes the app decodes (keep its field
 tables in step with `app/lib/core/service_models.dart` and `dependency_models.dart`), and
 `app/test/services_layout_test.dart` for overflow, which nothing else can see (D19).
-
----
-
-## ⚠ TEMPORARY: all five flow switches are OFF
-
-Set **2026-07-31** so the pods and helm chart can be worked against without the pipeline firing
-flows on its own. `config.env` now has `ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW=0`; every other
-key is untouched. Verified live inside the running scheduler pod — `Deployment.switch()` returns
-`False` for all five, no restart needed.
-
-**This must be turned back on when Phase 2 is accepted.** Restore with the app's Flows tab, or:
-
-```bash
-uv run --project agent python -c "
-from ia_agent.config import env_file
-from ia_agent.vars import CONFIG_PATH
-d = env_file.load(CONFIG_PATH)
-env_file.save(CONFIG_PATH, d, switches={k: '1' for k in d.switches})
-"
-```
-
-What OFF does and does not do:
-
-- **Does** stop the scheduler from triggering any flow — the gate is in `Deployment.trigger()`.
-- **Does not** stop manual triggers. The Prefect UI/API and `prefect deployment run` call
-  `run_deployment` directly and never consult the switch. (Verified by reading the code path, not
-  by executing a run.)
-- **Does not** stop the trigger loops themselves. They keep polling the DB, calling
-  `wait_for_device()` and pinging Telegram every pass; they just skip the trigger. If that residual
-  activity is unwanted, scale the `insta-automate` deployment to 0 instead — the worker deployment
-  still executes manual runs.
 
 ---
 

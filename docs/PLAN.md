@@ -375,16 +375,30 @@ the agent from the app (or kill it) — the tiles should come back reading `adop
 should never have stopped (same pids), and each terminal should still show its history and keep
 receiving new output.
 
+**Phase 2 accepted 2026-07-31** — the user accepted outright, without running the CP 2.6 test
+above separately. The five flow switches (turned off during Phase 2 so live flows wouldn't fire
+while the pods and helm chart were being worked against) are restored to ON.
+
 ---
 
 ## Phase 3 — Trigger delays & conditions · solves #2
 
 Goal: change any delay from the UI, see exactly when the next run fires and why it might not.
 
-### CP 3.1 — Typed live config 🟡
+### CP 3.1 — Typed live config 🟡 ✅ done
 `models/meta.py`: generalise `Limit` into `Config` (typed get with defaults for int/float/
 bool/str), keep `Limit` as an alias so no existing call site changes. Add every key from
 ARCHITECTURE §4.1. Fix the stale `PROFILES/REELS/POSTS` comment in `config.env`.
+
+**What landed** — `Config._DEFAULTS` now carries all nine existing limits plus the eleven trigger
+timings, two gates, and two wiring keys from §4.1, all resolving to coded defaults since none are
+in `config.env` yet (CP 3.2 starts reading them). `Limit = Config` at module scope, so every
+existing call site is untouched. **Q3 answered** — `PROFILES`/`REELS`/`POSTS` genuinely are the
+live daily scan caps (`Scan.limit_reached` + `entity_scan_trigger`'s day-pause); the `config.env`
+comment claiming otherwise was wrong and is now fixed. See D24. No test suite exists in this repo,
+so this was verified by import sanity-check (all five call-site modules import cleanly, alias
+identity holds, new keys resolve to their defaults with dotenv's expected warnings for absent
+keys) rather than `pytest`.
 
 ### CP 3.2 — Config-driven scheduler 🟡
 In `controllers/prefect.py`:
@@ -557,8 +571,10 @@ want prioritised is wanted first at both stages. See DECISIONS D8.
 flow finishes, then sleeps 10 s. Scan is the most rate-limit-sensitive flow. Do you want a real
 `SCAN_WAIT` cooldown, and if so what default? (Planned as `0` = no behaviour change.)
 
-**Q3 — Scan limits.** Confirm `PROFILES`/`REELS`/`POSTS` are genuinely the live daily scan caps
-(the code says yes, the `config.env` comment says no) so the UI labels them honestly.
+**Q3 — Scan limits. ✅ ANSWERED 2026-07-31: yes, they are the live daily scan caps.**
+`Scan.limit_reached` compares today's counts against `Limit.get("PROFILES"/"REELS"/"POSTS")`, and
+`entity_scan_trigger` pauses until the next day when any is reached. The `config.env` comment
+claiming otherwise was wrong and is fixed. See CP 3.1, D24.
 
 **Q4 — Startup ownership. ✅ ANSWERED and DONE 2026-07-31: the agent replaces the shortcut.**
 `dev-startup.exe.lnk` is deleted (backed up at `backups/2026-07-31-dev-startup/`) and the `ia-agent`

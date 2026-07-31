@@ -5,6 +5,42 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (CP 3.1, typed live config)
+
+### D24 · `Limit` is generalised into `Config` by aliasing, not renaming call sites
+
+**Chosen:** `insta_automate.models.meta.Config` replaces `Limit` as the real class — typed
+`get(key)` returning `int | float | bool | str`, inferred from the type of each key's own default
+(bool checked before int, since `bool` is an `int` subclass in Python). `Limit = Config` at module
+scope, so every existing call site (`scan.py`, `scrape.py`, `follow.py`, `entity_follow.py`,
+`entity_scrape.py`, `controllers/prefect.py`, `tasks/ia.py`) keeps importing and calling `Limit`
+unchanged. `_DEFAULTS` now carries every key from ARCHITECTURE §4.1 — the nine existing limits plus
+eleven trigger timings, two gates (`SCRAPE_BACKPRESSURE_FACTOR`, `SCAN_LIST`), and two
+control-center wiring keys (`IA_AGENT_URL`, `NOTIFY_POLICY`) — all absent from `config.env` today
+and resolving to their coded defaults with no error, exactly as designed: CP 3.2 is what starts
+reading them from the scheduler.
+
+**Q3 answered: yes, `PROFILES`/`REELS`/`POSTS` are genuinely the live daily scan caps.**
+`Scan.limit_reached` (`models/scan.py`) compares today's counts against `Limit.get(...)` for all
+three, and `entity_scan_trigger` (`controllers/prefect.py:150-166`) pauses the trigger loop until
+the next day when it fires. `config.env`'s own comment claimed the opposite — that these "only
+bound Scan's schema" — which was simply wrong; corrected in the same commit.
+
+**Rejected:** a parallel `Config` class living beside `Limit` with call sites migrated one by one —
+unnecessary churn across five files for a rename that changes no behaviour, and the alias gets
+identical type-checking (`Limit.get("FOLLOW")` still returns `int` for every key actually in use
+today, since none of the new keys are read anywhere yet).
+
+**Why:** the plan (`docs/PLAN.md` CP 3.1) specifies keeping `Limit` as an alias explicitly, and
+`SCRAPE_BACKPRESSURE_FACTOR` in particular has no reader yet — CP 3.2 replaces the hardcoded `* 3`
+in `entity_scrape_trigger` with it.
+
+**How to apply:** any new trigger-timing or gate key CP 3.2 needs should be added to
+`Config._DEFAULTS` with a same-typed default, not read directly from `config.env` — that's what
+keeps an absent key from ever being an error.
+
+---
+
 ## 2026-07-31 — Phase 2 implementation session (CP 2.6, services outlive the agent)
 
 ### D23 · The pty moves to a detached host, spawned through a launcher that exits immediately
