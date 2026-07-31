@@ -30,8 +30,8 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   scheduler's loops keep polling the DB, waiting on the device and pinging Telegram.
 - **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
   CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests) and
-  2.3 (dependency panel) done and Claude-verified. Next is CP 2.4 — the first Phase 2 checkpoint
-  with anything to click.
+  2.3 (dependency panel) done and Claude-verified; CP 2.4 (Services UI, with the dependency panel
+  as its second tab) built and awaiting the user's manual test. Only CP 2.5 (agent autostart) left.
 - **`insta-automate` is the scheduler, `insta-automate-worker` runs the flows** — helm `server.yaml`
   runs `ia prefect serve` (trigger loops); `worker.yaml` runs the Prefect worker. Both pods carry
   the same `app: insta-automate` label and one name prefixes the other, so match pods by stripping
@@ -75,6 +75,20 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Verify Windows launch paths by exit code before shipping them** — spawn APIs report that a
   *process started*, not that it did the job, so `CreateProcess -> true` hid a total no-op through
   two CP 1.3 test rounds. Two wrong guesses were handed to the user before the shim was read.
+- **A terminal replay and the live stream overlap by design** — the agent's ring is written by the
+  reader thread the instant a service prints, while the WS batch for those same chunks goes out on
+  the next supervisor tick (≤250 ms later). So replay-then-subscribe delivers chunks twice; the pane
+  dedupes by `seq` and re-replays with `?since=` after a drop. Overlap is expected, a *gap* is the
+  bug. A first version of `test_ui_contract.py` asserted the opposite and failed against correct
+  behaviour. D18.
+- **`terminal_available: false` has two very different meanings** — for `external`/`adopted` there
+  is no output and never was (the ring holds only the agent's own note), so the pane explains
+  itself; for a *stopped* supervised service the ring is the real final output, which is exactly
+  what self-heal-off exists to let you read. D17.
+- **The app's payload contract is pinned by `agent/tests/test_ui_contract.py`** — Dart's casts throw
+  where Python's dict access shrugs (`as int?` on a float, `as bool?` on 0/1, a renamed key), so the
+  field tables there are transcribed from `app/lib/core/service_models.dart` and
+  `dependency_models.dart` and must be kept in step with them.
 - **Always use `AppSnackBar`, never `ScaffoldMessenger` directly** —
   `app/lib/core/app_snack_bar.dart` clears before showing. The default messenger *queues*, so
   several quick edits played back-to-back and looked like a bar that never dismissed (CP 1.3 bug).

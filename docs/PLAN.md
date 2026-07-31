@@ -206,7 +206,7 @@ Notes for whoever touches this next:
 - Syncthing missing is a **warn**, not a fail — it means the phone stops seeing new images, not
   that a run breaks. Disk warns under 25 GB, fails under 8 GB.
 
-### CP 2.4 — Services UI 🟢
+### CP 2.4 — Services UI 🟢 ✅ built, awaiting your test
 Status tiles (state, uptime, restart count, probe latency), Start / Stop / Restart / Test, and a
 **self-heal toggle per tile** (off means a crashed service stays down with its exit code and final
 output on screen — D12).
@@ -217,6 +217,44 @@ and `POST /api/services/{name}/resize` wired to the pane's measured rows/cols so
 wraps correctly (D15). Selection, copy and search come from the emulator. Adopted and external
 services report `terminal_available: false` — the pane says why it is empty instead of showing a
 blank box.
+
+**What landed** — `app/lib/features/services/`: a master–detail screen (tile list left, detail and
+terminal right) plus a second tab that finally puts CP 2.3's dependency panel on screen (D16).
+`app/lib/core/service_models.dart` and `dependency_models.dart` mirror the agent's payloads. The
+five things worth knowing:
+
+- **The pane explains itself rather than rendering an empty terminal (D17).** All three real
+  services are `external` today, and an external service's ring holds exactly one chunk — the
+  agent's own note that the port was taken. Rendering that would be a "terminal" containing one dim
+  line about itself, so external and adopted services get a card naming the reason and the fix
+  instead. A *stopped* service is different: its ring is real output, so it keeps the terminal with
+  a banner saying the output is history.
+- **The terminal dedupes by `seq`, because overlap is normal.** The ring is written by the reader
+  thread the instant a process prints; the WS batch for those same chunks goes out on the next tick
+  up to 250 ms later. So replay-then-subscribe legitimately delivers chunks twice. Live chunks that
+  arrive mid-replay are held back and merged by sequence, and a dropped WebSocket re-replays from
+  `?since=<last rendered>` rather than from the top.
+- **Uptime is grown on the client.** A status is only broadcast when its signature changes, so a
+  service healthy for an hour sends nothing; the tile adds wall-clock since the snapshot arrived.
+- **Action requests get their own timeouts.** The client default is 2 s, but `stop` waits out a 5 s
+  terminate grace and a cold vl-server test does real inference — 20 s for actions, 60 s for tests.
+- **Autostart is on screen but labelled as pending**, since it only takes effect at CP 2.5.
+
+**Verified (agent side, `agent/tests/test_ui_contract.py`, 49/49):** every payload the app decodes,
+against a dummy registry plus one deliberately foreign process — enum parity, full status shape on
+every action, replay/live/`since=` sequence continuity with no gaps, `resize` actually reshaping the
+child's console (173×24 read back from inside the process), the test outcome and its metrics, the
+external/takeover shape, and the 409 `detail` sentence the UI shows. The existing suites still pass
+(57/57, 32/32, 26/26). The GUI itself is yours to test — see the checklist below.
+
+**Test (yours):** open **Services**. All three services should read `external` with a *Take over*
+button and a card explaining that the startup shortcut owns them. Take over **wsl-bridge** (the
+least disruptive — nothing is mirroring): the tile should go supervised, the terminal should fill
+with its real output in colour, and *Test* should report a scrcpy round trip. Resize the window and
+confirm the output rewraps rather than breaking. Turn self-heal off, kill that process from Task
+Manager, and confirm the tile goes red and *stays* red with its exit code and final output; turn
+self-heal back on and it should come back by itself with the restart count incremented. Then check
+the **Dependencies** tab shows ten green rows and *Re-check* re-runs them.
 
 ### CP 2.5 — Agent autostart 🟢
 Replace `dev-startup.exe.lnk` — today a `wt.exe` shortcut with four tabs (`adb -a start-server ;

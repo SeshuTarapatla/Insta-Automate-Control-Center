@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../features/placeholder_page.dart';
+import '../features/services/services_page.dart';
 import '../features/settings/settings_page.dart';
 import 'connection_banner.dart';
 import 'title_bar.dart';
 
+const _servicesIndex = 3;
 const _settingsIndex = 6;
 
 class _Destination {
@@ -59,9 +61,14 @@ class _AppShellState extends State<AppShell> {
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(
-                  child: _selected == _settingsIndex
-                      ? const SettingsPage()
-                      : PlaceholderPage(title: _destinations[_selected].label),
+                  // Rebuilt rather than kept alive: the agent's log ring is the
+                  // source of truth for terminal output, so a pane that comes
+                  // back replays from the server instead of holding state here.
+                  child: switch (_selected) {
+                    _servicesIndex => const ServicesPage(),
+                    _settingsIndex => const SettingsPage(),
+                    _ => PlaceholderPage(title: _destinations[_selected].label),
+                  },
                 ),
               ],
             ),

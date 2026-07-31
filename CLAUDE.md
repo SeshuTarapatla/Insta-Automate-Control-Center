@@ -2,19 +2,25 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
-**Phase 2 in progress — CP 2.1 (supervisor engine) is done and Claude-verified**, with no UI yet,
-so there is nothing for the user to click until CP 2.4.
+**Phase 2 — CP 2.1–2.3 done and Claude-verified, CP 2.4 built and awaiting the user's manual
+test**. Only **CP 2.5** (agent autostart) is left in the phase.
 
-`config.env` is fully controllable from the app (CP 1.1–1.4). The agent now also supervises
-processes: `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus
-the three real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}` and
-`POST /api/services/{name}/{start|stop|restart|takeover|resize}`. Services are spawned into a
-**ConPTY** and their output kept verbatim, so CP 2.4 renders a real terminal rather than a log list.
-Each service has a **self-heal** switch (persisted in `services.json`) and a functional self-test at
-`POST /api/services/{name}/test`; autostart is **off** until CP 2.5 hands startup ownership to the
-agent, so today it adopts or observes rather than spawns. `GET /api/dependencies` (CP 2.3) covers
-the ten things the pipeline needs but the agent does not supervise. Next up is **CP 2.4** (Services
-UI — the first thing here you can click).
+`config.env` is fully controllable from the app (CP 1.1–1.4). The agent also supervises processes:
+`agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus the three
+real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}` and
+`POST /api/services/{name}/{start|stop|restart|takeover|test|resize}`. Services are spawned into a
+**ConPTY** and their output kept verbatim, which the app renders with `xterm.dart` as a real
+terminal rather than a log list. Each service has a **self-heal** switch (persisted in
+`services.json`) and a functional self-test; autostart is **off** until CP 2.5 hands startup
+ownership to the agent, so today all three services are detected as `external` — the `wt.exe`
+shortcut still owns them and the agent observes rather than spawns. `GET /api/dependencies`
+(CP 2.3) covers the ten things the pipeline needs but the agent does not supervise, and now has a
+tab on the Services screen (D16).
+
+The **Services** screen (`app/lib/features/services/`) is master–detail: tiles left, actions +
+probe/test metrics + self-heal + terminal right, with *Dependencies* as a second tab. Payload
+shapes the app decodes are pinned by `agent/tests/test_ui_contract.py` — keep its field tables in
+step with `app/lib/core/service_models.dart` and `dependency_models.dart`.
 
 ---
 
@@ -191,6 +197,11 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
    (`start_vl_server.py --no-autorestart`), because nested supervisors fight each other and hide
    their restart counts (D14). Service output is a raw ConPTY stream kept verbatim — never
    line-strip it, that is what a terminal needs (D15).
+8. **The agent's ring is the terminal's only source of truth** — the app replays it, dedupes live
+   chunks by `seq` (overlap between a replay and the live stream is normal, a gap is not), and
+   re-replays with `?since=` after a dropped WebSocket (D18). A pane with nothing real to render
+   explains why instead of showing a one-line "terminal" (D17), and the dependency panel is the
+   Services screen's second tab (D16).
 
 ---
 

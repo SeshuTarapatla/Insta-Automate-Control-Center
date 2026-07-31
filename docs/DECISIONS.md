@@ -5,6 +5,54 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 2 implementation session (CP 2.4, Services UI)
+
+### D18 · The agent's ring is the terminal's source of truth; the client dedupes by `seq`
+**Chosen:** the pane replays `GET /services/{name}/logs` on mount, holds back any live chunks that
+arrive while that request is in flight, merges both by sequence number, and drops anything it has
+already rendered. A dropped WebSocket re-replays from `?since=<last rendered>`. Navigating away and
+back rebuilds the emulator from the server rather than keeping it alive off-screen.
+**Rejected:** trusting the live stream to continue exactly where the replay stopped, and keeping the
+terminal widget alive across navigation to preserve scrollback.
+**Why:** measured, not assumed — the ring is written by the reader thread the instant the process
+prints, while the WS batch for those same chunks is published on the next supervisor tick, up to
+250 ms later. So replay-then-subscribe reliably delivers the same chunks twice; a first attempt at
+`test_ui_contract.py` asserted the opposite and failed against correct behaviour. Overlap is
+harmless and a gap is not, so the client absorbs the overlap and the test now pins both properties
+(no gap, full coverage of every sequence number).
+**Cost:** re-opening the Services tab re-fetches up to 512 KB of scrollback. Cheap on localhost, and
+it means there is exactly one copy of the truth.
+
+### D17 · A pane with nothing to render explains itself instead of rendering the ring
+**Chosen:** `external` and `adopted` services show a card naming why there is no output and what to
+do about it (take over / restart), never a terminal. A *stopped* service is treated differently: its
+ring is genuine output, so it keeps the terminal with a banner saying this is history and, where
+there is one, the exit code.
+**Rejected:** gating purely on `terminal_available`, which is what the endpoint offers.
+**Why:** an external service's ring is not empty — it holds exactly one chunk, the agent's own dim
+note that the port was taken by someone else. Rendering it would produce a "terminal" whose entire
+contents are one line about itself. That is the state all three real services are in today, so it is
+the first thing the screen shows. Meanwhile `terminal_available` is also false for a supervised
+service that exited, where the output is exactly what you want to read — which is the whole point of
+being able to switch self-heal off (D12).
+**Cost:** one more piece of client-side state to keep in step with the origin enum; the rule is
+"detached (external/adopted) → explain; otherwise render whatever the ring has".
+
+### D16 · The dependency panel is the Services screen's second tab
+**Chosen:** Services is two tabs — *Supervised* (the three services, master–detail with the
+terminal) and *Dependencies* (CP 2.3's ten read-only checks).
+**Rejected:** waiting for the Overview screen, which ARCHITECTURE §9 earmarks for a dependency
+strip.
+**Why:** CP 2.3 shipped `GET /api/dependencies` with no UI, and Overview is not in Phase 2 — the
+panel would have stayed invisible until Phase 7. Both tabs answer one question about one machine
+("is this laptop able to run the pipeline?"), and the split is honest about the difference that
+matters: one tab has buttons because the agent owns those processes, the other has none because it
+does not.
+**Cost:** Overview will later show a condensed version of the same data; this stays the detailed
+view rather than being moved.
+
+---
+
 ## 2026-07-31 — Phase 2 implementation session (CP 2.1, revised after review)
 
 ### D15 · Services are spawned into a ConPTY, and their output is kept verbatim

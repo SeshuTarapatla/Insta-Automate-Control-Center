@@ -4,6 +4,7 @@ after N seconds so the crash / self-heal path is exercised.
 
 Note there is no SO_REUSEADDR: on Windows that flag lets two sockets share a port,
 which would let a double-spawn bug pass the tests unnoticed."""
+import os
 import socket
 import sys
 import threading
@@ -28,10 +29,21 @@ print(flush=True)
 
 threading.Thread(target=lambda: [server.accept() for _ in iter(int, 1)], daemon=True).start()
 
+def console_size() -> str:
+    """What the child believes its console is. This is the value a resize has to
+    change: a service that wraps at its spawn width fills the pane with broken
+    lines however wide the pane really is."""
+    try:
+        size = os.get_terminal_size()
+        return f"{size.columns}x{size.lines}"
+    except OSError:
+        return "none"
+
+
 start = time.time()
 while True:
     if die_after and time.time() - start >= die_after:
         print("dying now", flush=True)
         sys.exit(3)
-    print(f"tick {time.time() - start:.0f}", flush=True)
+    print(f"tick {time.time() - start:.0f} size={console_size()}", flush=True)
     time.sleep(1)
