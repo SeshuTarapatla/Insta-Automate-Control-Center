@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ia_agent.api.config import router as config_router
+from ia_agent.api.dependencies import router as dependencies_router
 from ia_agent.api.health import router as health_router
 from ia_agent.api.queue import router as queue_router
 from ia_agent.api.services import create_services_router
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(config_router)
     app.include_router(queue_router)
+    app.include_router(dependencies_router)
     app.include_router(create_services_router(supervisor))
     app.include_router(create_ws_router(bus, token))
     return app

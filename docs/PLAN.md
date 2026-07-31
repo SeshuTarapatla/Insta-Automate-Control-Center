@@ -163,10 +163,48 @@ why it exists — a listening adb server with no phone attached is green on port
 pipeline, so its probe now reads `tcp open; device <serial> attached` and goes `unhealthy` when the
 phone drops.
 
-### CP 2.3 — Dependency panel (read-only) 🟢
-k3s reachable · postgres · prefect server + worker + work-pool has a live worker ·
+### CP 2.3 — Dependency panel (read-only) 🟢 ✅ done
+k3s reachable · postgres · prefect server + work-pool has a live worker ·
 `insta-automate` and `insta-automate-worker` pod phases and restart counts · ADB device present ·
 internet · Syncthing running · free space on the `IA_DIR` volume.
+
+`GET /api/dependencies` (`?refresh=true` to bypass the 5 s cache). Ten checks run concurrently,
+each individually timed out at 10 s, each reporting `ok` / `warn` / `fail` with a sentence and
+metrics. Always 200 — a failing dependency is the answer, not an error — and a check that raises
+becomes a `fail` naming its own exception rather than a 500 for the whole panel.
+
+Measured live, all green in 886 ms cold / 105 ms warm:
+
+```
+k3s             k3s API reachable — v1.34.3+k3s3 (linux/amd64)
+postgres        insta_automate on PostgreSQL 18.3 — 6 tables, 30 MB
+prefect-server  Prefect server healthy — 3.6.27
+prefect-pool    insta-automate-pool served by 1 worker(s)
+pod-scheduler   1 pod(s) Running, 0 restart(s)
+pod-worker      1 pod(s) Running, 0 restart(s)
+adb-device      device 159555486700071 attached
+internet        reachable
+syncthing       running (pid 10392, 10952)
+disk            120 GB free of 425 GB on C:
+```
+
+Notes for whoever touches this next:
+
+- **Pods are matched by derived deployment name, never by prefix.** `insta-automate` is a prefix of
+  `insta-automate-worker`, *and* this chart gives both deployments the same `app: insta-automate`
+  label — so neither the name prefix nor the label can separate them. `kube._deployment_of()`
+  strips the `-<pod-template-hash>-<suffix>` a Deployment adds, which recovers the deployment
+  exactly. The roles are also easy to swap by mistake: `server.yaml` runs `ia prefect serve` (the
+  **scheduler**, i.e. the trigger loops), `worker.yaml` runs the Prefect worker that executes flow
+  runs.
+- **The work-pool check asks whether a worker is ONLINE**, not merely whether the pool exists — a
+  deployment submitted to an unattended pool sits in Pending forever, which "pool exists" would
+  call healthy.
+- **Postgres credentials are never in this repo.** `my_modules.postgres.PostgresSecret` reads the
+  k3s `postgres-secret`, the same path the pipeline uses. Consequence worth knowing: when k3s is
+  down, the postgres row reports a credential failure rather than a database failure, and says so.
+- Syncthing missing is a **warn**, not a fail — it means the phone stops seeing new images, not
+  that a run breaks. Disk warns under 25 GB, fails under 8 GB.
 
 ### CP 2.4 — Services UI 🟢
 Status tiles (state, uptime, restart count, probe latency), Start / Stop / Restart / Test, and a

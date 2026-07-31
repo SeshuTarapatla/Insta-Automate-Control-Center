@@ -12,8 +12,9 @@ the three real service specs, exposed at `GET /api/services`, `PATCH /api/servic
 **ConPTY** and their output kept verbatim, so CP 2.4 renders a real terminal rather than a log list.
 Each service has a **self-heal** switch (persisted in `services.json`) and a functional self-test at
 `POST /api/services/{name}/test`; autostart is **off** until CP 2.5 hands startup ownership to the
-agent, so today it adopts or observes rather than spawns. Next up is **CP 2.3** (read-only
-dependency panel), then CP 2.4 (Services UI — the first thing here you can click).
+agent, so today it adopts or observes rather than spawns. `GET /api/dependencies` (CP 2.3) covers
+the ten things the pipeline needs but the agent does not supervise. Next up is **CP 2.4** (Services
+UI — the first thing here you can click).
 
 ---
 
@@ -115,6 +116,15 @@ scrape_queued/<root>/<user>.jpg           human-promoted from gender_valid
 scraped/<root>/<user>.jpg     1080×~2000 dp + profile-header composite
 follow_queued/<root>/<user>.jpg           human-promoted from scraped
 ```
+
+**The two IA deployments look alike and are not.** `insta-automate` (helm `server.yaml`) runs
+`ia prefect serve` — the **scheduler**, i.e. the trigger loops. `insta-automate-worker`
+(`worker.yaml`) runs the Prefect worker that executes flow runs. They share the label
+`app: insta-automate`, and one name is a prefix of the other, so identify pods by stripping the
+`-<pod-template-hash>-<suffix>` a Deployment adds — see `integrations/kube._deployment_of`.
+
+**Postgres credentials live in the k3s `postgres-secret`**, read via
+`my_modules.postgres.PostgresSecret`. Never copy them into this repo.
 
 **Flows** (`entity_ingest`, `entity_scan`, `entity_classify`, `entity_scrape`, `entity_follow`)
 are deployed to Prefect work pool `insta-automate-pool` from the git repo. The trigger loops all

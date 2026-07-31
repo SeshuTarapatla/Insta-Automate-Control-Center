@@ -158,10 +158,11 @@ agent/
     │   ├── schema.py              # FlowEvent models
     │   ├── bus.py                 # fan-out + replay ring buffer
     │   └── images.py              # content-addressed cache + thumbnails
+    ├── dependencies.py            # the read-only dependency panel (CP 2.3)
     ├── integrations/
-    │   ├── prefect.py             # runs, incremental logs, deployments, trigger, cancel
-    │   ├── postgres.py            # read models over entity/user/scanned/scan/scrape/follow
-    │   ├── kube.py                # pod status, container log stream, helm ops
+    │   ├── prefect.py             # health, work pool, workers; later: runs, logs, triggers
+    │   ├── postgres.py            # liveness now; later: read models over entity/user/scan/...
+    │   ├── kube.py                # pod phase + restarts; later: log stream, helm ops
     │   ├── telegram.py            # bot notify fallback + entity-channel post
     │   └── device.py              # adb device list, screencap frames, scrcpy control
     ├── notify/
@@ -180,7 +181,7 @@ agent/
 
 | Group | Endpoints |
 |---|---|
-| health | `GET /api/health` · `GET /api/system` (one-shot snapshot of everything) |
+| health | `GET /api/health` · `GET /api/dependencies?refresh=` · `GET /api/system` (one-shot snapshot of everything) |
 | config | `GET /api/config` · `GET /api/config/schema` · `PATCH /api/config` |
 | services | `GET /api/services` · `GET /api/services/{name}` · `PATCH /api/services/{name}` (self_heal, autostart) · `POST /api/services/{name}/{start\|stop\|restart\|takeover\|test\|resize}` · `GET /api/services/{name}/logs?since=` |
 | flows | `GET /api/flows` · `POST /api/flows/{flow}/{run\|force-run\|skip-wait}` · `POST /api/flows/{flow}/switch` |

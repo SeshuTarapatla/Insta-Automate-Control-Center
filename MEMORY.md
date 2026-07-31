@@ -24,9 +24,15 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
 - **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
-  CP 2.1 (supervisor engine, ConPTY terminals, self-heal) and CP 2.2 (probes + functional
-  self-tests) done and Claude-verified. Next is CP 2.3, then CP 2.4 — the first Phase 2 checkpoint
+  CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests) and
+  2.3 (dependency panel) done and Claude-verified. Next is CP 2.4 — the first Phase 2 checkpoint
   with anything to click.
+- **`insta-automate` is the scheduler, `insta-automate-worker` runs the flows** — helm `server.yaml`
+  runs `ia prefect serve` (trigger loops); `worker.yaml` runs the Prefect worker. Both pods carry
+  the same `app: insta-automate` label and one name prefixes the other, so match pods by stripping
+  the `-<pod-template-hash>-<suffix>`, never by prefix or label.
+- **A Prefect work pool existing is not the same as it being served** — an unattended pool leaves
+  flow runs Pending forever, so health checks must assert an ONLINE worker is polling it.
 - **vl-server's health is a token count, not a stopwatch** — the 1080×198 fixture costs 231 prompt
   tokens under `--image-min-tokens 64`; Ollama's hardcoded 1024 makes the same crop ~1067 tokens and
   7–12 s of CPU CLIP encode. Assert on tokens (ceiling 800): unlike wall-clock it doesn't move with
