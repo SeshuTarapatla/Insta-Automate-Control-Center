@@ -5,6 +5,69 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 2 implementation session (CP 2.5, agent autostart)
+
+### D22 · Supervised services die with the agent today, and the fix is CP 2.6
+**Chosen:** ship CP 2.5 knowing that anything the agent supervises dies when the agent dies, and
+close the hole in its own checkpoint (CP 2.6) with a detached host process that owns the
+pseudo-console. Until then the loop is: agent dies → its services die → the launcher restarts the
+agent → the agent restarts them from their `autostart` switches. Seconds of downtime, self-healing,
+and no flow survives it.
+**Rejected:** accepting it permanently (every agent restart across Phases 3–7 would take adb,
+vl-server and wsl-bridge with it, and any flow running at that moment); and building the host
+inside CP 2.5 (a supervisor rework plus three test suites, with the reboot test hostage to it).
+**Why:** measured, not reasoned. A service spawned into a ConPTY dies whenever the agent's handles
+close — on a clean `sys.exit`, on `taskkill /F`, and on `taskkill /F /T` alike. So D10's promise
+("supervised processes outlive the agent; PID files are what the next run adopts") has been false
+since services moved into pseudo-consoles in CP 2.1, and the adoption tests never caught it because
+they build two `Supervisor`s inside one process, where the pty handles never close. The fix is also
+measured: with the pty owned by a small detached host, the service survived a clean exit, a `/F`
+kill, and a `/F /T` tree-kill (that last one only when the host is orphaned through a launcher, since
+a tree walk otherwise reaches it), and its raw output kept appending to a file across the kill —
+which is what a replay needs.
+**Cost:** D10 is aspirational until CP 2.6, and CP 2.4's "restart the agent mid-scrape" claim does
+not hold yet. The plan says so at both places.
+
+### D21 · The launcher heals the agent; Task Scheduler does not
+**Chosen:** `agent/scripts/ia_agent_launcher.pyw` starts the agent, waits for it, and restarts it on
+any non-zero exit with 5 s → 300 s backoff (reset once the agent has been up two minutes), stopping
+only on a clean exit or when `%LOCALAPPDATA%\ia-agent\stop-launcher` exists. The task's logon trigger
+repeats every 10 minutes with `MultipleInstancesPolicy: IgnoreNew` as the outer net for the launcher
+itself dying. The launcher holds the agent in a job object with `KILL_ON_JOB_CLOSE`.
+**Rejected:** `RestartOnFailure`, which is what a logon task was chosen for in the first place; and a
+launcher that spawns and exits, which would leave Task Scheduler with nothing to track.
+**Why:** all three parts are measurements. `RestartOnFailure` (`PT1M`, count 3) did **not** restart a
+killed agent — the task recorded `Last Result: 1`, went to `Ready`, and sat there for three minutes.
+The repetition trigger did: a killed task was running again 55 s later. And `schtasks /End` killed
+only the launcher, leaving the agent serving on 8787 as an orphan whose parent was gone — so the
+documented way to stop the agent left something holding the port the next run needs. The job object
+closes that: when the launcher dies, by `/End` or otherwise, the agent and its uv trampolines go
+with it.
+**Cost:** a supervisor of the supervisor, in a file that runs on the base interpreter and therefore
+cannot import anything from the agent. `schtasks /End` is now genuinely "stop everything", which also
+means it is not a way to restart the agent alone.
+
+### D20 · The logon task runs a GUI-subsystem interpreter, never the agent directly
+**Chosen:** the task's action is the **base** interpreter's `pythonw.exe` (`sys.base_prefix`, PE
+subsystem 2) against the launcher `.pyw`, which then starts `ia-agent.exe` with `CREATE_NO_WINDOW`
+and redirects its output to `%LOCALAPPDATA%\ia-agent\logs\startup.log`.
+**Rejected:** `ia-agent.exe` with the task's `Hidden` setting (that flag hides the task in the Task
+Scheduler UI, not the window); the venv's `pythonw.exe`; and `CREATE_NO_WINDOW` combined with
+`DETACHED_PROCESS`.
+**Why:** Task Scheduler exposes no window style, so what matters is the subsystem of the exe it
+starts. Measured under a real interactive logon task: `python.exe` showed a visible console for its
+whole run, and so did the venv's `pythonw.exe` — it is a uv trampoline that re-execs the console
+interpreter, and the pid that appeared on screen was not the pid the task started (the same
+trampoline shape as D11). The base `pythonw.exe` reported `GetConsoleWindow() == 0` and no window was
+visible from outside. `CREATE_NO_WINDOW` is passed alone because Windows ignores it when
+`DETACHED_PROCESS` or `CREATE_NEW_CONSOLE` is also set — the first attempt combined them and put a
+console window on screen, which is the exact thing this checkpoint exists to remove.
+**Cost:** the task depends on a path under `%APPDATA%\uv\python\…` that a uv toolchain upgrade can
+move, so `startup.py status` re-checks it and `install` must be re-run if it changes. The agent's own
+stdout is only readable in `startup.log`.
+
+---
+
 ## 2026-07-31 — Phase 2 implementation session (CP 2.4, Services UI)
 
 ### D19 · The panels above the terminal are capped; the terminal keeps a floor

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>STRIX-G16\seshu</Author>
+    <Description>Starts ia-agent at logon. It supervises adb, vl-server and wsl-bridge and serves the Insta-Automate Control Center on port 8787. Replaces the dev-startup.exe.lnk Startup shortcut (CP 2.5).</Description>
+    <URI>\ia-agent</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>STRIX-G16\seshu</UserId>
+      <Delay>PT15S</Delay>
+      <!-- The outer net. RestartOnFailure below does not fire when the action
+           exits non-zero (measured), and the launcher heals the agent itself, so
+           this exists for the case where the launcher process dies: every 10
+           minutes the trigger asks for the task again, and MultipleInstancesPolicy
+           IgnoreNew makes that a no-op whenever it is already running. -->
+      <Repetition>
+        <Interval>PT10M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>STRIX-G16\seshu</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\seshu\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\pythonw.exe</Command>
+      <Arguments>"D:\Coding\Insta-Automate-Control-Center\agent\scripts\ia_agent_launcher.pyw"</Arguments>
+      <WorkingDirectory>D:\Coding\Insta-Automate-Control-Center\agent</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

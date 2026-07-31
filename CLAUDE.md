@@ -2,10 +2,21 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
-**Phase 2 — CP 2.1–2.4 done, CP 2.4 user-verified**. Only **CP 2.5** (agent autostart) is left in
-the phase, and it is the next session's work: the startup shortcut is already backed up at
-`backups/2026-07-31-dev-startup/`, and the open question — how to run a console app from a logon
-task in the interactive session without a console window — is written up under CP 2.5 in the plan.
+**Phase 2 — CP 2.1–2.5 done, CP 2.4 user-verified, CP 2.5 awaiting the user's reboot test**. The
+`wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts the agent, which starts the
+three services from their `autostart` switches (now on). A new **CP 2.6** was opened by what CP 2.5
+measured — supervised services die with the agent — and is the next session's work.
+
+**Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
+`status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
+Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after
+checking its hash against the committed backup. The task's action is the **base** interpreter's
+`pythonw.exe` (GUI subsystem, so no console window exists) running
+`agent/scripts/ia_agent_launcher.pyw`, which starts `ia-agent.exe` with `CREATE_NO_WINDOW`, holds it
+in a `KILL_ON_JOB_CLOSE` job object, logs to `%LOCALAPPDATA%\ia-agent\logs\startup.log`, and restarts
+it on any non-zero exit — because `RestartOnFailure` does not (D21). `schtasks /End /TN ia-agent`
+stops everything; `%LOCALAPPDATA%\ia-agent\stop-launcher` keeps it down. Full record and undo:
+`backups/2026-07-31-agent-task/MANIFEST.md`.
 
 `config.env` is fully controllable from the app (CP 1.1–1.4). The agent also supervises processes:
 `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus the three
@@ -13,9 +24,11 @@ real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}`
 `POST /api/services/{name}/{start|stop|restart|takeover|test|resize}`. Services are spawned into a
 **ConPTY** and their output kept verbatim, which the app renders with `xterm.dart` as a real
 terminal rather than a log list. Each service has a **self-heal** switch (persisted in
-`services.json`) and a functional self-test; autostart is **off** until CP 2.5 hands startup
-ownership to the agent, so today all three services are detected as `external` — the `wt.exe`
-shortcut still owns them and the agent observes rather than spawns. `GET /api/dependencies`
+`services.json`) and a functional self-test; **autostart is on** for all three since CP 2.5, so after
+a logon the agent spawns them and they read `supervised`. Until the next reboot they are still
+whatever the old shortcut left running, which the agent reports as `external`. **A supervised service
+dies with the agent** — measured, any kind of death — so an agent restart cycles all three until
+CP 2.6 moves the pseudo-console into a detached host (D22). `GET /api/dependencies`
 (CP 2.3) covers the ten things the pipeline needs but the agent does not supervise, and now has a
 tab on the Services screen (D16).
 
@@ -142,10 +155,12 @@ with its own restart loop. Live chains, all launched from one `WindowsTerminal.e
 `wsl-bridge.exe → python → python:8000`, `python start_vl_server.py → llama-server.exe:11500`.
 Anything that identifies, kills, or adopts a process must walk the tree — see D11.
 
-**Startup today** — `%APPDATA%\…\Startup\dev-startup.exe.lnk`, despite the name, is `wt.exe` with
-four tabs: `adb -a start-server ; ollama serve ; start_vl_server.py ; wsl-bridge.exe`. Note
-`start-server` *forks*, so that tab exits and nothing supervises adb. CP 2.5 replaces the whole
-shortcut with a logon task running `ia-agent`; `ollama serve` is dropped (D13).
+**Startup, since CP 2.5** — the `ia-agent` logon task, 15 s after logon, running
+`pythonw.exe ia_agent_launcher.pyw` → `ia-agent.exe` → the three services. What it replaced was
+`%APPDATA%\…\Startup\dev-startup.exe.lnk`, which despite the name was `wt.exe` with four tabs
+(`adb -a start-server ; ollama serve ; start_vl_server.py ; wsl-bridge.exe`) — note `start-server`
+*forks*, so that tab exited and nothing supervised adb. `ollama serve` is not carried over (D13);
+`Ollama.lnk` starts it separately anyway. The `.lnk` is backed up and one command restores it.
 
 **IA_DIR** = `C:\Users\seshu\Pictures\insta-automate`, hostPath-mounted into both IA pods at
 `/insta-automate`. Paths that cross the pod↔host boundary must be **IA_DIR-relative**.
@@ -198,7 +213,9 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
    `package:win32`, not `dart:io`'s `Process.start` — the latter flashes a visible console window
    because `uv`/`python` are console-subsystem executables and `dart:io` doesn't expose that flag.
 6. Killing a service means killing its **root**, not the process holding the port (D11), and the
-   agent never stops services when it exits (D10). Supervisor state is lock-guarded (D9).
+   agent never *deliberately* stops services when it exits (D10) — though today they die with it
+   regardless, because the pseudo-console is the agent's; CP 2.6 fixes that (D22). Supervisor state
+   is lock-guarded (D9).
 7. **The agent is the only supervisor.** Services' own restart loops are switched off
    (`start_vl_server.py --no-autorestart`), because nested supervisors fight each other and hide
    their restart counts (D14). Service output is a raw ConPTY stream kept verbatim — never
@@ -208,6 +225,10 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
    re-replays with `?since=` after a dropped WebSocket (D18). A pane with nothing real to render
    explains why instead of showing a one-line "terminal" (D17), and the dependency panel is the
    Services screen's second tab (D16).
+9. **Startup is a logon task running a GUI-subsystem interpreter** (D20) — nothing else keeps a
+   console window off the screen, because Task Scheduler has no window style and `<Hidden>` only
+   hides the task in its own UI. The launcher, not `RestartOnFailure`, restarts the agent, and a job
+   object stops `schtasks /End` from orphaning it (D21).
 
 ---
 

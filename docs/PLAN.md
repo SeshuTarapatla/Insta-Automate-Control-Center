@@ -98,7 +98,9 @@ Goal: start, stop, restart and *prove* each Windows service from the UI.
   rotating file. PID file per service.
 - **Adoption on agent start**: PID file alive and healthy → adopt (flag stdout as unavailable);
   port held by a foreign PID → mark `external` and offer takeover. This is what lets the agent
-  restart without killing a running scrape.
+  restart without killing a running scrape — **except that it does not yet**: CP 2.5 measured that a
+  ConPTY-spawned service dies with the agent whatever kills it, so there is nothing left to adopt.
+  CP 2.6 makes this bullet true; D22 explains why it is deferred rather than reverted.
 - Also landed here (needed to make the engine testable at all): `services/registry.py` with the
   three real specs — `autostart` off, since everything is already up under the startup shortcut —
   and the REST surface `GET /api/services`, `GET /api/services/{name}[/logs]`,
@@ -272,57 +274,100 @@ Manager, and confirm the tile goes red and *stays* red with its exit code and fi
 self-heal back on and it should come back by itself with the restart count incremented. Then check
 the **Dependencies** tab shows ten green rows and *Re-check* re-runs them.
 
-### CP 2.5 — Agent autostart 🟢 ◻ next session
-Replace `dev-startup.exe.lnk` — today a `wt.exe` shortcut with four tabs (`adb -a start-server ;
-ollama serve ; start_vl_server.py ; wsl-bridge.exe`) — with a **Task Scheduler logon task** running
-`ia-agent`, which then starts the services per their `autostart` switch. A logon task rather than a
-Startup shortcut because it supports restart-on-failure: once the agent owns healing, it is
-load-bearing for the core services and needs healing of its own. Keep the old `.lnk` backed up as a
-documented rollback. Answers **Q4**.
+### CP 2.5 — Agent autostart 🟢 ✅ done, awaiting the reboot test
+`dev-startup.exe.lnk` — a `wt.exe` shortcut with four tabs (`adb -a start-server ; ollama serve ;
+start_vl_server.py ; wsl-bridge.exe`) — is **gone**, replaced by a Task Scheduler logon task named
+`ia-agent`. The agent now starts at logon and starts the three services from their `autostart`
+switches, which this checkpoint turned on. Answers **Q4**.
 
-**Already done (2026-07-31):** the shortcut is backed up and documented at
-`backups/2026-07-31-dev-startup/` — the file itself, its resolved target and arguments, and two
-restore paths (copy it back, or recreate it from scratch). Its properties are confirmed live and
-match what CLAUDE.md claimed. `Ollama.lnk` is independently in the same Startup folder, so dropping
-`ollama serve` (D13) costs nothing.
+**What landed** — `agent/src/ia_agent/startup.py` (`install` / `remove` / `status`, run as
+`uv run --project agent python -m ia_agent.startup <action>`) and
+`agent/scripts/ia_agent_launcher.pyw`, the process the task actually runs. Install registers the
+task from generated XML, flips `autostart` on for all three services, and deletes the shortcut only
+after checking its SHA-256 against the committed backup; `remove` puts the shortcut back and turns
+the switches off again, so the rollback is one command. It is deliberately **not** in the UI — a
+once-per-machine act with a documented rollback is not a button to press twice.
 
-**The open design question, unanswered — settle it by measuring, not by reasoning.** The task must
-run *in the interactive user session* (wsl-bridge spawns scrcpy, which needs a desktop), and a
-console-subsystem exe started that way normally shows a console window — which is the exact thing
-this checkpoint exists to remove. Three candidates, in order of preference:
+Four things about Windows decided the shape, each measured rather than reasoned (D7's rule):
 
-1. `ia-agent.exe` with `<Hidden>true</Hidden>` — simplest; verify whether a window actually appears
-   rather than trusting the flag, by enumerating visible top-level windows for the pid.
-2. `pythonw.exe -m ia_agent` — GUI subsystem, so no console exists at all. Needs work first:
-   `logging.py` builds a `RichHandler` on `my_modules.console`, and under `pythonw` `sys.stdout` is
-   `None`, so the agent needs a file-logging mode before this is viable.
-3. A launcher that re-spawns with `CREATE_NO_WINDOW`, the same trick the app's *Start agent* button
-   already uses (D5).
+- **The task must start a GUI-subsystem exe** (D20). Task Scheduler exposes no window style, and
+  `<Hidden>true</Hidden>` hides the *task in the Task Scheduler UI*, not the window. Under a real
+  interactive logon task, `python.exe` showed a visible console for its whole run — and so did the
+  venv's `pythonw.exe`, a uv trampoline that re-execs the console interpreter (the pid on screen was
+  not the pid the task started). The base interpreter's `pythonw.exe` reported
+  `GetConsoleWindow() == 0` with no window visible from outside, so that is the action, against the
+  launcher.
+- **`CREATE_NO_WINDOW` must be passed alone.** Windows ignores it when `DETACHED_PROCESS` or
+  `CREATE_NEW_CONSOLE` is also set; combining them was the first attempt and it put a console window
+  on screen. The app's *Start agent* button was re-measured on the same run and is clean — no visible
+  window anywhere in `uv.exe → ia-agent.exe → python.exe`.
+- **`RestartOnFailure` does not heal a crashed agent** (D21) — which was the stated reason for
+  choosing a task over a shortcut. With `PT1M`/3 configured, a killed agent left the task at
+  `Last Result: 1`, `Status: Ready`, and nothing restarted for three minutes. So the launcher waits on
+  the agent and restarts it itself (5 s → 300 s backoff, reset after two healthy minutes, stopping on
+  a clean exit or on a `stop-launcher` sentinel), and the logon trigger repeats every 10 minutes with
+  `IgnoreNew` as the outer net for the launcher dying. The repetition net was measured too: a killed
+  task was running again 55 s later.
+- **`schtasks /End` used to orphan the agent** — it killed the launcher and left the agent serving on
+  8787 with a dead parent, so the documented way to stop it left something holding the port the next
+  run needs. The launcher now holds the agent in a job object with `KILL_ON_JOB_CLOSE`, and `/End` is
+  genuinely "stop everything".
 
-Note the standing rule this sits under: **verify Windows launch paths by exit code and by observed
-effect before shipping them** — `CreateProcess` returning success hid a total no-op through two CP
-1.3 test rounds (D7).
+**The load-bearing measurement, and why it did not stop this checkpoint** — a service spawned into a
+ConPTY dies with the agent on *every* death: a clean `sys.exit`, a `/F` kill and a `/F /T` tree-kill
+all took it. D10 has therefore been false since services moved into pseudo-consoles in CP 2.1, and
+the adoption tests missed it because they build two `Supervisor`s in one process, where the pty
+handles never close. The fix is measured and works — see **CP 2.6** — and is its own checkpoint. Until
+then the loop is: agent dies → its services die → the launcher restarts the agent → the agent restarts
+them from their switches. Seconds of downtime, self-healing, and no flow survives it (D22).
 
-**A second question, found the hard way on 2026-07-31 and load-bearing for this checkpoint:**
-killing the agent's *process tree* kills every service it supervises. That happened for real at the
-end of the CP 2.4 session — all three had been taken over during the test, the agent was killed, and
-the machine was left with no adb, no vl-server and no wsl-bridge until they were restarted by hand.
-D10 promises services outlive the agent, and they do when it exits gracefully; a hard kill is
-different. **Measure whether killing the agent process alone does the same** (it plausibly does —
-each service is attached to a pseudo-console the agent owns) **before enabling restart-on-failure on
-the task**, or the healing meant to protect the agent will cycle all three services every time it
-fires. If it does, spawning services so they survive the agent — a job object with breakaway, or
-handing them off — becomes part of this checkpoint rather than a later one.
+**Verified (Claude, live on this machine):** the task's whole process tree
+(`pythonw.exe → ia-agent.exe → python.exe → python.exe` + a conhost) with **no visible window**, the
+agent answering on 8787, and the three services detected `external` and **untouched** — same pids
+before and after. Then the agent killed outright: back in **5 s**, services still untouched. Then
+`schtasks /End`: nothing of the task's left running, port closed, services still untouched.
+`agent/tests/test_startup.py` (20/20) pins what a later edit could quietly break — the action's PE
+subsystem is 2, the flags, the launcher's restart policy, and the job object really killing a child
+when its handle closes. The other suites still pass (57/57, 32/32, 49/49).
 
-**Also still to decide:** whether the three services' `autostart` switches get turned on as part of
-installing the task (they are off today), and whether install/remove is exposed in the UI or left as
-an agent-side one-off. The switches already persist in `services.json` and the UI already writes
-them, so this is a question about the install flow, not about plumbing.
+**Test (yours):** reboot the laptop. Fifteen seconds after the desktop appears, everything should be
+up with **no terminal window anywhere** — check Task Manager for `pythonw.exe`, `ia-agent.exe` and
+the three services, and note that no `WindowsTerminal.exe` was started for them. Open the app: the
+three tiles should read *supervised* (not `external`) with real terminal output, since the agent
+started them this time. Then kill `llama-server.exe` from Task Manager → the vl-server tile goes red
+within one probe interval → with self-heal on it comes back by itself and the restart count
+increments; with self-heal off it stays red until *Restart*, and *Test* then reports a plausible
+ms/image. `uv run --project agent python -m ia_agent.startup status` prints the whole picture if
+anything looks wrong; `… remove` puts the old shortcut back.
 
-**Test:** kill `llama-server.exe` from Task Manager → the tile goes red within one probe interval →
-with self-heal on it comes back by itself and the restart count increments; with self-heal off it
-stays red until *Restart*, and *Test* then reports a plausible ms/image. Reboot the laptop →
-everything comes up with no terminal window and the old shortcut removed.
+### CP 2.6 — Services that outlive the agent 🟢 ◻ next session
+Close the hole CP 2.5 measured (D22): move the pseudo-console out of the agent so a supervised
+service survives the agent exiting, crashing or being restarted for a code change — which is what
+D10 promised and what Phases 3–7 need, since every agent edit currently costs all three services.
+
+The shape is already measured end to end with a stand-in: a small **service host** process, spawned
+by the agent through a launcher that exits immediately (so no tree walk reaches it), owns the ConPTY
+and the child, and appends the raw stream to a file. The service then survived a clean agent exit, a
+`/F` kill and a `/F /T` tree-kill, with the stream still growing across the kill.
+
+What it needs beyond that stand-in:
+
+- a real host module (`services/host.py`) run as `python -m ia_agent.services.host <spec>`: spawn,
+  stream to `%LOCALAPPDATA%\ia-agent\run\<name>.stream`, publish pid/exit-code state, and take
+  resize requests — the one thing a file cannot carry;
+- the supervisor tailing that file into the existing `LogRing` instead of reading a pty directly.
+  Byte offsets map onto the ring's `seq`/`?since=` contract, so the app's replay logic (D18) does not
+  change;
+- adoption reconnecting to a live host, which finally gives **adopted services a real terminal** —
+  today `terminal_available` is false for them and the pane explains itself instead (D17);
+- stop/takeover killing host and child together;
+- updates to `test_supervisor.py`, `test_e2e.py` and `test_ui_contract.py`, plus a new case for the
+  thing that motivated it: kill the agent, and prove the service is still up and the terminal still
+  replays.
+
+**Test:** with all three services supervised, restart the agent from the app (or kill it) — the tiles
+should come back reading `adopted`, the services should never have stopped (same pids), and each
+terminal should still show its history and keep receiving new output.
 
 ---
 
@@ -509,11 +554,12 @@ flow finishes, then sleeps 10 s. Scan is the most rate-limit-sensitive flow. Do 
 **Q3 — Scan limits.** Confirm `PROFILES`/`REELS`/`POSTS` are genuinely the live daily scan caps
 (the code says yes, the `config.env` comment says no) so the UI labels them honestly.
 
-**Q4 — Startup ownership. ✅ ANSWERED 2026-07-31: the agent replaces the shortcut.**
-`dev-startup.exe.lnk` goes; a Task Scheduler logon task starts `ia-agent`, which starts the three
-services per their `autostart` switch. `ollama serve` is dropped from the set entirely (D13), the
-services' own restart loops are switched off in favour of the agent's (D14), and until CP 2.5 lands
-the shortcut still runs and the agent simply adopts or observes what it finds. See CP 2.5.
+**Q4 — Startup ownership. ✅ ANSWERED and DONE 2026-07-31: the agent replaces the shortcut.**
+`dev-startup.exe.lnk` is deleted (backed up at `backups/2026-07-31-dev-startup/`) and the `ia-agent`
+logon task is installed; the agent starts the three services from their `autostart` switches, now on.
+`ollama serve` is dropped from the set entirely (D13) and the services' own restart loops stay off in
+favour of the agent's (D14). The task runs a GUI-subsystem interpreter so nothing shows a window
+(D20) and the launcher, not Task Scheduler, heals the agent (D21). See CP 2.5.
 
 **Q5 — Force run.** Should *Run now* ever bypass the daily limits, or only the wait? Planned:
 *Run now* respects every gate, *Force run* bypasses with a confirmation dialog.

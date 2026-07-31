@@ -28,9 +28,10 @@ def build_specs() -> list[ServiceSpec]:
     Ollama.lnk already starts it at login. See D13.
 
     These values are defaults. `self_heal` and `autostart` are overridden per service
-    from services.json, so the switches survive a restart. Autostart ships off until
-    CP 2.5 hands startup ownership to the agent; until then the shortcut still runs
-    and the agent adopts or observes what it finds."""
+    from services.json, so the switches survive a restart. `autostart` stays *off* in
+    the spec so that running the agent from a source checkout never spawns services
+    behind your back; CP 2.5's installer turns it on in services.json for all three,
+    which is what the logon task starts from. See `ia_agent.startup`."""
     return [
         ServiceSpec(
             name="adb",

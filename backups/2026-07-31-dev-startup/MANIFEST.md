@@ -35,9 +35,18 @@ Two things about it are worth remembering, because they are half the reason CP 2
   `Ollama.lnk` is separately in the same Startup folder (D13). It is deliberately *not* carried over,
   which is the one behavioural difference between this shortcut and its replacement.
 
+**Deleted on 2026-07-31** by CP 2.5's installer, which checked this backup's SHA-256 against the live
+file first. What replaced it is documented in `../2026-07-31-agent-task/MANIFEST.md`.
+
 ## Restoring it
 
-**Either** copy the file back and remove the task:
+**Either** let the installer do it, which also turns the services' `autostart` switches back off:
+
+```powershell
+uv run --project agent python -m ia_agent.startup remove
+```
+
+**Or** copy the file back and remove the task by hand:
 
 ```powershell
 Copy-Item "D:\Coding\Insta-Automate-Control-Center\backups\2026-07-31-dev-startup\dev-startup.exe.lnk" `

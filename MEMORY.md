@@ -36,9 +36,11 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   Switch OFF blocks `Deployment.trigger()` only: manual Prefect triggers still work, and the
   scheduler's loops keep polling the DB, waiting on the device and pinging Telegram.
 - **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
-  CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests) and
-  2.3 (dependency panel) done and Claude-verified; CP 2.4 (Services UI, with the dependency panel
-  as its second tab) done and user-verified. Only CP 2.5 (agent autostart) left in the phase.
+  CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests),
+  2.3 (dependency panel) and 2.5 (agent autostart) done and Claude-verified; CP 2.4 (Services UI,
+  with the dependency panel as its second tab) done and user-verified. CP 2.5 awaits the user's
+  reboot test. **CP 2.6 is new** — make supervised services outlive the agent — and is what's left
+  in the phase.
 - **`insta-automate` is the scheduler, `insta-automate-worker` runs the flows** — helm `server.yaml`
   runs `ia prefect serve` (trigger loops); `worker.yaml` runs the Prefect worker. Both pods carry
   the same `app: insta-automate` label and one name prefixes the other, so match pods by stripping
@@ -60,14 +62,31 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Agent restart must never stop a service** — supervised processes outlive the agent; PID files
   (guarded by `create_time` against PID reuse) are what the next run adopts. Stopping is only ever
   an explicit operator action. D1's stated cost, D10.
-- **…but only when the agent exits gracefully — a tree-kill takes every supervised service with it**
-  — measured 2026-07-31: all three had been taken over during the CP 2.4 test, killing the agent's
-  process tree left the machine with no adb, no vl-server and no wsl-bridge. **Never kill the agent
-  with a tree-kill while it supervises anything**; stop it gracefully, or restart the services
-  afterwards (`adb -a start-server`, `Insta-Automate\.venv\Scripts\python.exe scripts\start_vl_server.py`,
-  `wsl-bridge\.venv\Scripts\wsl-bridge.exe`, each detached). Whether a single-process kill does the
-  same is untested and is CP 2.5's problem, since restart-on-failure would otherwise cycle every
-  service each time it fires.
+- **…except that today it never is: a supervised service dies with the agent, however the agent
+  dies** — measured 2026-07-31 across three cases; a clean `sys.exit`, `taskkill /F` and
+  `taskkill /F /T` all took the child down. The pseudo-console is the agent's, and closing its
+  handles closes the service. So D10 has been false since services moved into ConPTYs in CP 2.1, and
+  the adoption tests missed it because they build two `Supervisor`s inside **one process**, where the
+  pty handles never close. Until CP 2.6: an agent restart cycles adb, vl-server and wsl-bridge (the
+  launcher restarts the agent, which restarts them from `autostart`), and no flow survives it. If
+  they need restarting by hand: `adb -a start-server`,
+  `Insta-Automate\.venv\Scripts\python.exe scripts\start_vl_server.py`,
+  `wsl-bridge\.venv\Scripts\wsl-bridge.exe`, each detached. The fix is measured too — put the pty in
+  a small **detached host** spawned through a launcher that exits immediately, and the service
+  survived all three kills with its raw stream still appending to a file for replay. D22.
+- **Startup belongs to the `ia-agent` logon task since 2026-07-31 (CP 2.5)** — the `wt.exe` shortcut
+  is deleted (backed up; `python -m ia_agent.startup remove` restores it and turns the switches back
+  off), and all three `autostart` switches are on. Four Windows behaviours were measured the hard way
+  and every one bit first: (1) a console-subsystem action shows a real console window under a logon
+  task, and `<Hidden>` does not help — it hides the task in the Task Scheduler UI; the venv's
+  `pythonw.exe` fails too, being a uv trampoline around the console interpreter, so the action is the
+  **base** interpreter's `pythonw.exe` (PE subsystem 2). (2) `CREATE_NO_WINDOW` is silently cancelled
+  by `DETACHED_PROCESS` — pass it alone. (3) **`RestartOnFailure` does not restart a crashed action**
+  (`Last Result: 1`, `Status: Ready`, three minutes of nothing), which was the whole reason a task
+  beat a shortcut; the launcher restarts the agent itself and the trigger's 10-minute repetition is
+  the outer net — repetition *was* measured to work, 55 s. (4) `schtasks /End` killed only the
+  launcher and left the agent orphaned on 8787, so the launcher holds it in a `KILL_ON_JOB_CLOSE` job
+  object. D20, D21.
 - **The agent is the only supervisor** — services' own restart loops are switched off
   (`start_vl_server.py --no-autorestart`; adb runs `nodaemon`, not the forking `start-server`).
   Nested supervisors resurrect processes underneath a stop and hide their restart counts in an
