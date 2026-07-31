@@ -192,7 +192,7 @@ agent/
 | stats | `GET /api/stats/{daily\|funnel\|entities}` |
 | entities | `GET /api/entities` · `POST /api/entities` (adds via Telegram channel) |
 | notify | `POST /api/notify` → `{delivered, targets}` |
-| scheduler | `POST /api/scheduler/heartbeat` → `{commands:[…]}` |
+| scheduler | `GET /api/scheduler` (full snapshot) · `POST /api/scheduler/heartbeat` → `{commands:[…]}` · `POST /api/scheduler/{flow}/command` |
 | ops | `POST /api/ops/{build\|deploy\|undeploy\|purge-runs\|db-backup\|db-restore}` |
 | pairing | `POST /api/pair/start` · `POST /api/pair/claim` · `GET /api/pair/devices` · `DELETE /api/pair/devices/{id}` |
 | device | `GET /api/device` · `POST /api/device/scrcpy/{start\|stop}` |
@@ -314,6 +314,30 @@ One endpoint, bidirectional, no inbound networking, no polling files.
 
 Commands: `run_now`, `force_run` (bypass gates, confirmed in UI), `skip_wait`, `pause`, `resume`,
 `reload_config`.
+
+**Landed in CP 3.4** (agent-side only — nothing on the pipeline side sends a real heartbeat yet):
+`SchedulerMirror` (`ia_agent/scheduler.py`) is an `RLock`-guarded in-memory store, one state block
+per flow name, exactly mirroring `ManagedService`'s locking idiom (D9). `heartbeat(state)` records
+the block and drains (and clears) that flow's queued commands in one call — a flow only ever sees
+commands meant for it. `POST /api/scheduler/{flow}/command` (body `{"command": "skip_wait"}`,
+validated against the six names above, 400 on anything else) is how something would queue one —
+nothing calls it yet either, since CP 3.5 (Flows UI) is what gets buttons.
+
+**Staleness** (not specified in this doc before CP 3.4, decided during implementation): no
+heartbeat for `STALE_AFTER = 15.0`s flips `online` false. Nothing but a heartbeat arriving would
+ever notice that on its own, so a small watchdog task (`WATCHDOG_TICK = 3.0`s) re-checks and
+re-broadcasts on every tick, in addition to the heartbeat handler broadcasting immediately after
+every POST for low-latency countdown updates. `GET /api/scheduler` returns
+`{"online": bool, "last_heartbeat_at": float | null, "flows": {<flow>: <§4.3 block>}}` — the same
+shape `flows.state` broadcasts, published only when its signature changes (online flag, or any
+flow's `switch`/`phase`/`next_trigger_at`), matching `services.status`'s publish-on-change
+discipline. See D27.
+
+**Replay for this channel is the plain `GET`, not a cursor.** §3.2 says every channel supports
+"replay-from-cursor" — for `services.logs.<name>` that means an actual `seq`-numbered ring, because
+a log is a delta stream where losing an entry is losing information. `flows.state` is a full
+snapshot on every publish, not a delta, so a client that connects mid-session loses nothing by
+calling `GET /api/scheduler` once and then subscribing — there is no missing middle to replay.
 
 ---
 

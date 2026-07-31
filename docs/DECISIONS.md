@@ -5,6 +5,57 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (CP 3.4, scheduler mirror in the agent)
+
+### D27 · `flows.state` publishes the full snapshot on change; staleness needs its own watchdog
+
+**Chosen:** `SchedulerMirror` (`ia_agent/scheduler.py`) — an `RLock`-guarded in-memory store, one
+state block per flow, reusing `ManagedService`'s exact locking idiom (D9) rather than inventing a
+new one. `heartbeat(state)` stores the block and drains that flow's queued commands in the same
+call; `queue_command(flow, command)` is the write side, exposed at
+`POST /api/scheduler/{flow}/command` with the six command names (§4.4) validated at the API layer,
+400 on anything else. `flows.state` broadcasts the **whole snapshot** (`online`, `last_heartbeat_at`,
+every flow's block) on every signature change, not a per-flow delta — mirroring how
+`services.status` publishes one *complete* service status per change rather than a diff, which
+means a client that missed some broadcasts is never stuck merging partial updates; it just has a
+stale full picture until the next one arrives, and `GET /api/scheduler` gets it unstuck immediately.
+Staleness (`STALE_AFTER = 15.0`s → `online: false`) needed a **watchdog task** (`WATCHDOG_TICK =
+3.0`s) distinct from the heartbeat handler's own immediate broadcast-on-POST, because nothing
+about a heartbeat *not* arriving would otherwise trigger a re-check — the supervisor's tick loop
+has an equivalent structural role (it re-probes services on its own schedule; a service doesn't
+have to tell the supervisor it died).
+
+**Verified:** `agent/tests/test_scheduler.py`, 24/24 — pure store logic (command scoping per flow,
+staleness flip, signature-gated broadcast) plus a live REST+WS round trip against a throwaway
+`create_app()` instance on a separate port, with `build_specs` monkeypatched to `[]` exactly like
+`test_ui_contract.py` so this test's own `Supervisor` never touches the three real services a
+production agent may already be supervising. All five existing suites still pass unchanged
+(71/71, 32/32, 49/49, 26/26, 20/20).
+
+**Rejected:** per-flow delta broadcasts on `flows.state` — would need the client to merge partial
+updates into a local model and handle the "I connected mid-session and have no baseline" case
+itself; a full snapshot on every change sidesteps both, at the cost of a slightly larger payload
+five small JSON blocks is not a size problem worth solving yet. Also rejected: giving `flows.state`
+a `seq`-numbered replay ring like `services.logs.<name>` — that ring exists because a **log** is a
+delta stream where a gap is a real loss (D18); a full-snapshot channel has no gap to lose, `GET
+/api/scheduler` already *is* the replay.
+
+**Why:** CP 3.4 is marked 🟢 (this repo only) in the plan — deliberately **not** wiring
+`Prefect.serve()` to send real heartbeats, which stays open. An earlier note in D26 said CP 3.4
+would include that pipeline-side wiring; that was wrong, corrected here. `SchedulerMirror` is
+therefore verified against synthetic heartbeats only — nothing in `Insta-Automate` calls
+`AgentClient.heartbeat()` yet, so `/api/scheduler` on the real running agent reads `online: false`
+until that gap closes.
+
+**How to apply:** the next piece of work needing this is either its own small checkpoint or folds
+into CP 3.5 (Flows UI needs real data to render against) — add a `heartbeat_loop()` to
+`Prefect.serve()` that builds the §4.3 block per flow (phase from `wait_until`'s state, gate from
+each `limit_reached`/backpressure check, `today` from `Scan`/`Scrape`/`Follow.fetch()`, `last_run`
+from `Deployment.flow_run`) and calls `AgentClient.heartbeat()` on it every ~2s, draining returned
+commands into whatever `wait_until` (D25) checks to stop being `"elapsed"`-only.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.3, agent client in the pod)
 
 ### D26 · `IA_AGENT_URL` stays a live `Config` key; only `IA_AGENT_TOKEN` moves to `vars.py`
@@ -35,12 +86,12 @@ of truth for the same value. §8 corrected in the same commit.
 `IA_AGENT_URL` would silently reintroduce a "needs a pod restart" exception to that rule for no
 reason — a URL isn't sensitive the way a bearer token is.
 
-**How to apply:** CP 3.4 builds the receiving `/api/scheduler/heartbeat` endpoint agent-side and
-wires `Prefect.serve()` to actually call `AgentClient.heartbeat()` on a 2 s loop, draining its
-returned commands into whatever `wait_until` (D25) checks. CP 4.2/4.3 wire `emit()` into the flow
-task instrumentation points. CP 6.1/6.2 build `/api/notify` and the `Notifier` facade that calls
-`AgentClient.notify()`. None of that requires touching `agent.py` itself unless the payload shapes
-change.
+**How to apply:** CP 3.4 builds the receiving `/api/scheduler/heartbeat` endpoint agent-side —
+*correction, recorded when CP 3.4 landed:* it does **not** also wire `Prefect.serve()` to call
+`AgentClient.heartbeat()`; that pipeline-side loop is still open, see D27. CP 4.2/4.3 wire `emit()`
+into the flow task instrumentation points. CP 6.1/6.2 build `/api/notify` and the `Notifier` facade
+that calls `AgentClient.notify()`. None of that requires touching `agent.py` itself unless the
+payload shapes change.
 
 ---
 

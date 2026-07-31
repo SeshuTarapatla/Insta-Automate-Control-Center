@@ -435,14 +435,32 @@ deliberately stays a live `Config` key (CP 3.1) rather than moving to `vars.py`;
 promoted from a transitive to a direct dependency. **Not yet wired into `Prefect.serve()`** — the
 2 s heartbeat loop and command draining is CP 3.4's job, once the agent has something to receive it.
 
-### CP 3.4 — Scheduler mirror in the agent 🟢
+### CP 3.4 — Scheduler mirror in the agent 🟢 ✅ done
 `POST /api/scheduler/heartbeat`, in-memory state store, command queue, `flows.state` WS channel,
 plus staleness detection (no heartbeat for 15 s → scheduler shown as offline).
+
+**What landed** — `ia_agent/scheduler.py`'s `SchedulerMirror` (RLock-guarded per-flow store,
+mirroring `ManagedService`'s locking idiom) plus `GET /api/scheduler`,
+`POST /api/scheduler/heartbeat`, and `POST /api/scheduler/{flow}/command`. `flows.state`
+broadcasts the full snapshot on signature change (online flag, or any flow's switch/phase/
+next_trigger_at) — same publish-on-change discipline as `services.status`. A 3s watchdog task
+catches the "heartbeats stopped arriving" case that nothing else would notice. See D27.
+`agent/tests/test_scheduler.py`, 24/24 (store logic + a live REST/WS round trip against a
+throwaway app instance, real services untouched via the same `build_specs` monkeypatch
+`test_ui_contract.py` uses). All five existing suites unchanged: 71/71, 32/32, 49/49, 26/26,
+20/20. **Deliberately not built here** (this CP is 🟢, agent-only) — nothing on the pipeline side
+calls `AgentClient.heartbeat()` yet, so `/api/scheduler` on the real agent reads `online: false`
+until a follow-up wires `Prefect.serve()` to send real heartbeats (D27's "How to apply").
 
 ### CP 3.5 — Flows UI 🟢
 Five flow cards: countdown ring to `next_trigger_at`, the gate reason in plain language, today's
 counters against the limit, the switch, **Run now** (respects gates) and **Force run** (bypasses,
 with confirmation), last run state + duration + a jump to its logs.
+
+**Prerequisite gap, open since CP 3.4 (D27):** nothing calls `AgentClient.heartbeat()` from
+`Prefect.serve()` yet, so there is no real data for this screen to render against — `/api/scheduler`
+reads `online: false` forever without it. Close this first (a `heartbeat_loop()` in
+`controllers/prefect.py` building the §4.3 block per flow) before or as the first step of this CP.
 
 **Test:** while `entity_follow` is waiting, change `FOLLOW_WAIT` 1200 → 120 — the countdown
 re-targets within one TICK. Press *Skip wait* → it fires immediately. Turn the switch off → the
