@@ -23,6 +23,11 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   is single-screen with VS Code maximized, so driving the window disrupts the workspace.
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
+- **⚠ All five flow switches are OFF since 2026-07-31, deliberately and temporarily** — set so the
+  pods and helm chart can be worked against without flows firing on their own. Must be restored to
+  `1` when Phase 2 is accepted. Restore recipe and the exact semantics are at the top of CLAUDE.md.
+  Switch OFF blocks `Deployment.trigger()` only: manual Prefect triggers still work, and the
+  scheduler's loops keep polling the DB, waiting on the device and pinging Telegram.
 - **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
   CP 2.1 (supervisor engine, ConPTY terminals, self-heal), 2.2 (probes + functional self-tests) and
   2.3 (dependency panel) done and Claude-verified. Next is CP 2.4 — the first Phase 2 checkpoint

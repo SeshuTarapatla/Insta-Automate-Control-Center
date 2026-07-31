@@ -18,6 +18,37 @@ UI — the first thing here you can click).
 
 ---
 
+## ⚠ TEMPORARY: all five flow switches are OFF
+
+Set **2026-07-31** so the pods and helm chart can be worked against without the pipeline firing
+flows on its own. `config.env` now has `ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW=0`; every other
+key is untouched. Verified live inside the running scheduler pod — `Deployment.switch()` returns
+`False` for all five, no restart needed.
+
+**This must be turned back on when Phase 2 is accepted.** Restore with the app's Flows tab, or:
+
+```bash
+uv run --project agent python -c "
+from ia_agent.config import env_file
+from ia_agent.vars import CONFIG_PATH
+d = env_file.load(CONFIG_PATH)
+env_file.save(CONFIG_PATH, d, switches={k: '1' for k in d.switches})
+"
+```
+
+What OFF does and does not do:
+
+- **Does** stop the scheduler from triggering any flow — the gate is in `Deployment.trigger()`.
+- **Does not** stop manual triggers. The Prefect UI/API and `prefect deployment run` call
+  `run_deployment` directly and never consult the switch. (Verified by reading the code path, not
+  by executing a run.)
+- **Does not** stop the trigger loops themselves. They keep polling the DB, calling
+  `wait_for_device()` and pinging Telegram every pass; they just skip the trigger. If that residual
+  activity is unwanted, scale the `insta-automate` deployment to 0 instead — the worker deployment
+  still executes manual runs.
+
+---
+
 ## What this project is
 
 A Flutter Windows control center for `Insta-Automate`, a Prefect-based Instagram scraping
