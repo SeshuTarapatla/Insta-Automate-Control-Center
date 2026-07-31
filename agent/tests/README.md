@@ -5,10 +5,15 @@ interesting behaviour is process lifecycle, which unit-level mocking would not h
 `origin = NONE` race in D9 and the launcher-restart-loop problem in D11 were both found here.
 
 ```
-uv run --project agent python agent/tests/test_supervisor.py   # 53 checks, engine level
-uv run --project agent python agent/tests/test_e2e.py          # 25 checks, real app + real WS
+uv run --project agent python agent/tests/test_supervisor.py   # 57 checks, engine level
+uv run --project agent python agent/tests/test_e2e.py          # 32 checks, real app + real WS
 uv run --project agent python agent/tests/check_roots.py       # read-only, live machine
+uv run --project agent python agent/tests/check_services.py    # runs the real self-tests
 ```
+
+`check_services.py` is the only script that touches the real adb / vl-server / wsl-bridge, and only
+read-only: it probes them and runs their functional tests. The wsl-bridge test leaves an existing
+scrcpy mirror alone by design.
 
 Both test scripts redirect `settings.SERVICE_SETTINGS_PATH` at import so flipping self-heal never
 touches the real `services.json`.

@@ -163,7 +163,29 @@ async def main():
     check("unhealthy_grace 0 means no restart", unhealthy.restart_count == 0)
     unhealthy.stop()
 
-    print("\n9. self-heal restarts a wedged (alive but unhealthy) process")
+    print("\n9. probe_extra: port open but the semantic check fails")
+    # adb's real case — a listening server with no phone attached is green on port
+    # and useless to the pipeline.
+    attached = {"value": True}
+
+    async def device_present():
+        return attached["value"], "device attached" if attached["value"] else "no device"
+
+    sup_extra = Supervisor(
+        [spec("t-extra", 19809, start_grace=1.0, probe_extra=device_present)], bus
+    )
+    extra = sup_extra.get("t-extra")
+    extra.start()
+    up = await until(sup_extra, lambda: extra.state == ServiceState.RUNNING, timeout=15)
+    check("healthy while the extra check passes", up, f"state={extra.state}")
+    check("extra detail appended", "device attached" in (extra.probe.detail or ""), extra.probe.detail)
+    attached["value"] = False
+    degraded = await until(sup_extra, lambda: extra.state == ServiceState.UNHEALTHY, timeout=15)
+    check("unhealthy when the extra check fails", degraded, f"state={extra.state}")
+    check("port still open, so it is not a crash", extra.pid and psutil.pid_exists(extra.pid))
+    extra.stop()
+
+    print("\n10. self-heal restarts a wedged (alive but unhealthy) process")
     sup5 = Supervisor(
         [spec("t-wedged", 19808, start_grace=1.0, unhealthy_grace=1.0, probe_interval=0.4)], bus
     )
@@ -175,7 +197,7 @@ async def main():
     check("wedge narrated", "while the process is still alive" in text_of(wedged))
     wedged.stop()
 
-    print("\n10. adoption across an agent restart")
+    print("\n11. adoption across an agent restart")
     sup6 = Supervisor([spec("t-adopt", 19805)], bus)
     adopt_svc = sup6.get("t-adopt")
     adopt_svc.start()
@@ -195,7 +217,7 @@ async def main():
     check("shutdown leaves it running", psutil.pid_exists(original_pid))
     adopted.stop()
 
-    print("\n11. stale pid file (dead pid) is discarded, not adopted")
+    print("\n12. stale pid file (dead pid) is discarded, not adopted")
     sup8 = Supervisor([spec("t-stale", 19806)], bus)
     stale = sup8.get("t-stale")
     stale._pid_file().parent.mkdir(parents=True, exist_ok=True)
@@ -206,7 +228,7 @@ async def main():
     check("stale pid file ignored", stale.origin == ServiceOrigin.NONE, f"origin={stale.origin}")
     check("stale pid file removed", not stale._pid_file().exists())
 
-    print("\n12. external ownership + takeover")
+    print("\n13. external ownership + takeover")
     foreign = subprocess.Popen(
         [sys.executable, str(DUMMY), "19807"],
         stdout=subprocess.DEVNULL,

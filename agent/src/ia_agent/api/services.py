@@ -57,6 +57,17 @@ def create_services_router(supervisor: Supervisor) -> APIRouter:
         service.resize(size.rows, size.cols)
         return {"rows": size.rows, "cols": size.cols}
 
+    @router.post("/services/{name}/test")
+    async def run_test(name: str) -> dict:
+        service = _service(name)
+        try:
+            outcome = await service.run_test()
+        except ServiceError as error:
+            raise HTTPException(status_code=409, detail=str(error))
+        # 200 whether it passed or failed — a failing test is a valid answer, not a
+        # transport error, and the UI needs the metrics either way.
+        return outcome.as_dict()
+
     @router.post("/services/{name}/{action}")
     async def act(name: str, action: str) -> dict:
         service = _service(name)

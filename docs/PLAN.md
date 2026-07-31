@@ -120,7 +120,7 @@ PID file, external detection + takeover) and 25/25 end-to-end REST+WS checks, bo
 service. Against the live machine, all three real services were detected `external` with correct
 kill targets and correct probes, and none was touched.
 
-### CP 2.2 — The three services + self-tests 🟢
+### CP 2.2 — The three services + self-tests 🟢 ✅ done
 
 | Service | Command | Health probe | Functional test |
 |---|---|---|---|
@@ -128,10 +128,40 @@ kill targets and correct probes, and none was touched.
 | `vl-server` | `…\.venv\Scripts\python.exe …\scripts\start_vl_server.py --no-autorestart` (the flag hands restart duty to the agent — D14) | `GET 127.0.0.1:11500/v1/models` | real inference on a bundled fixture jpg → assert the JSON schema parses, **report ms/image** |
 | `wsl-bridge` | `D:\Coding\wsl-bridge\.venv\Scripts\wsl-bridge.exe` | `GET 127.0.0.1:8000/` → `true` | `POST /scrcpy/start` → `GET /scrcpy/` is `true` → `POST /scrcpy/stop` |
 
-The commands are already in `services/registry.py` and the probes already run; what CP 2.2 adds is
-the **functional** column plus `POST /api/services/{name}/test`. The vl-server test is the valuable
-one: it is the difference between "port is open" and "classification actually works at 0.2 s/img
-instead of 12 s/img".
+`POST /api/services/{name}/test` runs these on demand; the result is kept as `last_test` in the
+status and narrated into the service's terminal. A failing test returns **200**, not an error —
+a failed test is an answer, and the UI needs its metrics either way.
+
+Measured on this machine when it landed:
+
+| Service | Probe | Test |
+|---|---|---|
+| `adb` | 12 ms — `tcp open; device 159555486700071 attached` | 125 ms — `I2201 responded to a shell command` |
+| `vl-server` | 11 ms — `GET /v1/models → 200` | **151 ms/image warm** (436 cold), **231 prompt tokens**, verdict parses to the pipeline's enum |
+| `wsl-bridge` | 14 ms — `GET / → 200` | 20 ms — `scrcpy already mirroring, left running` |
+
+Three things worth knowing about how these ended up:
+
+- **`prompt_tokens` is the real assertion, not the clock.** The fixture is 1080×198 and costs 231
+  tokens under `--image-min-tokens 64`; under Ollama's hardcoded 1024 the same crop costs ~1067 and
+  the CPU CLIP encode takes 7–12 s. Token count catches that regression exactly and, unlike
+  wall-clock, does not move with machine load. The test fails above 800.
+- **The vl-server test warms up first.** Cold was measured at 420–750 ms against ~150 ms warm, and a
+  real classify run does images back to back — reporting the cold number would overstate the steady
+  state by 3–5× and read like a regression that is not there.
+- **The wsl-bridge test refuses to be rude.** `POST /scrcpy/start` calls `stop()` on the way in
+  (`wsl_bridge/scrcpy.py:23`), so cycling it would kill a mirror in use and throw a new scrcpy
+  window onto the screen. When scrcpy is already running the test asserts the control plane answers
+  and leaves it alone; it only does the full start→confirm→stop cycle when nothing is mirroring.
+
+The fixture (`services/fixtures/row_crop.jpg`) is **synthetic** — a real row crop would put someone's
+Instagram profile picture in the repo, and what the test measures depends on the dimensions, not the
+subject.
+
+Also landed: `probe_extra`, a per-spec semantic check that runs after the port probe passes. adb is
+why it exists — a listening adb server with no phone attached is green on port and useless to the
+pipeline, so its probe now reads `tcp open; device <serial> attached` and goes `unhealthy` when the
+phone drops.
 
 ### CP 2.3 — Dependency panel (read-only) 🟢
 k3s reachable · postgres · prefect server + worker + work-pool has a live worker ·

@@ -23,9 +23,17 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   is single-screen with VS Code maximized, so driving the window disrupts the workspace.
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
-- **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2
-  started: CP 2.1 (supervisor engine + `/api/services`) done and Claude-verified; next is CP 2.2
-  (health probes + functional self-tests). No Services UI until CP 2.4.
+- **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2:
+  CP 2.1 (supervisor engine, ConPTY terminals, self-heal) and CP 2.2 (probes + functional
+  self-tests) done and Claude-verified. Next is CP 2.3, then CP 2.4 — the first Phase 2 checkpoint
+  with anything to click.
+- **vl-server's health is a token count, not a stopwatch** — the 1080×198 fixture costs 231 prompt
+  tokens under `--image-min-tokens 64`; Ollama's hardcoded 1024 makes the same crop ~1067 tokens and
+  7–12 s of CPU CLIP encode. Assert on tokens (ceiling 800): unlike wall-clock it doesn't move with
+  machine load. Warm inference is ~150 ms, cold 420–750 ms, so any timing test must warm up first.
+- **Never cycle scrcpy to test wsl-bridge** — `POST /scrcpy/start` calls `stop()` first
+  (`wsl_bridge/scrcpy.py:23`), so testing a live mirror kills it and throws a new window onto the
+  user's single screen. Test non-destructively when it's already running.
 - **The pid that binds a port is not the pid you launched** — uv venv `python.exe` and console
   scripts are trampolines that re-exec the managed interpreter, and `start_vl_server.py` runs its
   own restart loop around `llama-server.exe`. Killing only the socket owner makes the launcher

@@ -1,8 +1,28 @@
 import os
+import re
 from pathlib import Path
 
 HOST = "0.0.0.0"
 PORT = 8787
+
+INSTA_AUTOMATE_DIR = Path(r"D:\Coding\Insta-Automate")
+
+
+def _android_serial() -> str:
+    """The phone the pipeline drives. Read from Insta-Automate's own .env rather
+    than duplicated here — a serial in two places is a serial that will disagree."""
+    from_env = os.environ.get("ANDROID_SERIAL")
+    if from_env:
+        return from_env
+    try:
+        text = (INSTA_AUTOMATE_DIR / ".env").read_text()
+    except OSError:
+        return ""
+    match = re.search(r"^\s*ANDROID_SERIAL\s*=\s*['\"]?([^'\"\r\n]+)", text, re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
+ANDROID_SERIAL = _android_serial()
 
 IA_DIR = Path(os.environ.get("IA_DIR", r"C:\Users\seshu\Pictures\insta-automate"))
 CONFIG_PATH = IA_DIR / "config.env"

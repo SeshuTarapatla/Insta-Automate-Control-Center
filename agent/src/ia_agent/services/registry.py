@@ -1,6 +1,12 @@
 import shutil
 from pathlib import Path
 
+from ia_agent.services.selftest import (
+    adb_device_present,
+    test_adb,
+    test_vl_server,
+    test_wsl_bridge,
+)
 from ia_agent.services.spec import HealthProbe, ProbeKind, ServiceSpec
 
 INSTA_AUTOMATE_DIR = Path(r"D:\Coding\Insta-Automate")
@@ -36,6 +42,10 @@ def build_specs() -> list[ServiceSpec]:
             # interfaces so the pods can reach it via host.docker.internal.
             cmd=[ADB, "-a", "nodaemon", "server", "start"],
             probe=HealthProbe(kind=ProbeKind.TCP, port=5037),
+            # A listening adb server with no phone attached is green on port and
+            # useless to the pipeline, so the probe checks the device list too.
+            probe_extra=adb_device_present,
+            self_test=test_adb,
             start_grace=10.0,
         ),
         ServiceSpec(
@@ -54,6 +64,7 @@ def build_specs() -> list[ServiceSpec]:
             ],
             cwd=INSTA_AUTOMATE_DIR,
             probe=HealthProbe(kind=ProbeKind.HTTP, port=11500, path="/v1/models"),
+            self_test=test_vl_server,
             # Loading a 4B model takes far longer than a port bind, so the probe is
             # allowed to fail for a while before the tile turns red.
             start_grace=120.0,
@@ -66,6 +77,7 @@ def build_specs() -> list[ServiceSpec]:
             cmd=[str(WSL_BRIDGE_DIR / ".venv" / "Scripts" / "wsl-bridge.exe")],
             cwd=WSL_BRIDGE_DIR,
             probe=HealthProbe(kind=ProbeKind.HTTP, port=8000, path="/"),
+            self_test=test_wsl_bridge,
             start_grace=20.0,
         ),
     ]

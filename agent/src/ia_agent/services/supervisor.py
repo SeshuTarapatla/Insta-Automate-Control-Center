@@ -12,7 +12,8 @@ from ia_agent.logging import logger
 from ia_agent.services import settings
 from ia_agent.services.logs import LogRing
 from ia_agent.services.probes import ProbeResult, run_probe
-from ia_agent.services.spec import ServiceOrigin, ServiceSpec, ServiceState
+from ia_agent.services import selftest
+from ia_agent.services.spec import ServiceOrigin, ServiceSpec, ServiceState, TestOutcome
 from ia_agent.vars import SERVICE_RUN_DIR
 
 TICK = 0.25  # terminal-flush granularity; probes run on the spec's own interval
@@ -40,6 +41,7 @@ class ManagedService:
         self.restart_count = 0
         self.exit_code: int | None = None
         self.probe: ProbeResult | None = None
+        self.last_test: TestOutcome | None = None
         self.error: str | None = None
 
         self._proc: PtyProcess | None = None
@@ -93,6 +95,8 @@ class ManagedService:
             "exit_code": self.exit_code,
             "error": self.error,
             "probe": self.probe.as_dict() if self.probe else None,
+            "has_test": self.spec.self_test is not None,
+            "last_test": self.last_test.as_dict() if self.last_test else None,
             "self_heal": self.self_heal,
             "autostart": self.autostart,
             # Adopted and external processes were spawned without our pseudo-console,
@@ -145,6 +149,24 @@ class ManagedService:
                 self.autostart = changes["autostart"] = autostart
             if changes:
                 settings.update(self.spec.name, **changes)
+
+    async def run_test(self) -> TestOutcome:
+        """The Test button. Unlike a probe this may do real work — an inference, a
+        shell command — so it never runs on the tick loop, only when asked."""
+        if self.spec.self_test is None:
+            raise ServiceError(f"{self.spec.name} has no functional test")
+        if not self._alive and self.origin != ServiceOrigin.EXTERNAL:
+            raise ServiceError(f"{self.spec.name} is not running")
+
+        self.ring.note("running functional test")
+        outcome = await selftest.run(self.spec.self_test, self.spec.name)
+        self.last_test = outcome
+        self.ring.note(
+            f"test {'passed' if outcome.ok else 'FAILED'}: {outcome.summary}"
+        )
+        logger.info(f"{self.spec.name}: test {'ok' if outcome.ok else 'failed'} — {outcome.summary}")
+        await self._bus.publish("services.status", self.status())
+        return outcome
 
     # ----------------------------------------------------------------- spawn
 
@@ -462,7 +484,7 @@ class ManagedService:
         await self._broadcast_if_changed()
 
     async def _probe_alive(self, now: float) -> None:
-        self.probe = await run_probe(self.spec.probe)
+        self.probe = await run_probe(self.spec.probe, self.spec.probe_extra)
         if self.probe.ok:
             self.state = ServiceState.RUNNING
             self._unhealthy_since = None
@@ -495,7 +517,7 @@ class ManagedService:
             self.restart()
 
     async def _probe_idle(self, now: float) -> None:
-        self.probe = await run_probe(self.spec.probe)
+        self.probe = await run_probe(self.spec.probe, self.spec.probe_extra)
         if self.probe.ok:
             self.detect_external()
             return
@@ -623,7 +645,7 @@ class Supervisor:
                 # An unadopted service may still be up from before the agent ever
                 # ran (the wt.exe shortcut, a manual launch) — find that out before
                 # autostart decides to spawn a second copy onto a busy port.
-                service.probe = await run_probe(service.spec.probe)
+                service.probe = await run_probe(service.spec.probe, service.spec.probe_extra)
                 if service.probe.ok:
                     service.detect_external()
 

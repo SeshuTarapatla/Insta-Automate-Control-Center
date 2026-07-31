@@ -10,9 +10,10 @@ processes: `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/sup
 the three real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}` and
 `POST /api/services/{name}/{start|stop|restart|takeover|resize}`. Services are spawned into a
 **ConPTY** and their output kept verbatim, so CP 2.4 renders a real terminal rather than a log list.
-Each service has a **self-heal** switch (persisted in `services.json`); autostart is **off** until
-CP 2.5 hands startup ownership to the agent, so today it adopts or observes rather than spawns.
-Next up is **CP 2.2** (functional self-tests, especially vl-server's ms/image).
+Each service has a **self-heal** switch (persisted in `services.json`) and a functional self-test at
+`POST /api/services/{name}/test`; autostart is **off** until CP 2.5 hands startup ownership to the
+agent, so today it adopts or observes rather than spawns. Next up is **CP 2.3** (read-only
+dependency panel), then CP 2.4 (Services UI — the first thing here you can click).
 
 ---
 

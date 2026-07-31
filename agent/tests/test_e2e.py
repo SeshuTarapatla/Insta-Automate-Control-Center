@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -12,7 +13,7 @@ import websockets
 
 import ia_agent.app as app_module
 from ia_agent.services import settings
-from ia_agent.services.spec import HealthProbe, ProbeKind, ServiceSpec
+from ia_agent.services.spec import HealthProbe, ProbeKind, ServiceSpec, TestOutcome
 from ia_agent.vars import TOKEN_PATH
 
 HERE = Path(__file__).parent
@@ -28,6 +29,10 @@ def check(label, condition, detail=""):
     print(f"  [{'PASS' if condition else 'FAIL'}] {label} {detail}")
 
 
+async def dummy_test() -> TestOutcome:
+    return TestOutcome(ok=True, summary="dummy test ran", metrics={"widgets": 3}, at=time.time())
+
+
 app_module.build_specs = lambda: [
     ServiceSpec(
         name="dummy",
@@ -36,7 +41,15 @@ app_module.build_specs = lambda: [
         probe=HealthProbe(kind=ProbeKind.TCP, port=19810, timeout=1.0),
         probe_interval=0.5,
         start_grace=3.0,
-    )
+        self_test=dummy_test,
+    ),
+    ServiceSpec(
+        name="untestable",
+        label="Untestable",
+        cmd=[sys.executable, "-c", "import time; time.sleep(60)"],
+        probe=HealthProbe(kind=ProbeKind.TCP, port=19811, timeout=1.0),
+        probe_interval=0.5,
+    ),
 ]
 
 app = app_module.create_app()
@@ -58,6 +71,8 @@ async def main():
         print("\n1. initial state")
         status = (await client.get("/api/services")).json()[0]
         check("service listed", status["name"] == "dummy")
+        check("has_test advertised", status["has_test"] is True)
+        check("no test result yet", status["last_test"] is None)
         check("starts stopped", status["state"] == "stopped", status["state"])
         check("self_heal on by default", status["self_heal"] is True)
         check("autostart off by default", status["autostart"] is False)
@@ -129,17 +144,29 @@ async def main():
         back_on = (await client.patch("/api/services/dummy", json={"self_heal": True})).json()
         check("switch reported on", back_on["self_heal"] is True)
 
-        print("\n6. start twice is a 409, not a second process")
+        print("\n6. functional test over REST")
+        result = (await client.post("/api/services/dummy/test")).json()
+        check("test ran", result["ok"] is True, str(result)[:70])
+        check("metrics returned", result["metrics"] == {"widgets": 3})
+        after_test = (await client.get("/api/services/dummy")).json()
+        check("last_test lands in status", after_test["last_test"]["ok"] is True)
+        replay = (await client.get("/api/services/dummy/logs")).json()["chunks"]
+        check("test narrated into the terminal",
+              "test passed" in "".join(chunk["data"] for chunk in replay))
+        no_test = await client.post("/api/services/untestable/test")
+        check("409 when a service has no test", no_test.status_code == 409, no_test.text[:70])
+
+        print("\n7. start twice is a 409, not a second process")
         conflict = await client.post("/api/services/dummy/start")
         check("409 on double start", conflict.status_code == 409, conflict.text[:80])
 
-        print("\n7. restart bumps the count and changes the pid")
+        print("\n8. restart bumps the count and changes the pid")
         before = (await client.get("/api/services/dummy")).json()
         after = (await client.post("/api/services/dummy/restart")).json()
         check("pid changed", before["pid"] != after["pid"], f"{before['pid']} -> {after['pid']}")
         check("restart_count bumped", after["restart_count"] == before["restart_count"] + 1)
 
-        print("\n8. stop")
+        print("\n9. stop")
         stopped = (await client.post("/api/services/dummy/stop")).json()
         check("state stopped", stopped["state"] == "stopped", stopped["state"])
         check("pid cleared", stopped["pid"] is None)

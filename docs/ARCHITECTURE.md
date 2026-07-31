@@ -148,7 +148,8 @@ agent/
     │   ├── probes.py              # tcp, http, custom probes
     │   ├── logs.py                # raw ConPTY chunk ring (512 KB) + flattened file
     │   ├── settings.py            # per-service self_heal / autostart, services.json
-    │   ├── selftest.py            # functional tests per service
+    │   ├── selftest.py            # functional tests + adb's device-present probe
+    │   ├── fixtures/row_crop.jpg  # synthetic 1080x198 crop for the vl-server test
     │   └── registry.py            # the 3 core services + read-only dependency checks
     ├── scheduler/
     │   ├── state.py               # mirror of the pod scheduler's per-flow state

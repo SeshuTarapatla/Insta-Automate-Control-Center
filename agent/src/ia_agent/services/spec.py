@@ -1,6 +1,16 @@
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+
+# Runs after the port probe passes, to answer "is it actually serving *this*
+# pipeline" rather than "is something listening" — adb with no phone attached is
+# the case that motivates it. Returns (ok, detail).
+ExtraProbe = Callable[[], Awaitable[tuple[bool, str]]]
+
+# The functional test behind the UI's Test button. Cheap probes run every few
+# seconds; this runs only when asked, and may do real work.
+SelfTest = Callable[[], Awaitable["TestOutcome"]]
 
 
 class ServiceState(StrEnum):
@@ -28,6 +38,27 @@ class ProbeKind(StrEnum):
 
 
 @dataclass(frozen=True)
+class TestOutcome:
+    """Result of a functional test. `metrics` is what makes the difference between
+    'the port is open' and 'classification runs at 0.2 s/img instead of 12'."""
+
+    ok: bool
+    summary: str
+    metrics: dict = field(default_factory=dict)
+    duration_ms: float = 0.0
+    at: float = 0.0
+
+    def as_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "summary": self.summary,
+            "metrics": self.metrics,
+            "duration_ms": round(self.duration_ms, 1),
+            "at": self.at,
+        }
+
+
+@dataclass(frozen=True)
 class HealthProbe:
     kind: ProbeKind
     port: int
@@ -46,6 +77,8 @@ class ServiceSpec:
     description: str = ""
     cwd: Path | None = None
     env: dict[str, str] = field(default_factory=dict)
+    probe_extra: ExtraProbe | None = None
+    self_test: SelfTest | None = None
 
     # Defaults only. Both are overridden per service at runtime from services.json,
     # so the switches in the UI survive an agent restart (D12).

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from ia_agent.services.spec import HealthProbe, ProbeKind
+from ia_agent.services.spec import ExtraProbe, HealthProbe, ProbeKind
 
 
 @dataclass(frozen=True)
@@ -48,12 +48,23 @@ async def _http(probe: HealthProbe) -> tuple[bool, str]:
         return False, f"GET {probe.path} — {error or type(error).__name__}"
 
 
-async def run_probe(probe: HealthProbe) -> ProbeResult:
+async def run_probe(probe: HealthProbe, extra: ExtraProbe | None = None) -> ProbeResult:
+    """The port check first, then the spec's own semantic check if it has one. The
+    order matters: a TCP connect is microseconds and rules out most failures, so the
+    expensive question is only asked of something that is at least listening."""
     started = time.perf_counter()
     if probe.kind == ProbeKind.HTTP:
         ok, detail = await _http(probe)
     else:
         ok, detail = await _tcp(probe)
+
+    if ok and extra is not None:
+        try:
+            ok, extra_detail = await extra()
+        except Exception as error:
+            ok, extra_detail = False, f"{type(error).__name__}: {error}"
+        detail = f"{detail}; {extra_detail}"
+
     return ProbeResult(
         ok=ok, latency_ms=(time.perf_counter() - started) * 1000, detail=detail, at=time.time()
     )
