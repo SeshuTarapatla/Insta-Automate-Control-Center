@@ -67,6 +67,10 @@ Goal: never edit a limit by hand again.
 - Limits screen: cards grouped Scan / Scrape / Follow, each key with a slider + numeric field,
   inline help, dirty indicator, instant apply with undo, and a "changed externally" toast wired
   to `config.changed`.
+- A `config.env` bar at the top of the screen showing the real path (served by the agent, so
+  `IA_DIR` is resolved in one place) with **Open** in the default editor (`Ctrl+E`), *Show in
+  folder*, and *Copy path*. Opening goes through Win32 `ShellExecute` for the same
+  no-console-flash reason as DECISIONS D5.
 
 ### CP 1.4 — Switches UI 🟢
 - Five flow switches, confirm-on-disable, and the shared `ENTITY_QUEUE` priority list with

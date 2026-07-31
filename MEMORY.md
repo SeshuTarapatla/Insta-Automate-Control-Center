@@ -23,9 +23,18 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   is single-screen with VS Code maximized, so driving the window disrupts the workspace.
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
-- **Phase status** — Phase 0 complete (CP 0.1–0.3). Phase 1 in progress: CP 1.1 (config engine)
-  and CP 1.2 (config API) committed and backend-verified; CP 1.3 (Limits UI) is built and awaiting
-  the user's manual test.
+- **Phase status** — Phase 0 complete (CP 0.1–0.3). Phase 1 in progress: CP 1.1 (config engine),
+  CP 1.2 (config API) and CP 1.3 (Limits UI) committed; CP 1.3 user-verified. Next: CP 1.4
+  (Switches UI + the shared `ENTITY_QUEUE` list — needs Q1 answered first).
 - **Agent launch avoids a console flash** — `app/lib/core/agent_launcher.dart` uses
   `package:win32`'s `CreateProcess` with `CREATE_NO_WINDOW`, not `dart:io`'s `Process.start`. See
   DECISIONS D5.
+- **The user's editor is VS Code** — `code` is on `PATH`. Opening a file means running
+  `Code.exe <cli.js> <file>` with `ELECTRON_RUN_AS_NODE=1` (what `code.cmd` does). Running
+  `Code.exe <file>` reports success and does nothing. D7.
+- **Verify Windows launch paths by exit code before shipping them** — spawn APIs report that a
+  *process started*, not that it did the job, so `CreateProcess -> true` hid a total no-op through
+  two CP 1.3 test rounds. Two wrong guesses were handed to the user before the shim was read.
+- **Always use `AppSnackBar`, never `ScaffoldMessenger` directly** —
+  `app/lib/core/app_snack_bar.dart` clears before showing. The default messenger *queues*, so
+  several quick edits played back-to-back and looked like a bar that never dismissed (CP 1.3 bug).

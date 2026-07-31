@@ -5,6 +5,30 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 1 implementation session (CP 1.3)
+
+### D7 · Open `config.env` by replicating the `code` shim, not by running `Code.exe`
+**Chosen:** `FileOpener.openForEditing` resolves `code.cmd` on `PATH` to locate the install root,
+then launches `Code.exe <cli.js> <path>` with `ELECTRON_RUN_AS_NODE=1` via `Process.start`
+(detached), falling back to the shell association, then Notepad.
+**Rejected:** `CreateProcess` on `Code.exe "<path>"` — this *silently does nothing*. It starts a
+second Electron main process which exits without opening the file, while `CreateProcess` still
+reports success, so the failure is invisible to the caller. Also rejected: `cmd /c code "<path>"`,
+which re-introduces the console flash D5 exists to avoid.
+**Why:** the *Open* button did nothing across two CP 1.3 test rounds. Reading `code.cmd` showed
+the shim is not a thin wrapper around `Code.exe` at all — it runs the `cli.js` entry point under
+`ELECTRON_RUN_AS_NODE`, and *that* is what hands a file to the running window. Verified by exit
+code (`0`) before shipping. `Process.start` is safe here where D5 forbade it, because the flash D5
+describes only affects console-subsystem binaries like `uv`/`python`; `Code.exe` is GUI-subsystem.
+**Corrects an earlier claim in this entry:** the first version blamed `.env` having no file
+association. That was wrong — measured directly, `ShellExecute('open')` on `config.env` returns
+`42` (success) on this machine. The association was never the problem.
+**Cost:** two path heuristics (`code.cmd` lives in `<install>\bin`; `cli.js` sits under
+`resources\app\out`, possibly beneath a version-hash directory, so it is searched for rather than
+assumed). The fallback chain covers a layout change.
+
+---
+
 ## 2026-07-31 — Phase 1 implementation session (CP 1.1)
 
 ### D6 · `/ws` broadcasts every event to every client, no channel filtering yet

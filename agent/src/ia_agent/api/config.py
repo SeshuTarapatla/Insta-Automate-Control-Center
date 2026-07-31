@@ -26,6 +26,9 @@ def _read_config() -> dict:
         raise HTTPException(status_code=404, detail="config.env not found")
 
     return {
+        # Absolute Windows path — the desktop app is same-machine, so it uses this
+        # to open config.env directly rather than duplicating IA_DIR resolution.
+        "path": str(CONFIG_PATH),
         "values": {
             "switches": {key: value == "1" for key, value in data.switches.items()},
             "entity_queue": data.entity_queue,
