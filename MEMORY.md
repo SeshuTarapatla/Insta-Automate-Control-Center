@@ -9,6 +9,13 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Other repos are feature-branch only** — `Insta-Automate`, `Insta-Automate-Client` and
   `Helmcharts` all work today; changes go on `feat/control-center` (or `feat/lan-agent`) and are
   never merged until the control center is accepted.
+- **Changing how the machine works is authorised; changing it without a backup is not** — the user
+  expects this overhaul to alter other repos' code and machine-level files (the startup `.lnk`,
+  scheduled tasks, service launch paths) and is fine with that, on two conditions: **every file
+  touched outside this repo is backed up first**, into `backups/` with the restore steps written
+  down, and **cross-repo code changes stay on a feature branch**. Given 2026-07-31, standing.
+  Awkward consequences — how to deploy or test feature-branch code in the pods, for instance — are
+  to be handled as they come up rather than designed around in advance.
 - **Architecture** — Flutter Windows app (`app/`) + Python `ia-agent` (`agent/`) in one repo; the
   agent is the Windows startup entry and owns service lifetime. See DECISIONS D1.
 - **The scheduler is one file** — every hardcoded delay and trigger gate lives in

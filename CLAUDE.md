@@ -2,8 +2,10 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
-**Phase 2 — CP 2.1–2.3 done and Claude-verified, CP 2.4 built and awaiting the user's manual
-test**. Only **CP 2.5** (agent autostart) is left in the phase.
+**Phase 2 — CP 2.1–2.4 done, CP 2.4 user-verified**. Only **CP 2.5** (agent autostart) is left in
+the phase, and it is the next session's work: the startup shortcut is already backed up at
+`backups/2026-07-31-dev-startup/`, and the open question — how to run a console app from a logon
+task in the interactive session without a console window — is written up under CP 2.5 in the plan.
 
 `config.env` is fully controllable from the app (CP 1.1–1.4). The agent also supervises processes:
 `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus the three

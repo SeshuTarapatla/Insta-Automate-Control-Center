@@ -272,13 +272,41 @@ Manager, and confirm the tile goes red and *stays* red with its exit code and fi
 self-heal back on and it should come back by itself with the restart count incremented. Then check
 the **Dependencies** tab shows ten green rows and *Re-check* re-runs them.
 
-### CP 2.5 — Agent autostart 🟢
+### CP 2.5 — Agent autostart 🟢 ◻ next session
 Replace `dev-startup.exe.lnk` — today a `wt.exe` shortcut with four tabs (`adb -a start-server ;
 ollama serve ; start_vl_server.py ; wsl-bridge.exe`) — with a **Task Scheduler logon task** running
 `ia-agent`, which then starts the services per their `autostart` switch. A logon task rather than a
 Startup shortcut because it supports restart-on-failure: once the agent owns healing, it is
 load-bearing for the core services and needs healing of its own. Keep the old `.lnk` backed up as a
 documented rollback. Answers **Q4**.
+
+**Already done (2026-07-31):** the shortcut is backed up and documented at
+`backups/2026-07-31-dev-startup/` — the file itself, its resolved target and arguments, and two
+restore paths (copy it back, or recreate it from scratch). Its properties are confirmed live and
+match what CLAUDE.md claimed. `Ollama.lnk` is independently in the same Startup folder, so dropping
+`ollama serve` (D13) costs nothing.
+
+**The open design question, unanswered — settle it by measuring, not by reasoning.** The task must
+run *in the interactive user session* (wsl-bridge spawns scrcpy, which needs a desktop), and a
+console-subsystem exe started that way normally shows a console window — which is the exact thing
+this checkpoint exists to remove. Three candidates, in order of preference:
+
+1. `ia-agent.exe` with `<Hidden>true</Hidden>` — simplest; verify whether a window actually appears
+   rather than trusting the flag, by enumerating visible top-level windows for the pid.
+2. `pythonw.exe -m ia_agent` — GUI subsystem, so no console exists at all. Needs work first:
+   `logging.py` builds a `RichHandler` on `my_modules.console`, and under `pythonw` `sys.stdout` is
+   `None`, so the agent needs a file-logging mode before this is viable.
+3. A launcher that re-spawns with `CREATE_NO_WINDOW`, the same trick the app's *Start agent* button
+   already uses (D5).
+
+Note the standing rule this sits under: **verify Windows launch paths by exit code and by observed
+effect before shipping them** — `CreateProcess` returning success hid a total no-op through two CP
+1.3 test rounds (D7).
+
+**Also still to decide:** whether the three services' `autostart` switches get turned on as part of
+installing the task (they are off today), and whether install/remove is exposed in the UI or left as
+an agent-side one-off. The switches already persist in `services.json` and the UI already writes
+them, so this is a question about the install flow, not about plumbing.
 
 **Test:** kill `llama-server.exe` from Task Manager → the tile goes red within one probe interval →
 with self-heal on it comes back by itself and the restart count increments; with self-heal off it
