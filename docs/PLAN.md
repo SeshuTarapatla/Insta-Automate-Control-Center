@@ -452,15 +452,22 @@ throwaway app instance, real services untouched via the same `build_specs` monke
 calls `AgentClient.heartbeat()` yet, so `/api/scheduler` on the real agent reads `online: false`
 until a follow-up wires `Prefect.serve()` to send real heartbeats (D27's "How to apply").
 
+**Closed same session:** `Prefect.serve()` now runs `heartbeat_loop()`, a 2s loop posting every
+flow's real state block. See D28.
+
 ### CP 3.5 — Flows UI 🟢
 Five flow cards: countdown ring to `next_trigger_at`, the gate reason in plain language, today's
 counters against the limit, the switch, **Run now** (respects gates) and **Force run** (bypasses,
 with confirmation), last run state + duration + a jump to its logs.
 
-**Prerequisite gap, open since CP 3.4 (D27):** nothing calls `AgentClient.heartbeat()` from
-`Prefect.serve()` yet, so there is no real data for this screen to render against — `/api/scheduler`
-reads `online: false` forever without it. Close this first (a `heartbeat_loop()` in
-`controllers/prefect.py` building the §4.3 block per flow) before or as the first step of this CP.
+**Prerequisite gap from CP 3.4 (D27) — closed (D28):** `Prefect.serve()` now runs a
+`heartbeat_loop()` that posts every flow's real state block every ~2s, so `/api/scheduler` has real
+data for this screen to render against. What's still missing before this CP can be more than
+read-only: **command handling.** `wait_until` (D25) has no hook to check for queued commands, so
+`run_now`/`force_run`/`skip_wait`/`pause`/`resume`/`reload_config` are accepted and queued by the
+agent but never acted on — `heartbeat_loop()` only logs a warning if any arrive. Wiring that
+interrupt is part of this CP's own scope (the Run now / Force run / Skip wait buttons need
+somewhere to land).
 
 **Test:** while `entity_follow` is waiting, change `FOLLOW_WAIT` 1200 → 120 — the countdown
 re-targets within one TICK. Press *Skip wait* → it fires immediately. Turn the switch off → the

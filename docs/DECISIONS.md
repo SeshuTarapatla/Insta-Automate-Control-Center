@@ -5,6 +5,51 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (closing the CP 3.4 gap, real heartbeats)
+
+### D28 · `gate` is set once by the caller; `wait_until` only ever touches `phase`/`next_trigger_at`
+
+**Chosen:** `Prefect` gained `self.flow_state: dict[str, dict]` (no lock — single event loop,
+each trigger loop only ever writes its own key, unlike `ManagedService`'s cross-thread need for
+`RLock`, D9) and `_set_state(flow, **fields)`, a merge-update. Every trigger loop now sets
+`gate` (via a `_gate(ok, reason, detail)` helper) at the exact point it decides whether it's about
+to trigger or skip — `backpressure` for scrape with the same `"scraped+follow_queued = N ≥
+FOLLOW×F = M"` detail string ARCHITECTURE §4.3 illustrates, `day_limit` for the three day-capped
+flows (set inside `wait_day_change`, which now takes an optional `flow` argument), `no_work` for
+ingest/classify/scan/follow when their respective queue is empty. `wait_until` (D25) was extended
+to set `phase="waiting"` and a recomputed `next_trigger_at` every tick, but **deliberately never
+touches `gate`** — the caller's gate reason has to keep reading true for the whole wait that
+follows it, not get clobbered back to "ok" the instant the sleep starts. `heartbeat_loop()` (2s,
+`Prefect.serve()`) reads `flow_state`, layers in `switch` (`Deployment.switch()`), `today`
+(flow-specific: scan gets three sub-counters against `PROFILES`/`REELS`/`POSTS`, scrape/follow get
+one each, ingest/classify get `None` — they have no daily cap), and `last_run` (from
+`Deployment.flow_run`, `getattr`-defensive since a fresh process has none yet), then calls
+`AgentClient.heartbeat()` per flow.
+
+**Verified cross-process**, not just in-process: a throwaway agent instance (`build_specs=[]`,
+same pattern `test_scheduler.py`/`test_ui_contract.py` use) spun up on a spare port, and a real
+`AgentClient` from the `Insta-Automate` venv (a genuinely separate Python environment — these are
+two different `uv` projects, so this could not be one in-process test) posted a realistic §4.3
+block against it. `GET /api/scheduler` on the throwaway agent read back the exact gate reason and
+detail string, `online: true`. This is the first time data has actually crossed the pod→agent
+boundary this phase — CP 3.3 only proved failures swallow correctly, never a real payload landing.
+Also verified: a gate set before `wait_until` survives every tick of the wait unchanged.
+
+**Rejected:** having `wait_until` accept the gate as a parameter and set it itself — would force
+every call site to pass the *same* gate value it already just decided, for no benefit over setting
+it directly; the split (caller decides *why*, `wait_until` only tracks *when*) is what let `gate`
+survive across the wait without extra plumbing.
+
+**Why:** this is what CP 3.4 (D27) explicitly left open — a real heartbeat loop was needed before
+CP 3.5's Flows UI would have anything true to render.
+
+**How to apply:** command handling is still not wired — `heartbeat_loop()` logs a warning if the
+agent ever returns queued commands, but nothing acts on them. That's explicitly CP 3.5's job (D27's
+open item), and needs a hook in `wait_until`'s tick loop to check for and short-circuit on a
+queued command, returning something other than `"elapsed"`.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.4, scheduler mirror in the agent)
 
 ### D27 · `flows.state` publishes the full snapshot on change; staleness needs its own watchdog

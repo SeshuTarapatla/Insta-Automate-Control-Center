@@ -315,7 +315,10 @@ One endpoint, bidirectional, no inbound networking, no polling files.
 Commands: `run_now`, `force_run` (bypass gates, confirmed in UI), `skip_wait`, `pause`, `resume`,
 `reload_config`.
 
-**Landed in CP 3.4** (agent-side only — nothing on the pipeline side sends a real heartbeat yet):
+**Landed in CP 3.4** (agent-side) **and closed the same session** (D28: `Prefect.serve()` now runs
+`heartbeat_loop()`, posting every flow's real state every ~2s — `gate` is set by each trigger loop
+at its own decision point and left untouched by `wait_until`, which only updates `phase`/
+`next_trigger_at`; `today`/`last_run`/`switch` are read fresh on every heartbeat):
 `SchedulerMirror` (`ia_agent/scheduler.py`) is an `RLock`-guarded in-memory store, one state block
 per flow name, exactly mirroring `ManagedService`'s locking idiom (D9). `heartbeat(state)` records
 the block and drains (and clears) that flow's queued commands in one call — a flow only ever sees

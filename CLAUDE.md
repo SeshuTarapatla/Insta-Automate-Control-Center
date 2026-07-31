@@ -22,9 +22,15 @@ never `config.env`, which syncs to the phone; D26). The agent's own `ia_agent/sc
 (`SchedulerMirror`) now receives `POST /api/scheduler/heartbeat`, stores per-flow state, serves
 `GET /api/scheduler`, queues commands via `POST /api/scheduler/{flow}/command`, and broadcasts the
 full snapshot on `flows.state` when it changes, with a 3s watchdog for staleness (D27).
-**Open gap before CP 3.5 can render anything real:** nothing in `Insta-Automate` calls
-`AgentClient.heartbeat()` yet — `Prefect.serve()` needs a `heartbeat_loop()` first. Next up: close
-that gap, then CP 3.5 — the Flows UI.
+`Prefect.serve()` now closes the loop (D28): a `heartbeat_loop()` posts every flow's real state
+every ~2s — each trigger loop sets its own `gate` (backpressure/day_limit/no_work, with the exact
+detail string ARCHITECTURE §4.3 illustrates) right before whichever wait follows it, and
+`wait_until` only ever updates `phase`/`next_trigger_at`, never touching `gate`, so the reason
+survives the whole wait. Verified cross-process (a real `AgentClient` from the `Insta-Automate`
+venv against a throwaway agent instance — two genuinely separate Python environments). **What's
+still open:** command handling — the agent queues `run_now`/`skip_wait`/etc but nothing acts on
+them; `heartbeat_loop()` only logs a warning if any arrive. That's CP 3.5's job. Next up: CP 3.5 —
+the Flows UI.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
