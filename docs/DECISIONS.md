@@ -5,6 +5,52 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 2 implementation session (CP 2.1)
+
+### D11 · Takeover targets the *service root*, not the process holding the port
+**Chosen:** when a port is held by a process the agent did not start, `_service_root()` walks up
+the parent chain from the socket owner and stops at the first session host (`WindowsTerminal.exe`,
+`explorer.exe`, `powershell.exe`, …), at the agent's own lineage, or after six hops. Takeover kills
+that root's whole tree. The status reports both: `external` is what would be killed, `port_owner`
+is what holds the socket.
+**Rejected:** killing the port owner alone.
+**Why:** `Insta-Automate/scripts/start_vl_server.py` runs its own restart loop around
+`llama-server.exe` (5 s backoff, doubling). Killing only llama-server would have the launcher bring
+it straight back and fight the agent's takeover. Verified live: the resolution walks
+`llama-server.exe (23276) → python start_vl_server.py (23112)` and stops at `WindowsTerminal.exe`
+(20840, the `wt.exe` shortcut CP 2.5 retires). `psutil.parent()` compares creation times, so a
+recycled PPID cannot redirect the walk into an unrelated process.
+**Cost:** a denylist of host process names that needs a new entry if the services are ever launched
+from a different shell. The agent's own lineage check is what stops the walk from killing the agent.
+
+### D10 · Agent shutdown leaves supervised processes running
+**Chosen:** `Supervisor.shutdown()` cancels the tick loop and returns; it never stops the services.
+PID files (with `create_time` as a PID-reuse guard) persist, and the next agent run adopts them,
+flagging `stdout_available: false` because the pipes belonged to the previous process.
+**Rejected:** stopping supervised services on agent exit (systemd-style ownership).
+**Why:** D1's stated cost was that the agent "needs adoption logic so it can restart without
+killing a running scrape". Tying service lifetime to agent lifetime would make every agent restart
+a pipeline outage — the opposite of what this project is for. Stopping a service stays an explicit
+operator action.
+**Cost:** a service can outlive the agent that started it, so a stale PID file is possible; the
+`create_time` guard makes a stale file discardable rather than dangerous.
+
+### D9 · Supervisor state is guarded by a per-service re-entrant lock
+**Chosen:** every operator action (`start`/`stop`/`restart`/`takeover`) holds an `RLock`, and
+`tick()` skips a round entirely if it cannot take that lock without blocking. `_spawn()` claims
+`origin = SUPERVISED` *before* the blocking `Popen`, not after.
+**Rejected:** relying on the GIL and short critical sections.
+**Why:** found by the CP 2.1 end-to-end test, not by reading. The API offloads actions with
+`asyncio.to_thread` so a slow kill cannot stall the probe loop — which means a tick on the event
+loop ran while `start()` was still inside `Popen` on a worker thread. It saw `origin = NONE` with a
+freshly-bound port, concluded the process the agent was itself starting belonged to somebody else,
+and marked the service `external`. The test caught it as `stdout_available: false` after a
+successful start.
+**Cost:** the lock is held across the probe `await`, so an action can wait up to one probe timeout
+(2 s) before it begins. Bounded, and on a worker thread, so nothing user-facing blocks.
+
+---
+
 ## 2026-07-31 — Phase 1 implementation session (CP 1.4)
 
 ### D8 · `ENTITY_QUEUE` stays one shared list (answers Q1)

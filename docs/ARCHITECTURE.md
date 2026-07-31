@@ -143,9 +143,10 @@ agent/
     │   ├── env_file.py            # comment-preserving dotenv reader/writer (atomic)
     │   └── schema.py              # typed key registry + validation + defaults
     ├── services/
-    │   ├── spec.py                # ServiceSpec, HealthProbe, RestartPolicy
-    │   ├── supervisor.py          # spawn / adopt / stop / restart, backoff, log ring
+    │   ├── spec.py                # ServiceSpec, HealthProbe, RestartPolicy, states
+    │   ├── supervisor.py          # spawn / adopt / stop / restart / takeover, backoff
     │   ├── probes.py              # tcp, http, custom probes
+    │   ├── logs.py                # per-service ring buffer (5k) + rotating file
     │   ├── selftest.py            # functional tests per service
     │   └── registry.py            # the 3 core services + read-only dependency checks
     ├── scheduler/
@@ -179,7 +180,7 @@ agent/
 |---|---|
 | health | `GET /api/health` · `GET /api/system` (one-shot snapshot of everything) |
 | config | `GET /api/config` · `GET /api/config/schema` · `PATCH /api/config` |
-| services | `GET /api/services` · `POST /api/services/{name}/{start\|stop\|restart\|test}` · `GET /api/services/{name}/logs?tail=` |
+| services | `GET /api/services` · `GET /api/services/{name}` · `POST /api/services/{name}/{start\|stop\|restart\|takeover\|test}` · `GET /api/services/{name}/logs?tail=&since=` |
 | flows | `GET /api/flows` · `POST /api/flows/{flow}/{run\|force-run\|skip-wait}` · `POST /api/flows/{flow}/switch` |
 | runs | `GET /api/flow-runs?limit=` · `GET /api/flow-runs/{id}` · `GET /api/flow-runs/{id}/logs?since=` · `POST /api/flow-runs/{id}/cancel` |
 | events | `POST /api/events` (from flows) · `GET /api/events?since=` (replay) |

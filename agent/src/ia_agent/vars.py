@@ -15,3 +15,8 @@ FOLLOW_QUEUE_DIR = IA_DIR / "follow_queued"
 
 AGENT_DATA_DIR = Path(os.environ["LOCALAPPDATA"]) / "ia-agent"
 TOKEN_PATH = AGENT_DATA_DIR / "token"
+
+# PID files survive an agent restart on purpose — they are how a supervised service
+# is adopted rather than orphaned or killed (ARCHITECTURE §3, PLAN CP 2.1).
+SERVICE_RUN_DIR = AGENT_DATA_DIR / "run"
+SERVICE_LOG_DIR = AGENT_DATA_DIR / "logs"

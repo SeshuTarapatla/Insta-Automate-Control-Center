@@ -23,8 +23,17 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   is single-screen with VS Code maximized, so driving the window disrupts the workspace.
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
-- **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Next is
-  Phase 2 (Core services: supervisor, adb / vl-server / wsl-bridge, autostart), from CP 2.1.
+- **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Phase 2
+  started: CP 2.1 (supervisor engine + `/api/services`) done and Claude-verified; next is CP 2.2
+  (health probes + functional self-tests). No Services UI until CP 2.4.
+- **The pid that binds a port is not the pid you launched** — uv venv `python.exe` and console
+  scripts are trampolines that re-exec the managed interpreter, and `start_vl_server.py` runs its
+  own restart loop around `llama-server.exe`. Killing only the socket owner makes the launcher
+  respawn it and fight you. Walk the parent chain to the service root; stop at session hosts and
+  at the agent's own lineage. D11.
+- **Agent restart must never stop a service** — supervised processes outlive the agent; PID files
+  (guarded by `create_time` against PID reuse) are what the next run adopts. Stopping is only ever
+  an explicit operator action. D1's stated cost, D10.
 - **`ENTITY_QUEUE` is one shared list, by design** — it holds *entity names*; each `Queue` maps
   that ordering onto its own directory, so scrape and follow differ by folder, not by key. Q1
   answered, see DECISIONS D8. Unlisted entities still run, after the listed ones, oldest first.

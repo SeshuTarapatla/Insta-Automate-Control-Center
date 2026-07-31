@@ -92,13 +92,26 @@ comments intact; a pod picks it up on its next `Limit.get()` with no restart.
 
 Goal: start, stop, restart and *prove* each Windows service from the UI.
 
-### CP 2.1 — Supervisor engine 🟢
+### CP 2.1 — Supervisor engine 🟢 ✅ done
 - `ServiceSpec` (cmd, cwd, env, probe, autostart, restart policy, backoff).
 - Spawn with piped stdout/stderr → per-service ring buffer (5k lines) + WS broadcast +
   rotating file. PID file per service.
 - **Adoption on agent start**: PID file alive and healthy → adopt (flag stdout as unavailable);
   port held by a foreign PID → mark `external` and offer takeover. This is what lets the agent
   restart without killing a running scrape.
+- Also landed here (needed to make the engine testable at all): `services/registry.py` with the
+  three real specs — `autostart` off, since everything is already up under the `wt.exe` shortcut —
+  and the REST surface `GET /api/services`, `GET /api/services/{name}[/logs]`,
+  `POST /api/services/{name}/{start|stop|restart|takeover}` on `services.status` /
+  `services.logs.<name>`. **CP 2.2 keeps** the health-probe and functional-test work.
+- Takeover kills the *service root*, not the socket owner (D11); state is lock-guarded (D9);
+  shutdown deliberately leaves services running (D10).
+
+**Test (agent-side, already verified by Claude):** 36/36 supervisor checks (spawn, crash → backoff
+→ restart, `NEVER` → failed, unhealthy-while-alive, adoption across an agent restart, stale PID
+file, external detection + takeover) and 16/16 end-to-end REST+WS checks, both against a dummy
+service. Against the live machine, all three real services were detected `external` with correct
+kill targets and correct probes, and none was touched.
 
 ### CP 2.2 — The three services + self-tests 🟢
 

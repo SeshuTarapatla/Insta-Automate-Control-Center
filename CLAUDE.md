@@ -1,11 +1,17 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete** — CP 1.1 (config engine),
-1.2 (config API), 1.3 (Limits UI + `config.env` quick-access bar) and 1.4 (Flows/Limits/Queue tabs
-+ `GET /api/queue`) are committed and user-verified. `config.env` is now fully controllable from
-the app, and the pipeline's own `Queue` class was run against an app-written `ENTITY_QUEUE` to
-confirm it. Next up is **Phase 2 (Core services)**, starting at CP 2.1 — open a fresh session.
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
+**Phase 2 in progress — CP 2.1 (supervisor engine) is done and Claude-verified**, with no UI yet,
+so there is nothing for the user to click until CP 2.4.
+
+`config.env` is fully controllable from the app (CP 1.1–1.4). The agent now also supervises
+processes: `agent/src/ia_agent/services/` holds the spec/probe/log-ring/supervisor engine plus the
+three real service specs, exposed at `GET /api/services` and
+`POST /api/services/{name}/{start|stop|restart|takeover}`. Autostart is **off** — the `wt.exe`
+shortcut still owns startup until CP 2.5 — so today the agent adopts or observes rather than
+spawns. Next up is **CP 2.2** (health probes + functional self-tests, especially vl-server's
+ms/image).
 
 ---
 
@@ -83,6 +89,13 @@ ia-agent    0.0.0.0:8787                     (new, this project)
 pod → host  172.19.16.1  ==  host.docker.internal
 ```
 
+**Process shapes** — the pid that binds a port is rarely the pid you launched. A uv venv's
+`python.exe` and its console-script `.exe` files are trampolines that re-exec the managed
+interpreter under `%APPDATA%\uv\python\`, and `start_vl_server.py` supervises `llama-server.exe`
+with its own restart loop. Live chains, all launched from one `WindowsTerminal.exe` (pid 20840):
+`wsl-bridge.exe → python → python:8000`, `python start_vl_server.py → llama-server.exe:11500`.
+Anything that identifies, kills, or adopts a process must walk the tree — see D11.
+
 **IA_DIR** = `C:\Users\seshu\Pictures\insta-automate`, hostPath-mounted into both IA pods at
 `/insta-automate`. Paths that cross the pod↔host boundary must be **IA_DIR-relative**.
 
@@ -124,6 +137,8 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
 5. The desktop app's "Start agent" action uses raw Win32 `CreateProcess` (`CREATE_NO_WINDOW`) via
    `package:win32`, not `dart:io`'s `Process.start` — the latter flashes a visible console window
    because `uv`/`python` are console-subsystem executables and `dart:io` doesn't expose that flag.
+6. Killing a service means killing its **root**, not the process holding the port (D11), and the
+   agent never stops services when it exits (D10). Supervisor state is lock-guarded (D9).
 
 ---
 
