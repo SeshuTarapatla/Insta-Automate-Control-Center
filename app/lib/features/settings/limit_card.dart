@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/config_models.dart';
-import 'limits_controller.dart';
+import 'config_controller.dart';
 
 /// One limit key: a slider + numeric field with instant apply, a dirty dot
 /// while the field diverges from the last-committed value, and an Undo
@@ -71,7 +71,7 @@ class _LimitCardState extends ConsumerState<LimitCard> {
 
     setState(() => _applying = true);
     try {
-      await ref.read(limitsControllerProvider.notifier).applyLimit(widget.schema.name, value);
+      await ref.read(configControllerProvider.notifier).applyLimit(widget.schema.name, value);
       if (!mounted) return;
       setState(() {
         _dirty = false;

@@ -73,8 +73,15 @@ Goal: never edit a limit by hand again.
   no-console-flash reason as DECISIONS D5.
 
 ### CP 1.4 — Switches UI 🟢
-- Five flow switches, confirm-on-disable, and the shared `ENTITY_QUEUE` priority list with
-  drag-reorder (**see Q1 — this list is currently shared by scrape *and* follow**).
+- Five flow switches in pipeline order, confirm-on-disable (the dialog names what actually stops),
+  and the shared `ENTITY_QUEUE` priority list with drag-reorder. Q1 is answered — the list stays
+  shared (D8), so the queue UI shows each entity's `scrape` *and* `follow` counts, and states that
+  unlisted entities still run afterwards, oldest first.
+- Settings is organised as three tabs — Flows · Limits · Queue — under a persistent `config.env`
+  bar, rather than one long scrolling page.
+- New agent endpoint `GET /api/queue`: the ordering resolved against both stage directories, with
+  per-entity jpeg counts and an `has_entity_image` flag (`Queue.add()` rejects entities without
+  `entities/<id>.jpg`).
 
 **Test:** change `FOLLOW` 60 → 80 in the app; `cat config.env` shows the new value with all
 comments intact; a pod picks it up on its next `Limit.get()` with no restart.
@@ -294,10 +301,11 @@ ARCHITECTURE §10.
 
 Answer these as they come up — none of them block starting Phase 0.
 
-**Q1 — Shared queue.** `Queue(FOLLOW_QUEUE_DIR)` and `Queue(SCRAPE_QUEUE_DIR)` both use
-`env_key="ENTITY_QUEUE"`, so one ordered list drives both the scrape and follow priority.
-Intentional, or should it split into `SCRAPE_QUEUE`/`FOLLOW_QUEUE` keys? Splitting is a
-behaviour change in the flows, so it needs your call before I build the queue UI.
+**Q1 — Shared queue. ✅ ANSWERED 2026-07-31: keep it shared, no split.**
+`ENTITY_QUEUE` is a list of *entity names*, and each `Queue` maps that one ordering onto its own
+directory (`SCRAPE_QUEUE_DIR` / `FOLLOW_QUEUE_DIR`). The distinction between scrape and follow
+comes from the folder, not the key, so a single priority list is correct by design — an entity you
+want prioritised is wanted first at both stages. See DECISIONS D8.
 
 **Q2 — Scan cooldown.** `entity_scan` has no inter-run delay today: the trigger blocks until the
 flow finishes, then sleeps 10 s. Scan is the most rate-limit-sensitive flow. Do you want a real

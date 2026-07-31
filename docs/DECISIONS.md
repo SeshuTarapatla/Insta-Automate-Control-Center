@@ -5,6 +5,26 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 1 implementation session (CP 1.4)
+
+### D8 · `ENTITY_QUEUE` stays one shared list (answers Q1)
+**Chosen:** keep the single `ENTITY_QUEUE` key driving both the scrape and follow priority. The
+UI presents it as one priority list, not two.
+**Rejected:** splitting into `SCRAPE_QUEUE` / `FOLLOW_QUEUE`.
+**Why:** the key holds *entity names*, and `Queue.load_queue()` maps that ordering onto whichever
+directory the instance was constructed with — `pref_queue = [self.directory / entry ...]`. The
+scrape/follow distinction already comes from the folder, so the shared key is not an oversight:
+an entity worth prioritising is worth prioritising at both stages. Splitting would add a second
+list to keep in sync for no behavioural gain.
+**Cost:** none to the flows (no change). The UI must explain the shared semantics, and must show
+per-entity counts in *both* `scrape_queued` and `follow_queued` so the one list reads honestly.
+**Noted while reading the code, not acted on:** `pref_queue` maps every listed name into the
+directory without an existence check, so a queued entity with no folder at that stage still yields
+a `Path` that does not exist. Harmless for ordering, but worth remembering if the flows ever
+iterate the queue eagerly. Belongs to `Insta-Automate`, so it is feature-branch territory.
+
+---
+
 ## 2026-07-31 — Phase 1 implementation session (CP 1.3)
 
 ### D7 · Open `config.env` by replicating the `code` shim, not by running `Code.exe`

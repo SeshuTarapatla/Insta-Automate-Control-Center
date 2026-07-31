@@ -23,9 +23,11 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
   is single-screen with VS Code maximized, so driving the window disrupts the workspace.
   EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
   Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
-- **Phase status** — Phase 0 complete (CP 0.1–0.3). Phase 1 in progress: CP 1.1 (config engine),
-  CP 1.2 (config API) and CP 1.3 (Limits UI) committed; CP 1.3 user-verified. Next: CP 1.4
-  (Switches UI + the shared `ENTITY_QUEUE` list — needs Q1 answered first).
+- **Phase status** — Phases 0 and 1 complete (CP 0.1–0.3, 1.1–1.4), all user-verified. Next is
+  Phase 2 (Core services: supervisor, adb / vl-server / wsl-bridge, autostart), from CP 2.1.
+- **`ENTITY_QUEUE` is one shared list, by design** — it holds *entity names*; each `Queue` maps
+  that ordering onto its own directory, so scrape and follow differ by folder, not by key. Q1
+  answered, see DECISIONS D8. Unlisted entities still run, after the listed ones, oldest first.
 - **Agent launch avoids a console flash** — `app/lib/core/agent_launcher.dart` uses
   `package:win32`'s `CreateProcess` with `CREATE_NO_WINDOW`, not `dart:io`'s `Process.start`. See
   DECISIONS D5.

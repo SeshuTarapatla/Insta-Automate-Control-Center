@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/placeholder_page.dart';
-import '../features/settings/limits_page.dart';
+import '../features/settings/settings_page.dart';
 import 'connection_banner.dart';
 import 'title_bar.dart';
 
@@ -60,7 +60,7 @@ class _AppShellState extends State<AppShell> {
                 const VerticalDivider(width: 1),
                 Expanded(
                   child: _selected == _settingsIndex
-                      ? const LimitsPage()
+                      ? const SettingsPage()
                       : PlaceholderPage(title: _destinations[_selected].label),
                 ),
               ],

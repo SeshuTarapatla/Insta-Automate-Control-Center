@@ -1,10 +1,11 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phase 0 complete**, **Phase 1 in progress** — CP
-1.1 (config engine), CP 1.2 (`GET/PATCH /api/config`, `GET /api/config/schema`) and CP 1.3
-(Limits UI + the `config.env` quick-access bar) are committed. CP 1.3 is **user-verified**: limits
-apply live, the snackbar dismisses, and *Open* launches VS Code. Next up is CP 1.4 (Switches UI).
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete** — CP 1.1 (config engine),
+1.2 (config API), 1.3 (Limits UI + `config.env` quick-access bar) and 1.4 (Flows/Limits/Queue tabs
++ `GET /api/queue`) are committed and user-verified. `config.env` is now fully controllable from
+the app, and the pipeline's own `Queue` class was run against an app-written `ENTITY_QUEUE` to
+confirm it. Next up is **Phase 2 (Core services)**, starting at CP 2.1 — open a fresh session.
 
 ---
 
