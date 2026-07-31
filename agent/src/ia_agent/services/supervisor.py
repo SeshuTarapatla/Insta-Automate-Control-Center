@@ -1,16 +1,21 @@
 import asyncio
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
+from multiprocessing.connection import Client
+from pathlib import Path
 
 import psutil
-from winpty import PtyProcess
 
 from ia_agent.events.bus import EventBus
 from ia_agent.logging import logger
 from ia_agent.services import settings
+from ia_agent.services.host import PIPE_AUTHKEY, pipe_address
 from ia_agent.services.logs import LogRing
+from ia_agent.services.logs import MAX_BYTES as RING_MAX_BYTES
 from ia_agent.services.probes import ProbeResult, run_probe
 from ia_agent.services import selftest
 from ia_agent.services.spec import ServiceOrigin, ServiceSpec, ServiceState, TestOutcome
@@ -19,6 +24,11 @@ from ia_agent.vars import SERVICE_RUN_DIR
 TICK = 0.25  # terminal-flush granularity; probes run on the spec's own interval
 STOP_GRACE = 5.0  # seconds a terminate() gets before the tree is killed
 READ_SIZE = 8192
+CREATE_NO_WINDOW = 0x08000000
+# How long the host launcher chain gets to report a live host_pid before a spawn
+# counts as failed. This is about the *host process* starting, not the service
+# inside it — start_grace covers the service's own probe separately.
+HOST_SPAWN_TIMEOUT = 5.0
 
 
 class ServiceError(Exception):
@@ -44,8 +54,12 @@ class ManagedService:
         self.last_test: TestOutcome | None = None
         self.error: str | None = None
 
-        self._proc: PtyProcess | None = None
-        self._adopted: psutil.Process | None = None
+        # CP 2.6: the pseudo-console lives in a detached host process, not here.
+        # `_host` is that process (used for liveness polling and as the kill
+        # target); `_child_pid` is the service's own pid inside it, kept only for
+        # display — killing the host tears its pty, and the child with it.
+        self._host: psutil.Process | None = None
+        self._child_pid: int | None = None
         self._external: psutil.Process | None = None
         self._external_owner: psutil.Process | None = None
         self._started_at: float | None = None
@@ -71,11 +85,10 @@ class ManagedService:
 
     @property
     def pid(self) -> int | None:
-        if self._proc is not None:
-            return self._proc.pid
-        for process in (self._adopted, self._external):
-            if process is not None:
-                return process.pid
+        if self.origin in (ServiceOrigin.SUPERVISED, ServiceOrigin.ADOPTED):
+            return self._child_pid
+        if self._external is not None:
+            return self._external.pid
         return None
 
     @property
@@ -99,10 +112,10 @@ class ManagedService:
             "last_test": self.last_test.as_dict() if self.last_test else None,
             "self_heal": self.self_heal,
             "autostart": self.autostart,
-            # Adopted and external processes were spawned without our pseudo-console,
-            # so the terminal is empty by nature rather than by failure — the UI says
-            # so instead of showing a blank pane.
-            "terminal_available": self.origin == ServiceOrigin.SUPERVISED,
+            # A host-backed service — spawned this run or adopted from a previous
+            # one — has a real stream to replay (CP 2.6). Only external processes
+            # were never inside our pty, so only they have nothing to show.
+            "terminal_available": self.origin in (ServiceOrigin.SUPERVISED, ServiceOrigin.ADOPTED),
             "can_takeover": self.origin == ServiceOrigin.EXTERNAL,
             # `external` is what takeover would kill; `port_owner` is what actually
             # holds the socket, which is often a descendant of it (D11).
@@ -170,100 +183,158 @@ class ManagedService:
 
     # ----------------------------------------------------------------- spawn
 
-    def _pid_file(self):
+    def _state_path(self) -> Path:
+        """Written by the host process (CP 2.6), not us — pid/create_time for
+        adoption's staleness guard, plus exit_code, which is the only way we learn
+        a host died once the exit-immediately launcher that spawned it is gone."""
         return SERVICE_RUN_DIR / f"{self.spec.name}.json"
 
-    def _write_pid_file(self, process: psutil.Process) -> None:
-        SERVICE_RUN_DIR.mkdir(parents=True, exist_ok=True)
-        self._pid_file().write_text(
-            json.dumps(
-                {
-                    "pid": process.pid,
-                    # Guards against PID reuse: a recycled PID will not have the
-                    # same creation timestamp, so it can never be mistaken for ours.
-                    "create_time": process.create_time(),
-                    "started_at": self._started_at,
-                    "cmd": self.spec.cmd,
-                }
-            )
-        )
+    def _stream_path(self) -> Path:
+        return SERVICE_RUN_DIR / f"{self.spec.name}.stream"
 
-    def _clear_pid_file(self) -> None:
-        self._pid_file().unlink(missing_ok=True)
+    def _spawn_request_path(self) -> Path:
+        """What the host reads to know what to run — cmd/cwd/env/grid, nothing it
+        would need `ServiceSpec`'s probe/self-test callables for. Passed as data
+        rather than a name-lookup so a test-only spec (never in the real registry)
+        can be spawned through the exact same path as adb/vl-server/wsl-bridge."""
+        return SERVICE_RUN_DIR / f"{self.spec.name}.spawn.json"
 
-    def _pump(self, proc: PtyProcess) -> None:
-        """Drain the pseudo-console until it closes. Everything is kept verbatim —
-        colour, cursor moves, carriage returns — because the UI renders it in a real
-        terminal emulator rather than a list of strings."""
-        while True:
+    def _clear_state_file(self) -> None:
+        self._state_path().unlink(missing_ok=True)
+
+    def _await_host(self, timeout: float) -> dict | None:
+        """Poll for the host's handshake. The state file is cleared before we spawn
+        (in `_spawn`), so any file that appears here belongs to this attempt, not a
+        leftover from a previous run."""
+        deadline = time.time() + timeout
+        path = self._state_path()
+        while time.time() < deadline:
             try:
-                data = proc.read(READ_SIZE)
-            except EOFError:
-                break
-            except OSError:
-                break
-            if not data:
-                if not proc.isalive():
-                    break
-                time.sleep(0.02)
-                continue
-            entry = self.ring.append(data)
-            with self._pending_lock:
-                self._pending.append(entry)
+                return json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                time.sleep(0.05)
+        return None
+
+    def _tail_stream(self, path: Path) -> None:
+        """Replays a host's raw output file into the ring, live — the reader-thread
+        replacement for the old direct-pty `_pump`. Runs for a fresh spawn and for
+        an adoption alike: this is what gives an adopted service a real terminal
+        instead of the "no output" placeholder adoption used to be stuck with."""
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        offset = max(0, size - RING_MAX_BYTES)
+
+        try:
+            # newline="" for the same reason the host writes with it: a ConPTY
+            # stream's bare \r (progress bars, cursor moves) must survive verbatim.
+            handle = path.open("r", encoding="utf-8", errors="replace", newline="")
+        except OSError:
+            return
+
+        with handle:
+            handle.seek(offset)
+            while True:
+                data = handle.read(READ_SIZE)
+                if data:
+                    entry = self.ring.append(data)
+                    with self._pending_lock:
+                        self._pending.append(entry)
+                    continue
+
+                if self._host is None or not self._host.is_running():
+                    # The host may have written its last bytes and exited between
+                    # this read and the liveness check — one more drain first.
+                    tail = handle.read(READ_SIZE)
+                    if tail:
+                        entry = self.ring.append(tail)
+                        with self._pending_lock:
+                            self._pending.append(entry)
+                    return
+                time.sleep(0.05)
+
+    def _fail_spawn(self, message: str) -> None:
+        self.error = message
+        self.state = ServiceState.FAILED
+        self.origin = ServiceOrigin.NONE
+        self._started_at = None
+        self._host = None
+        self._child_pid = None
+        self.ring.note(f"failed to start: {message}")
+        logger.error(f"{self.spec.name}: spawn failed — {message}")
 
     def _spawn(self) -> None:
-        env = {**os.environ, **self.spec.env}
         logger.info(f"{self.spec.name}: starting — {' '.join(self.spec.cmd)}")
         self.ring.note(f"starting: {' '.join(self.spec.cmd)}")
 
-        # Claim ownership before the blocking spawn, not after: on Windows the call
+        # Claim ownership before the blocking calls, not after: on Windows this
         # takes long enough for the service to bind its port while this thread is
         # still inside it (D9).
         self.origin = ServiceOrigin.SUPERVISED
         self.state = ServiceState.STARTING
         self._started_at = time.time()
-        try:
-            self._proc = PtyProcess.spawn(
-                self.spec.cmd,
-                cwd=str(self.spec.cwd) if self.spec.cwd else None,
-                env=env,
-                dimensions=(self._rows, self._cols),
+        self._clear_state_file()  # so _await_host never reads a stale handshake
+        self._spawn_request_path().write_text(
+            json.dumps(
+                {
+                    "cmd": self.spec.cmd,
+                    "cwd": str(self.spec.cwd) if self.spec.cwd else None,
+                    "env": self.spec.env,
+                    "rows": self._rows,
+                    "cols": self._cols,
+                }
             )
-        except Exception as error:  # pywinpty raises bare OSError/RuntimeError
-            self.error = str(error)
-            self.state = ServiceState.FAILED
-            self.origin = ServiceOrigin.NONE
-            self._started_at = None
-            self._proc = None
-            self.ring.note(f"failed to start: {error}")
-            logger.error(f"{self.spec.name}: spawn failed — {error}")
+        )
+
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "ia_agent.services.host_launcher", self.spec.name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                creationflags=CREATE_NO_WINDOW,
+                close_fds=True,
+            )
+        except OSError as error:
+            self._fail_spawn(str(error))
             return
 
+        record = self._await_host(HOST_SPAWN_TIMEOUT)
+        if record is None:
+            self._fail_spawn("service host did not report in time")
+            return
+        if record.get("exit_code") is not None:
+            self._fail_spawn(record.get("spawn_error") or f"exited immediately with code {record['exit_code']}")
+            return
+        try:
+            self._host = psutil.Process(record["host_pid"])
+        except (psutil.Error, KeyError):
+            self._fail_spawn("service host pid vanished immediately")
+            return
+
+        self._child_pid = record.get("pid")
         self.error = None
         self.exit_code = None
         self._healthy_since = None
         self._unhealthy_since = None
         self._external = None
         self._external_owner = None
-        self._adopted = None
 
-        self._reader = threading.Thread(target=self._pump, args=(self._proc,), daemon=True)
+        self._reader = threading.Thread(
+            target=self._tail_stream, args=(self._stream_path(),), daemon=True
+        )
         self._reader.start()
-
-        try:
-            self._write_pid_file(psutil.Process(self._proc.pid))
-        except psutil.Error:
-            pass  # exited within milliseconds; the reap in tick() will report it
 
     def _on_exit(self, code: int | None) -> None:
         self.exit_code = code
-        self._proc = None
-        self._adopted = None
+        self._host = None
+        self._child_pid = None
         self._started_at = None
         self._healthy_since = None
         self.origin = ServiceOrigin.NONE
         self.probe = None
-        self._clear_pid_file()
+        self._clear_state_file()
         self.ring.note(f"process exited with code {code}")
         logger.warning(f"{self.spec.name}: exited with code {code}")
 
@@ -327,28 +398,34 @@ class ManagedService:
 
     def _stop_locked(self) -> None:
         self._desired = False
-        try:
-            target = psutil.Process(self._proc.pid) if self._proc else self._adopted
-            if target is not None:
-                logger.info(f"{self.spec.name}: stopping pid {target.pid}")
-                self.ring.note(f"stopping pid {target.pid}")
-                self._kill_tree(target)
-        except psutil.Error:
-            pass  # already gone — the teardown below still has to run
-
-        if self._proc is not None:
+        if self._host is not None:
             try:
-                self._proc.close(force=True)
-            except Exception:
+                logger.info(f"{self.spec.name}: stopping host pid {self._host.pid}")
+                self.ring.note(f"stopping pid {self._child_pid or self._host.pid}")
+                self._kill_tree(self._host)
+            except psutil.Error:
+                pass  # already gone — the teardown below still has to run
+
+        # Killing the host tears its pty down with it — the same mechanism that
+        # makes killing the agent fatal to services today, now scoped on purpose to
+        # a process whose lifetime the agent controls. Belt-and-braces: if the
+        # child is somehow still alive a moment later, finish the job directly.
+        if self._child_pid is not None:
+            try:
+                child = psutil.Process(self._child_pid)
+                if child.is_running():
+                    self._kill_tree(child)
+            except psutil.Error:
                 pass
-        self._proc = None
-        self._adopted = None
+
+        self._host = None
+        self._child_pid = None
         self._started_at = None
         self._healthy_since = None
         self.origin = ServiceOrigin.NONE
         self.state = ServiceState.STOPPED
         self.probe = None
-        self._clear_pid_file()
+        self._clear_state_file()
 
     def restart(self) -> None:
         with self._lock:
@@ -375,44 +452,62 @@ class ManagedService:
     def resize(self, rows: int, cols: int) -> None:
         """Keep the pseudo-console the same shape as the terminal on screen —
         without this, anything that draws to the full width wraps at the wrong
-        column and the pane fills with broken lines."""
+        column and the pane fills with broken lines. The host owns the pty now, so
+        this crosses a named pipe rather than calling into it directly (CP 2.6)."""
         with self._lock:
             self._rows, self._cols = rows, cols
-            if self._proc is not None:
-                try:
-                    self._proc.setwinsize(rows, cols)
-                except Exception as error:
-                    logger.debug(f"{self.spec.name}: resize failed — {error}")
+            if self._host is None:
+                return
+            try:
+                with Client(
+                    pipe_address(self.spec.name), family="AF_PIPE", authkey=PIPE_AUTHKEY
+                ) as conn:
+                    conn.send({"cmd": "resize", "rows": rows, "cols": cols})
+                    conn.recv()
+            except Exception as error:
+                logger.debug(f"{self.spec.name}: resize failed — {error}")
 
     # -------------------------------------------------------------- adoption
 
     def adopt(self) -> None:
-        """Called once at agent start. A live PID file means a previous agent run
-        left this service running; adopting it is what allows the agent to restart
+        """Called once at agent start. A live host from a previous agent run means
+        this service was never touched by whatever ended that run — restart, crash
+        or `taskkill` alike (D22) — so adopting it is what lets the agent restart
         mid-scrape without taking the pipeline down with it (D10)."""
-        path = self._pid_file()
+        path = self._state_path()
         if not path.exists():
             return
         try:
             record = json.loads(path.read_text())
-            process = psutil.Process(record["pid"])
-            if abs(process.create_time() - record["create_time"]) > 1.0:
-                raise psutil.NoSuchProcess(record["pid"])
+            host = psutil.Process(record["host_pid"])
+            if abs(host.create_time() - record["host_create_time"]) > 1.0:
+                raise psutil.NoSuchProcess(record["host_pid"])
         except (psutil.Error, json.JSONDecodeError, KeyError, OSError):
             path.unlink(missing_ok=True)
             return
 
-        self._adopted = process
+        if record.get("exit_code") is not None:
+            # The host ran and already exited before this agent started — nothing
+            # to adopt, and the file is stale from its own perspective too.
+            path.unlink(missing_ok=True)
+            return
+
+        self._host = host
+        self._child_pid = record.get("pid")
         self.origin = ServiceOrigin.ADOPTED
         self.state = ServiceState.RUNNING
         self._desired = True
-        self._started_at = record.get("started_at") or process.create_time()
+        self._started_at = record.get("started_at") or host.create_time()
         self.ring.note(
-            f"adopted running pid {process.pid} from a previous agent run — "
-            "its console belonged to that process, so there is no output to show "
-            "until it is restarted"
+            f"adopted running pid {self._child_pid} from a previous agent run — "
+            "recovering its terminal history"
         )
-        logger.info(f"{self.spec.name}: adopted pid {process.pid}")
+        logger.info(f"{self.spec.name}: adopted host pid {host.pid} (service pid {self._child_pid})")
+
+        self._reader = threading.Thread(
+            target=self._tail_stream, args=(self._stream_path(),), daemon=True
+        )
+        self._reader.start()
 
     def detect_external(self) -> None:
         """Only meaningful when nothing of ours is running: whoever holds the port
@@ -466,13 +561,10 @@ class ManagedService:
         try:
             self._last_probe_at = now
 
-            # 1. reap anything of ours that died
-            if self.origin == ServiceOrigin.SUPERVISED and self._proc is not None:
-                if not self._proc.isalive():
-                    self._on_exit(_exit_status(self._proc))
-            elif self.origin == ServiceOrigin.ADOPTED and self._adopted is not None:
-                if not self._adopted.is_running():
-                    self._on_exit(None)
+            # 1. reap anything of ours that died. SUPERVISED and ADOPTED are both
+            # host-backed identically now (CP 2.6), so one check covers both.
+            if self._host is not None and not self._host.is_running():
+                self._on_exit(_read_exit_code(self._state_path()))
 
             if self._alive:
                 await self._probe_alive(now)
@@ -535,12 +627,11 @@ class ManagedService:
             self._spawn()
 
 
-def _exit_status(proc: PtyProcess) -> int | None:
+def _read_exit_code(path: Path) -> int | None:
     try:
-        proc.wait()
-    except Exception:
-        pass
-    return proc.exitstatus
+        return json.loads(path.read_text()).get("exit_code")
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None
 
 
 # Processes that host a service but are not part of it. Walking up the parent chain

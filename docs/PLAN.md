@@ -274,7 +274,7 @@ Manager, and confirm the tile goes red and *stays* red with its exit code and fi
 self-heal back on and it should come back by itself with the restart count incremented. Then check
 the **Dependencies** tab shows ten green rows and *Re-check* re-runs them.
 
-### CP 2.5 — Agent autostart 🟢 ✅ done, awaiting the reboot test
+### CP 2.5 — Agent autostart 🟢 ✅ done, user-verified
 `dev-startup.exe.lnk` — a `wt.exe` shortcut with four tabs (`adb -a start-server ; ollama serve ;
 start_vl_server.py ; wsl-bridge.exe`) — is **gone**, replaced by a Task Scheduler logon task named
 `ia-agent`. The agent now starts at logon and starts the three services from their `autostart`
@@ -330,44 +330,50 @@ before and after. Then the agent killed outright: back in **5 s**, services stil
 subsystem is 2, the flags, the launcher's restart policy, and the job object really killing a child
 when its handle closes. The other suites still pass (57/57, 32/32, 49/49).
 
-**Test (yours):** reboot the laptop. Fifteen seconds after the desktop appears, everything should be
-up with **no terminal window anywhere** — check Task Manager for `pythonw.exe`, `ia-agent.exe` and
-the three services, and note that no `WindowsTerminal.exe` was started for them. Open the app: the
-three tiles should read *supervised* (not `external`) with real terminal output, since the agent
-started them this time. Then kill `llama-server.exe` from Task Manager → the vl-server tile goes red
-within one probe interval → with self-heal on it comes back by itself and the restart count
-increments; with self-heal off it stays red until *Restart*, and *Test* then reports a plausible
-ms/image. `uv run --project agent python -m ia_agent.startup status` prints the whole picture if
-anything looks wrong; `… remove` puts the old shortcut back.
+**Test (yours) — passed:** rebooted the laptop; everything started as expected, no terminal window
+anywhere, the agent and three services came up cleanly on their own. `uv run --project agent python
+-m ia_agent.startup status` prints the whole picture if anything looks wrong; `… remove` puts the old
+shortcut back.
 
-### CP 2.6 — Services that outlive the agent 🟢 ◻ next session
-Close the hole CP 2.5 measured (D22): move the pseudo-console out of the agent so a supervised
-service survives the agent exiting, crashing or being restarted for a code change — which is what
-D10 promised and what Phases 3–7 need, since every agent edit currently costs all three services.
+### CP 2.6 — Services that outlive the agent 🟢 ✅ done
+Closed the hole CP 2.5 measured (D22): the pseudo-console moved out of the agent into a detached
+**service host** process (`services/host.py`, spawned through `services/host_launcher.py`, which
+exits immediately so no tree walk from the agent ever reaches the host — D23), so a supervised
+service now survives the agent exiting, crashing or being restarted for a code change, which is what
+D10 promised and what Phases 3–7 need.
 
-The shape is already measured end to end with a stand-in: a small **service host** process, spawned
-by the agent through a launcher that exits immediately (so no tree walk reaches it), owns the ConPTY
-and the child, and appends the raw stream to a file. The service then survived a clean agent exit, a
-`/F` kill and a `/F /T` tree-kill, with the stream still growing across the kill.
+What landed, beyond the stand-in the plan originally described: host takes its spawn parameters as
+data (`<name>.spawn.json`) rather than a registry lookup, so the test suite's fake services spawn
+through the exact same path as the three real ones; the supervisor tails `<name>.stream` into the
+existing `LogRing` (D18's `seq`/`?since=` contract unchanged); resize crosses a Windows named pipe
+(stdlib `multiprocessing.connection`) since a file cannot carry it; `<name>.json` now carries
+`host_pid`/`host_create_time` plus `exit_code`, the only way the agent learns a host died once its
+launcher is gone; `status()["terminal_available"]` is now true for `ADOPTED` as well as
+`SUPERVISED`, finally giving **adopted services a real terminal** (D17 no longer applies to them);
+and stop/takeover kill the host's tree (which tears its pty and the child down with it), with a
+belt-and-braces direct kill of the child pid if it somehow survives that.
 
-What it needs beyond that stand-in:
+`agent/tests/test_supervisor.py` §14 is the new case the plan called for: `fake_agent_process.py`
+builds a real `Supervisor` in its own process and spawns a service through the real host path, and
+the outer test `taskkill /F`s and separately `taskkill /F /T`s it — host and service survive both,
+same pids, and a fresh `Supervisor.adopt()` recovers `terminal_available: true` with real replayed
+history. All four suites pass: `test_supervisor.py` 71/71, `test_e2e.py` 32/32, `test_ui_contract.py`
+49/49, `test_dependencies.py` 26/26. One Flutter line rides along: `service_terminal.dart`'s
+`_detached` getter stopped treating `adopted` as detached, since it no longer is (`flutter analyze`
+clean, `flutter test` 11/11).
 
-- a real host module (`services/host.py`) run as `python -m ia_agent.services.host <spec>`: spawn,
-  stream to `%LOCALAPPDATA%\ia-agent\run\<name>.stream`, publish pid/exit-code state, and take
-  resize requests — the one thing a file cannot carry;
-- the supervisor tailing that file into the existing `LogRing` instead of reading a pty directly.
-  Byte offsets map onto the ring's `seq`/`?since=` contract, so the app's replay logic (D18) does not
-  change;
-- adoption reconnecting to a live host, which finally gives **adopted services a real terminal** —
-  today `terminal_available` is false for them and the pane explains itself instead (D17);
-- stop/takeover killing host and child together;
-- updates to `test_supervisor.py`, `test_e2e.py` and `test_ui_contract.py`, plus a new case for the
-  thing that motivated it: kill the agent, and prove the service is still up and the terminal still
-  replays.
+**Verified live on this machine (Claude):** took all three real services under supervision, killed
+`ia-agent.exe` outright — vl-server and wsl-bridge came back `adopted` on the *same pids*, zero
+restarts, with their real startup logs (vl-server's model-load banner, from before the kill)
+replayed into the terminal. adb showed a pre-existing, unrelated quirk instead: its `nodaemon` mode
+forks a detached `fork-server` grandchild that escapes host tracking on its own, twice, regardless
+of anything this checkpoint touched — the agent correctly reports it `external` (D11 already
+anticipates exactly this shape) rather than losing track of it silently. See D23.
 
-**Test:** with all three services supervised, restart the agent from the app (or kill it) — the tiles
-should come back reading `adopted`, the services should never have stopped (same pids), and each
-terminal should still show its history and keep receiving new output.
+**Test (already run, above) — repeatable from the app:** with all three services supervised, restart
+the agent from the app (or kill it) — the tiles should come back reading `adopted`, the services
+should never have stopped (same pids), and each terminal should still show its history and keep
+receiving new output.
 
 ---
 

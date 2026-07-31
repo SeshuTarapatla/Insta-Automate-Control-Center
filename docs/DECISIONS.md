@@ -5,6 +5,70 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 2 implementation session (CP 2.6, services outlive the agent)
+
+### D23 · The pty moves to a detached host, spawned through a launcher that exits immediately
+
+**Chosen:** a new process, `services/host.py` (run as `python -m ia_agent.services.host <name>`),
+owns the ConPTY that used to live in the agent. It never has the agent as its *live* parent: the
+agent spawns `services/host_launcher.py`, which starts the host and exits within milliseconds, so
+by the time anything tree-kills the agent, the host's `ppid` points at an already-dead launcher and
+is unreachable from that walk — the same mechanism D22's own experiment measured. Two channels
+cross the process boundary, kept deliberately separate: the raw output stream
+(`%LOCALAPPDATA%\ia-agent\run\<name>.stream`, truncated fresh per spawn, tailed into the existing
+`LogRing` so the `seq`/`?since=` contract, D18, does not change) and resize, over a Windows named
+pipe (`multiprocessing.connection`, stdlib only) — the one thing a file cannot carry. A third file,
+`<name>.json`, extends the old PID-file schema with `host_pid`/`host_create_time` and `exit_code`:
+once the exit-immediately launcher is gone, the agent has no OS-level wait() relationship to the
+host, so this file is the *only* way it learns the exit code.
+
+Host takes its spawn parameters (cmd/cwd/env/rows/cols) from a small `<name>.spawn.json` the
+supervisor writes just before launching it, rather than looking a `ServiceSpec` up by name in the
+registry. Host needs none of `ServiceSpec`'s probe/self-test callables — only the supervisor probes
+and tests — and taking them as data keeps host usable for whatever a caller wants run in a pty,
+which is what let the test suite spawn its fake services through the exact same path as the three
+real ones instead of a special case.
+
+**Rejected:** a job object granting the host `KILL_ON_JOB_CLOSE`-style protection (unnecessary —
+Windows does not kill a child when its immediate parent exits, it only orphans it, so plain process-
+tree topology is enough); resolving the host's spec via `registry.build_specs()` by name (would have
+made the test suite's dummy services unspawnable through the real path, which is exactly the
+structural gap D22 says let the old adoption test miss the bug); and keeping the resize path on the
+same file as output (a file has no way to signal "this pty's grid changed" to a process that already
+has it open for writing).
+
+**Why:** measured, cross-process this time. `agent/tests/fake_agent_process.py` builds a real
+`Supervisor` in its own process, spawns a service through the real host path, and the outer test
+(`test_supervisor.py` §14) `taskkill /F`s and separately `taskkill /F /T`s that process — the host
+and the service it owns survive both, with the same pids, and a fresh `Supervisor.adopt()` recovers
+`terminal_available: true` with the real output intact. This is the test D22 says the old two-
+Supervisors-in-one-process adoption test structurally could not be, because in that shape the pty
+handles never actually closed. Verified live on this machine too: took all three real services under
+supervision, killed `ia-agent.exe` outright, and vl-server/wsl-bridge came back `adopted` on the
+same pids with zero restarts and their real startup logs (including vl-server's model-load banner
+from *before* the kill) replayed into the terminal.
+
+**Known interaction, not a bug:** the job object in `ia_agent_launcher.pyw` (D21) has no breakaway
+flags, so the host — like everything else the agent spawns — is a member of it. That job's handle
+only closes when the launcher itself ends (`schtasks /End`, or the launcher dying), never on a plain
+agent crash or restart, which is the case this checkpoint and D21's backoff loop both cover. So
+`schtasks /End` remains "genuinely stop everything" (already the documented behaviour, D21) and will
+also stop supervised services now; a routine agent crash or restart will not.
+
+**Also observed, not caused by this change:** adb's `-a nodaemon server start` forked a detached
+`adb -L tcp:5037 fork-server server` grandchild that escaped the host's process entirely, twice,
+independent of anything this checkpoint did to the agent. Both the wrapper and its host ended up
+gone while the fork kept the port, which the agent correctly reports as `external` (D11 already
+anticipates exactly this shape) rather than silently losing track of it. Not a CP 2.6 regression —
+`registry.py`'s adb spec is untouched — and not this checkpoint's to fix.
+
+**Cost:** two more files under `%LOCALAPPDATA%\ia-agent\run\` per service (`.spawn.json`,
+`.stream`, alongside the richer `.json`), one more stdlib IPC surface to reason about, and adoption
+now starts a tailer thread instead of doing nothing — a small amount of always-on complexity in
+exchange for D10 finally being true.
+
+---
+
 ## 2026-07-31 — Phase 2 implementation session (CP 2.5, agent autostart)
 
 ### D22 · Supervised services die with the agent today, and the fix is CP 2.6

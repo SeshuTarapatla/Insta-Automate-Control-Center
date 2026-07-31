@@ -94,7 +94,7 @@ async def main():
     check("ANSI colour preserved", "\x1b[32m" in output)
     check("carriage returns preserved", "\rloading 3/3" in output)
     check("terminal flagged available", svc.status()["terminal_available"] is True)
-    check("pid file written", svc._pid_file().exists())
+    check("state file written", svc._state_path().exists())
     check("status has uptime", svc.status()["uptime_s"] is not None)
 
     print("\n2. broadcast on services.status and services.logs.<name>")
@@ -113,7 +113,7 @@ async def main():
     svc.stop()
     check("state STOPPED", svc.state == ServiceState.STOPPED)
     check("process gone", not psutil.pid_exists(pid) or not psutil.Process(pid).is_running())
-    check("pid file cleared", not svc._pid_file().exists())
+    check("state file cleared", not svc._state_path().exists())
     await pump(sup, 1)
     check("stays stopped after a manual stop", svc.state == ServiceState.STOPPED)
 
@@ -197,36 +197,50 @@ async def main():
     check("wedge narrated", "while the process is still alive" in text_of(wedged))
     wedged.stop()
 
-    print("\n11. adoption across an agent restart")
+    print("\n11. adoption across an agent restart (same process, real host)")
     sup6 = Supervisor([spec("t-adopt", 19805)], bus)
     adopt_svc = sup6.get("t-adopt")
     adopt_svc.start()
     await until(sup6, lambda: adopt_svc.state == ServiceState.RUNNING)
+    await pump(sup6, 0.5)
     original_pid = adopt_svc.pid
-    del sup6  # the agent process goes away without stopping the service
+    original_host_pid = adopt_svc._host.pid
+    del sup6  # this Supervisor goes away; the host process CP 2.6 spawned does not
 
     sup7 = Supervisor([spec("t-adopt", 19805)], bus)
     await sup7.start()
     adopted = sup7.get("t-adopt")
     check("adopted, not respawned", adopted.pid == original_pid, f"{adopted.pid} vs {original_pid}")
+    check("same host process recovered", adopted._host.pid == original_host_pid)
     check("origin is adopted", adopted.origin == ServiceOrigin.ADOPTED)
-    check("terminal flagged unavailable", adopted.status()["terminal_available"] is False)
+    check("terminal flagged available (CP 2.6)", adopted.status()["terminal_available"] is True)
     await until(sup7, lambda: adopted.state == ServiceState.RUNNING)
     check("adopted service probes RUNNING", adopted.state == ServiceState.RUNNING)
+    await pump(sup7, 1.0)
+    check("adopted terminal has real replayed history", "dummy listening" in text_of(adopted))
     await sup7.shutdown()
     check("shutdown leaves it running", psutil.pid_exists(original_pid))
     adopted.stop()
 
-    print("\n12. stale pid file (dead pid) is discarded, not adopted")
+    print("\n12. stale state file (dead pid) is discarded, not adopted")
     sup8 = Supervisor([spec("t-stale", 19806)], bus)
     stale = sup8.get("t-stale")
-    stale._pid_file().parent.mkdir(parents=True, exist_ok=True)
-    stale._pid_file().write_text(
-        json.dumps({"pid": 999999, "create_time": 0, "started_at": 0, "cmd": []})
+    stale._state_path().parent.mkdir(parents=True, exist_ok=True)
+    stale._state_path().write_text(
+        json.dumps(
+            {
+                "host_pid": 999999,
+                "host_create_time": 0,
+                "pid": 999999,
+                "started_at": 0,
+                "cmd": [],
+                "exit_code": None,
+            }
+        )
     )
     stale.adopt()
-    check("stale pid file ignored", stale.origin == ServiceOrigin.NONE, f"origin={stale.origin}")
-    check("stale pid file removed", not stale._pid_file().exists())
+    check("stale state file ignored", stale.origin == ServiceOrigin.NONE, f"origin={stale.origin}")
+    check("stale state file removed", not stale._state_path().exists())
 
     print("\n13. external ownership + takeover")
     foreign = subprocess.Popen(
@@ -258,6 +272,61 @@ async def main():
     check("takeover pid differs", ext.pid != foreign.pid)
     ext.stop()
     await sup9.shutdown()
+
+    print("\n14. the agent can be tree-killed and the service still survives (D22)")
+    from ia_agent.vars import SERVICE_RUN_DIR
+
+    FAKE_AGENT = HERE / "fake_agent_process.py"
+
+    def spawn_fake_agent(name, port):
+        return subprocess.Popen(
+            [sys.executable, str(FAKE_AGENT), name, str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    async def wait_live_state(name, timeout=15):
+        path = SERVICE_RUN_DIR / f"{name}.json"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                record = json.loads(path.read_text())
+                if record.get("host_pid") and record.get("exit_code") is None:
+                    return record
+            except (OSError, json.JSONDecodeError):
+                pass
+            await asyncio.sleep(0.2)
+        return None
+
+    async def assert_survives_kill(name, port, kill_args, label):
+        fake = spawn_fake_agent(name, port)
+        record = await wait_live_state(name)
+        check(f"{label}: fake agent spawned a live host", record is not None, str(record))
+        if record is None:
+            return
+        host_pid, child_pid = record["host_pid"], record["pid"]
+
+        subprocess.run(["taskkill", *kill_args, "/PID", str(fake.pid)], capture_output=True)
+        try:
+            fake.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        await asyncio.sleep(0.5)
+        check(f"{label}: host survives", psutil.pid_exists(host_pid))
+        check(f"{label}: service survives", psutil.pid_exists(child_pid))
+
+        recover = Supervisor([spec(name, port)], bus)
+        await recover.start()
+        recovered = recover.get(name)
+        check(f"{label}: re-adopted, not respawned", recovered.origin == ServiceOrigin.ADOPTED)
+        check(f"{label}: same service pid", recovered.pid == child_pid, f"{recovered.pid} vs {child_pid}")
+        got_history = await until(recover, lambda: "dummy listening" in text_of(recovered))
+        check(f"{label}: terminal recovered with real history", got_history)
+        recovered.stop()
+        await recover.shutdown()
+
+    await assert_survives_kill("t-killme1", 19810, ["/F"], "/F kill")
+    await assert_survives_kill("t-killme2", 19811, ["/F", "/T"], "/F /T tree-kill")
 
     settings.SERVICE_SETTINGS_PATH.unlink(missing_ok=True)
     print(f"\n{sum(OK)}/{len(OK)} checks passed")

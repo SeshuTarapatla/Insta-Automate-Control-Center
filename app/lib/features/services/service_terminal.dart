@@ -401,10 +401,10 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
   /// A process the agent never had a console for has nothing in its ring but
   /// the agent's own notes about it — so the pane explains itself instead of
-  /// rendering one dim line and calling that a terminal.
-  bool get _detached =>
-      widget.status.origin == ServiceOrigin.external ||
-      widget.status.origin == ServiceOrigin.adopted;
+  /// rendering one dim line and calling that a terminal. Adopted no longer
+  /// qualifies (CP 2.6): the service host survives the agent, so an adopted
+  /// service's terminal history is recovered, not lost.
+  bool get _detached => widget.status.origin == ServiceOrigin.external;
 
   /// A supervised service that has exited keeps its output. That is the point
   /// of self-heal being switchable off, so the pane says the output is history

@@ -2,10 +2,13 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0 and 1 complete and user-verified**;
-**Phase 2 — CP 2.1–2.5 done, CP 2.4 user-verified, CP 2.5 awaiting the user's reboot test**. The
-`wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts the agent, which starts the
-three services from their `autostart` switches (now on). A new **CP 2.6** was opened by what CP 2.5
-measured — supervised services die with the agent — and is the next session's work.
+**Phase 2 — CP 2.1–2.6 done, CP 2.4 and CP 2.5 user-verified (the reboot test passed: everything
+started as expected), CP 2.6 verified live by Claude**. The `wt.exe` startup shortcut is gone: an
+`ia-agent` **logon task** starts
+the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
+measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
+lives in a detached service-host process, so a service survives the agent dying any way (D23).
+**Phase 2 is complete; the next session opens Phase 3.**
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
@@ -22,13 +25,15 @@ stops everything; `%LOCALAPPDATA%\ia-agent\stop-launcher` keeps it down. Full re
 `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus the three
 real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}` and
 `POST /api/services/{name}/{start|stop|restart|takeover|test|resize}`. Services are spawned into a
-**ConPTY** and their output kept verbatim, which the app renders with `xterm.dart` as a real
-terminal rather than a log list. Each service has a **self-heal** switch (persisted in
-`services.json`) and a functional self-test; **autostart is on** for all three since CP 2.5, so after
-a logon the agent spawns them and they read `supervised`. Until the next reboot they are still
-whatever the old shortcut left running, which the agent reports as `external`. **A supervised service
-dies with the agent** — measured, any kind of death — so an agent restart cycles all three until
-CP 2.6 moves the pseudo-console into a detached host (D22). `GET /api/dependencies`
+**ConPTY owned by a detached host process** (`services/host.py`, CP 2.6, D23), not the agent itself,
+and their output kept verbatim, which the app renders with `xterm.dart` as a real terminal rather
+than a log list. Each service has a **self-heal** switch (persisted in `services.json`) and a
+functional self-test; **autostart is on** for all three since CP 2.5, so after a logon the agent
+spawns them and they read `supervised`. Until the next reboot they are still whatever the old
+shortcut left running, which the agent reports as `external`. **A supervised service now survives
+the agent dying, any way** — restart, crash, `taskkill /F` or `/F /T` — and comes back `adopted`
+with its terminal history intact on the next agent start (D10's promise, finally true; D22 explains
+what CP 2.5 measured before this landed). `GET /api/dependencies`
 (CP 2.3) covers the ten things the pipeline needs but the agent does not supervise, and now has a
 tab on the Services screen (D16).
 
