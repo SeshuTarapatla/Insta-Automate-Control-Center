@@ -1,8 +1,19 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from ia_agent.services.supervisor import ServiceError, Supervisor
+
+
+class ServiceSettings(BaseModel):
+    self_heal: bool | None = None
+    autostart: bool | None = None
+
+
+class TerminalSize(BaseModel):
+    rows: int = Field(ge=1, le=500)
+    cols: int = Field(ge=20, le=1000)
 
 
 def create_services_router(supervisor: Supervisor) -> APIRouter:
@@ -22,14 +33,29 @@ def create_services_router(supervisor: Supervisor) -> APIRouter:
     async def get_service(name: str) -> dict:
         return _service(name).status()
 
+    @router.patch("/services/{name}")
+    async def configure(name: str, settings: ServiceSettings) -> dict:
+        service = _service(name)
+        service.configure(self_heal=settings.self_heal, autostart=settings.autostart)
+        return service.status()
+
     @router.get("/services/{name}/logs")
-    async def get_logs(name: str, tail: int = 500, since: int | None = None) -> dict:
+    async def get_logs(name: str, since: int | None = None) -> dict:
+        """Raw terminal chunks, replayable from a cursor. The whole ring is returned
+        when there is no cursor — a terminal emulator has to replay from the start of
+        what it has to reconstruct the screen, unlike a log list that can show a tail."""
         service = _service(name)
         return {
             "name": name,
-            "stdout_available": service.status()["stdout_available"],
-            "lines": service.ring.tail(tail, since),
+            "terminal_available": service.status()["terminal_available"],
+            "chunks": service.ring.tail(since),
         }
+
+    @router.post("/services/{name}/resize")
+    async def resize(name: str, size: TerminalSize) -> dict:
+        service = _service(name)
+        service.resize(size.rows, size.cols)
+        return {"rows": size.rows, "cols": size.cols}
 
     @router.post("/services/{name}/{action}")
     async def act(name: str, action: str) -> dict:

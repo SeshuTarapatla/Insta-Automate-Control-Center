@@ -34,6 +34,16 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Agent restart must never stop a service** — supervised processes outlive the agent; PID files
   (guarded by `create_time` against PID reuse) are what the next run adopts. Stopping is only ever
   an explicit operator action. D1's stated cost, D10.
+- **The agent is the only supervisor** — services' own restart loops are switched off
+  (`start_vl_server.py --no-autorestart`; adb runs `nodaemon`, not the forking `start-server`).
+  Nested supervisors resurrect processes underneath a stop and hide their restart counts in an
+  unread terminal tab. D14.
+- **Service output is a raw ConPTY stream, never line-stripped** — ANSI, cursor moves and carriage
+  returns are exactly what the in-app terminal (`xterm.dart`) needs; a progress bar is one line
+  rewritten many times, so splitting on newlines erases it. Under a pipe the child sees
+  `isatty()==False` and drops colour entirely — measured, not assumed. D15.
+- **`config.env` is the pipeline's, `services.json` is this machine's** — self-heal/autostart
+  switches are agent-local and must never be synced to the phone or read by a pod. D12.
 - **`ENTITY_QUEUE` is one shared list, by design** — it holds *entity names*; each `Queue` maps
   that ordering onto its own directory, so scrape and follow differ by folder, not by key. Q1
   answered, see DECISIONS D8. Unlisted entities still run, after the listed ones, oldest first.

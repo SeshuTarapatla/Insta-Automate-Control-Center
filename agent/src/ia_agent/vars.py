@@ -20,3 +20,5 @@ TOKEN_PATH = AGENT_DATA_DIR / "token"
 # is adopted rather than orphaned or killed (ARCHITECTURE §3, PLAN CP 2.1).
 SERVICE_RUN_DIR = AGENT_DATA_DIR / "run"
 SERVICE_LOG_DIR = AGENT_DATA_DIR / "logs"
+# Per-service self-heal / autostart switches. Machine-local, never synced (D12).
+SERVICE_SETTINGS_PATH = AGENT_DATA_DIR / "services.json"

@@ -100,16 +100,23 @@ Goal: start, stop, restart and *prove* each Windows service from the UI.
   port held by a foreign PID → mark `external` and offer takeover. This is what lets the agent
   restart without killing a running scrape.
 - Also landed here (needed to make the engine testable at all): `services/registry.py` with the
-  three real specs — `autostart` off, since everything is already up under the `wt.exe` shortcut —
+  three real specs — `autostart` off, since everything is already up under the startup shortcut —
   and the REST surface `GET /api/services`, `GET /api/services/{name}[/logs]`,
-  `POST /api/services/{name}/{start|stop|restart|takeover}` on `services.status` /
-  `services.logs.<name>`. **CP 2.2 keeps** the health-probe and functional-test work.
+  `PATCH /api/services/{name}`, `POST /api/services/{name}/{start|stop|restart|takeover|resize}`
+  on `services.status` / `services.logs.<name>`. **CP 2.2 keeps** the health-probe and
+  functional-test work.
 - Takeover kills the *service root*, not the socket owner (D11); state is lock-guarded (D9);
   shutdown deliberately leaves services running (D10).
+- **Revised after review, same checkpoint:** services are spawned into a **ConPTY** and their
+  output kept verbatim so the app can render a real terminal (D15); the agent takes over restart
+  duty from the services' own loops — `start_vl_server.py --no-autorestart`, adb as `nodaemon`
+  (D14); `ollama serve` is dropped (D13); and `self_heal` / `autostart` are per-service switches
+  persisted in `services.json` (D12).
 
-**Test (agent-side, already verified by Claude):** 36/36 supervisor checks (spawn, crash → backoff
-→ restart, `NEVER` → failed, unhealthy-while-alive, adoption across an agent restart, stale PID
-file, external detection + takeover) and 16/16 end-to-end REST+WS checks, both against a dummy
+**Test (agent-side, already verified by Claude):** 53/53 supervisor checks (ConPTY capture with a
+real tty / colour / carriage returns, crash → backoff → self-heal, self-heal off → failed, flipping
+it on rescuing a failed service, wedged-but-alive restart, adoption across an agent restart, stale
+PID file, external detection + takeover) and 25/25 end-to-end REST+WS checks, both against a dummy
 service. Against the live machine, all three real services were detected `external` with correct
 kill targets and correct probes, and none was touched.
 
@@ -118,11 +125,13 @@ kill targets and correct probes, and none was touched.
 | Service | Command | Health probe | Functional test |
 |---|---|---|---|
 | `adb` | `adb -a nodaemon server start` (foreground, so it is supervisable — unlike today's `start-server`) | TCP 5037 + `adb devices` contains `ANDROID_SERIAL` | `adb -s <serial> shell echo ok` |
-| `vl-server` | `D:\Coding\Insta-Automate\.venv\Scripts\python.exe D:\Coding\Insta-Automate\scripts\start_vl_server.py` | `GET 127.0.0.1:11500/v1/models` | real inference on a bundled fixture jpg → assert the JSON schema parses, **report ms/image** |
+| `vl-server` | `…\.venv\Scripts\python.exe …\scripts\start_vl_server.py --no-autorestart` (the flag hands restart duty to the agent — D14) | `GET 127.0.0.1:11500/v1/models` | real inference on a bundled fixture jpg → assert the JSON schema parses, **report ms/image** |
 | `wsl-bridge` | `D:\Coding\wsl-bridge\.venv\Scripts\wsl-bridge.exe` | `GET 127.0.0.1:8000/` → `true` | `POST /scrcpy/start` → `GET /scrcpy/` is `true` → `POST /scrcpy/stop` |
 
-The vl-server test is the valuable one: it is the difference between "port is open" and
-"classification actually works at 0.2 s/img instead of 12 s/img".
+The commands are already in `services/registry.py` and the probes already run; what CP 2.2 adds is
+the **functional** column plus `POST /api/services/{name}/test`. The vl-server test is the valuable
+one: it is the difference between "port is open" and "classification actually works at 0.2 s/img
+instead of 12 s/img".
 
 ### CP 2.3 — Dependency panel (read-only) 🟢
 k3s reachable · postgres · prefect server + worker + work-pool has a live worker ·
@@ -130,17 +139,29 @@ k3s reachable · postgres · prefect server + worker + work-pool has a live work
 internet · Syncthing running · free space on the `IA_DIR` volume.
 
 ### CP 2.4 — Services UI 🟢
-Status tiles (state, uptime, restart count, probe latency), Start / Stop / Restart / Test,
-and a per-service log console with level filter, search, follow-tail, and copy.
+Status tiles (state, uptime, restart count, probe latency), Start / Stop / Restart / Test, and a
+**self-heal toggle per tile** (off means a crashed service stays down with its exit code and final
+output on screen — D12).
+
+The log pane is a **real terminal**, not a list of strings: `xterm.dart` fed the raw ConPTY stream
+from `services.logs.<name>`, with `GET /api/services/{name}/logs?since=` for replay on reconnect
+and `POST /api/services/{name}/resize` wired to the pane's measured rows/cols so full-width output
+wraps correctly (D15). Selection, copy and search come from the emulator. Adopted and external
+services report `terminal_available: false` — the pane says why it is empty instead of showing a
+blank box.
 
 ### CP 2.5 — Agent autostart 🟢
-Install a Startup-folder shortcut (or Task Scheduler logon task) that launches `ia-agent`,
-which then starts the three services per their `autostart` policy. **Retire the current
-`wt.exe …` shortcut** (keep a documented rollback).
+Replace `dev-startup.exe.lnk` — today a `wt.exe` shortcut with four tabs (`adb -a start-server ;
+ollama serve ; start_vl_server.py ; wsl-bridge.exe`) — with a **Task Scheduler logon task** running
+`ia-agent`, which then starts the services per their `autostart` switch. A logon task rather than a
+Startup shortcut because it supports restart-on-failure: once the agent owns healing, it is
+load-bearing for the core services and needs healing of its own. Keep the old `.lnk` backed up as a
+documented rollback. Answers **Q4**.
 
-**Test:** kill `llama-server.exe` from Task Manager → the tile goes red within one probe
-interval → *Restart* → green, and *Test* reports a plausible ms/image. Reboot the laptop →
-everything comes up with the old shortcut removed.
+**Test:** kill `llama-server.exe` from Task Manager → the tile goes red within one probe interval →
+with self-heal on it comes back by itself and the restart count increments; with self-heal off it
+stays red until *Restart*, and *Test* then reports a plausible ms/image. Reboot the laptop →
+everything comes up with no terminal window and the old shortcut removed.
 
 ---
 
@@ -327,8 +348,11 @@ flow finishes, then sleeps 10 s. Scan is the most rate-limit-sensitive flow. Do 
 **Q3 — Scan limits.** Confirm `PROFILES`/`REELS`/`POSTS` are genuinely the live daily scan caps
 (the code says yes, the `config.env` comment says no) so the UI labels them honestly.
 
-**Q4 — Startup ownership.** Replace the `wt.exe` shortcut with the agent (recommended), or leave
-the shortcut in place and have the agent adopt whatever is already running?
+**Q4 — Startup ownership. ✅ ANSWERED 2026-07-31: the agent replaces the shortcut.**
+`dev-startup.exe.lnk` goes; a Task Scheduler logon task starts `ia-agent`, which starts the three
+services per their `autostart` switch. `ollama serve` is dropped from the set entirely (D13), the
+services' own restart loops are switched off in favour of the agent's (D14), and until CP 2.5 lands
+the shortcut still runs and the agent simply adopts or observes what it finds. See CP 2.5.
 
 **Q5 — Force run.** Should *Run now* ever bypass the daily limits, or only the wait? Planned:
 *Run now* respects every gate, *Force run* bypasses with a confirmation dialog.

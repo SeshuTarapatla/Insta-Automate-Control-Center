@@ -146,7 +146,8 @@ agent/
     │   ├── spec.py                # ServiceSpec, HealthProbe, RestartPolicy, states
     │   ├── supervisor.py          # spawn / adopt / stop / restart / takeover, backoff
     │   ├── probes.py              # tcp, http, custom probes
-    │   ├── logs.py                # per-service ring buffer (5k) + rotating file
+    │   ├── logs.py                # raw ConPTY chunk ring (512 KB) + flattened file
+    │   ├── settings.py            # per-service self_heal / autostart, services.json
     │   ├── selftest.py            # functional tests per service
     │   └── registry.py            # the 3 core services + read-only dependency checks
     ├── scheduler/
@@ -180,7 +181,7 @@ agent/
 |---|---|
 | health | `GET /api/health` · `GET /api/system` (one-shot snapshot of everything) |
 | config | `GET /api/config` · `GET /api/config/schema` · `PATCH /api/config` |
-| services | `GET /api/services` · `GET /api/services/{name}` · `POST /api/services/{name}/{start\|stop\|restart\|takeover\|test}` · `GET /api/services/{name}/logs?tail=&since=` |
+| services | `GET /api/services` · `GET /api/services/{name}` · `PATCH /api/services/{name}` (self_heal, autostart) · `POST /api/services/{name}/{start\|stop\|restart\|takeover\|test\|resize}` · `GET /api/services/{name}/logs?since=` |
 | flows | `GET /api/flows` · `POST /api/flows/{flow}/{run\|force-run\|skip-wait}` · `POST /api/flows/{flow}/switch` |
 | runs | `GET /api/flow-runs?limit=` · `GET /api/flow-runs/{id}` · `GET /api/flow-runs/{id}/logs?since=` · `POST /api/flow-runs/{id}/cancel` |
 | events | `POST /api/events` (from flows) · `GET /api/events?since=` (replay) |

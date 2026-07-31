@@ -11,12 +11,16 @@ import uvicorn
 import websockets
 
 import ia_agent.app as app_module
+from ia_agent.services import settings
 from ia_agent.services.spec import HealthProbe, ProbeKind, ServiceSpec
 from ia_agent.vars import TOKEN_PATH
 
 HERE = Path(__file__).parent
 PORT = 8789
 OK = []
+
+settings.SERVICE_SETTINGS_PATH = HERE / ".test-services-e2e.json"
+settings.SERVICE_SETTINGS_PATH.unlink(missing_ok=True)
 
 
 def check(label, condition, detail=""):
@@ -55,8 +59,10 @@ async def main():
         status = (await client.get("/api/services")).json()[0]
         check("service listed", status["name"] == "dummy")
         check("starts stopped", status["state"] == "stopped", status["state"])
+        check("self_heal on by default", status["self_heal"] is True)
+        check("autostart off by default", status["autostart"] is False)
 
-        print("\n2. WS receives status + log frames driven by REST actions")
+        print("\n2. WS receives status + terminal frames driven by REST actions")
         async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws?token={token}") as ws:
             response = await client.post("/api/services/dummy/start")
             check("start returns 200", response.status_code == 200, str(response.status_code))
@@ -64,53 +70,81 @@ async def main():
             # Collect until both channels have shown up or the overall deadline
             # passes. The per-recv timeout is generous on purpose: a short one turns
             # a loaded machine into a spurious failure rather than a real one.
+            # Wait for the *content*, not merely for a frame on the channel: the
+            # first terminal frame is usually ConPTY's handshake preamble
+            # (\x1b[1t\x1b[c...) with none of the service's own output in it yet.
+            def streamed_text():
+                return "".join(
+                    chunk["data"]
+                    for f in frames
+                    if f["channel"] == "services.logs.dummy"
+                    for chunk in f["data"]
+                )
+
             frames, deadline = [], asyncio.get_running_loop().time() + 20
             while asyncio.get_running_loop().time() < deadline:
                 try:
                     frames.append(json.loads(await asyncio.wait_for(ws.recv(), timeout=6)))
                 except asyncio.TimeoutError:
                     break
-                if any(f["channel"] == "services.status" and f["data"]["state"] == "running"
-                       for f in frames) and any(f["channel"] == "services.logs.dummy" for f in frames):
+                running = any(f["channel"] == "services.status" and f["data"]["state"] == "running"
+                              for f in frames)
+                if running and "dummy listening" in streamed_text():
                     break
 
             channels = {f["channel"] for f in frames}
             check("services.status frame", "services.status" in channels, str(sorted(channels)))
             check("services.logs.dummy frame", "services.logs.dummy" in channels)
-            running = [f for f in frames if f["channel"] == "services.status"
-                       and f["data"]["state"] == "running"]
-            check("status frame reports running", bool(running))
-            log_frames = [f for f in frames if f["channel"] == "services.logs.dummy"]
-            check("log frames are batched lists", isinstance(log_frames[0]["data"], list))
-            check("log line content", any("dummy listening" in entry["line"]
-                                          for f in log_frames for entry in f["data"]))
+            check("status frame reports running",
+                  any(f["channel"] == "services.status" and f["data"]["state"] == "running"
+                      for f in frames))
+            terminal = [f for f in frames if f["channel"] == "services.logs.dummy"]
+            check("terminal frames are batched lists", isinstance(terminal[0]["data"], list))
+            streamed = streamed_text()
+            check("terminal content streamed", "dummy listening" in streamed)
+            check("ANSI survives the websocket", "\x1b[32m" in streamed)
+            check("child had a real tty", "isatty=True" in streamed)
 
-        print("\n3. REST log replay with a cursor")
-        logs = (await client.get("/api/services/dummy/logs?tail=100")).json()
-        check("stdout_available true when supervised", logs["stdout_available"] is True)
-        check("lines returned", len(logs["lines"]) > 0, str(len(logs["lines"])))
-        last = logs["lines"][-1]["seq"]
+        print("\n3. terminal replay with a cursor")
+        logs = (await client.get("/api/services/dummy/logs")).json()
+        check("terminal_available when supervised", logs["terminal_available"] is True)
+        check("chunks returned", len(logs["chunks"]) > 0, str(len(logs["chunks"])))
+        last = logs["chunks"][-1]["seq"]
         await asyncio.sleep(2)
         newer = (await client.get(f"/api/services/dummy/logs?since={last}")).json()
-        check("since returns only newer lines",
-              all(entry["seq"] > last for entry in newer["lines"]) and newer["lines"],
-              f"{len(newer['lines'])} new")
+        check("since returns only newer chunks",
+              bool(newer["chunks"]) and all(c["seq"] > last for c in newer["chunks"]),
+              f"{len(newer['chunks'])} new")
 
-        print("\n4. start twice is a 409, not a second process")
+        print("\n4. terminal resize is accepted")
+        resized = await client.post("/api/services/dummy/resize", json={"rows": 50, "cols": 200})
+        check("resize 200", resized.status_code == 200, resized.text[:80])
+        bad = await client.post("/api/services/dummy/resize", json={"rows": 0, "cols": 200})
+        check("rejects a nonsense size", bad.status_code == 422, str(bad.status_code))
+
+        print("\n5. self-heal switch over REST")
+        off = (await client.patch("/api/services/dummy", json={"self_heal": False})).json()
+        check("switch reported off", off["self_heal"] is False)
+        check("switch persisted to disk", settings.get("dummy").get("self_heal") is False)
+        back_on = (await client.patch("/api/services/dummy", json={"self_heal": True})).json()
+        check("switch reported on", back_on["self_heal"] is True)
+
+        print("\n6. start twice is a 409, not a second process")
         conflict = await client.post("/api/services/dummy/start")
         check("409 on double start", conflict.status_code == 409, conflict.text[:80])
 
-        print("\n5. restart bumps the count and changes the pid")
+        print("\n7. restart bumps the count and changes the pid")
         before = (await client.get("/api/services/dummy")).json()
         after = (await client.post("/api/services/dummy/restart")).json()
         check("pid changed", before["pid"] != after["pid"], f"{before['pid']} -> {after['pid']}")
         check("restart_count bumped", after["restart_count"] == before["restart_count"] + 1)
 
-        print("\n6. stop")
+        print("\n8. stop")
         stopped = (await client.post("/api/services/dummy/stop")).json()
         check("state stopped", stopped["state"] == "stopped", stopped["state"])
         check("pid cleared", stopped["pid"] is None)
 
+    settings.SERVICE_SETTINGS_PATH.unlink(missing_ok=True)
     print(f"\n{sum(OK)}/{len(OK)} checks passed")
     return 0 if all(OK) else 1
 

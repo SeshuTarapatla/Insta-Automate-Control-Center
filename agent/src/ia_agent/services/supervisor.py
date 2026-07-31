@@ -1,32 +1,23 @@
 import asyncio
 import json
 import os
-import subprocess
 import threading
 import time
-from typing import IO
 
 import psutil
+from winpty import PtyProcess
 
 from ia_agent.events.bus import EventBus
 from ia_agent.logging import logger
+from ia_agent.services import settings
 from ia_agent.services.logs import LogRing
 from ia_agent.services.probes import ProbeResult, run_probe
-from ia_agent.services.spec import (
-    RestartPolicy,
-    ServiceOrigin,
-    ServiceSpec,
-    ServiceState,
-)
+from ia_agent.services.spec import ServiceOrigin, ServiceSpec, ServiceState
 from ia_agent.vars import SERVICE_RUN_DIR
 
-# Python's subprocess exposes the creation flag that dart:io does not (DECISIONS D5),
-# so a plain Popen is enough here to keep console windows from flashing.
-CREATE_NO_WINDOW = 0x08000000
-CREATE_NEW_PROCESS_GROUP = 0x00000200
-
-TICK = 0.25  # log-flush granularity; probes run on the spec's own interval
+TICK = 0.25  # terminal-flush granularity; probes run on the spec's own interval
 STOP_GRACE = 5.0  # seconds a terminate() gets before the tree is killed
+READ_SIZE = 8192
 
 
 class ServiceError(Exception):
@@ -40,6 +31,10 @@ class ManagedService:
         self.ring = LogRing(spec.name)
         self._bus = bus
 
+        stored = settings.get(spec.name)
+        self.self_heal: bool = stored.get("self_heal", spec.self_heal)
+        self.autostart: bool = stored.get("autostart", spec.autostart)
+
         self.state = ServiceState.STOPPED
         self.origin = ServiceOrigin.NONE
         self.restart_count = 0
@@ -47,7 +42,7 @@ class ManagedService:
         self.probe: ProbeResult | None = None
         self.error: str | None = None
 
-        self._proc: subprocess.Popen | None = None
+        self._proc: PtyProcess | None = None
         self._adopted: psutil.Process | None = None
         self._external: psutil.Process | None = None
         self._external_owner: psutil.Process | None = None
@@ -58,15 +53,16 @@ class ManagedService:
         self._retry_at = 0.0
         self._unhealthy_since: float | None = None
         self._last_probe_at = 0.0
-        self._readers: list[threading.Thread] = []
+        self._reader: threading.Thread | None = None
         self._pending: list[dict] = []
         self._pending_lock = threading.Lock()
         self._signature: tuple | None = None
+        self._rows, self._cols = spec.rows, spec.cols
         # Actions arrive on a worker thread (the API offloads them so a slow kill
         # cannot stall the loop) while tick() runs on the event loop. Without this,
         # a tick landing mid-spawn sees origin=NONE with a live port and concludes
-        # the process it is itself starting belongs to somebody else. Re-entrant
-        # because restart() is stop() + start().
+        # the process it is itself starting belongs to somebody else (D9).
+        # Re-entrant because restart() is stop() + start().
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ state
@@ -97,14 +93,15 @@ class ManagedService:
             "exit_code": self.exit_code,
             "error": self.error,
             "probe": self.probe.as_dict() if self.probe else None,
-            "autostart": self.spec.autostart,
-            "restart_policy": self.spec.restart,
-            # Adopted and external processes were spawned without our pipes, so the
-            # console is empty by nature rather than by failure — the UI says so.
-            "stdout_available": self.origin == ServiceOrigin.SUPERVISED,
+            "self_heal": self.self_heal,
+            "autostart": self.autostart,
+            # Adopted and external processes were spawned without our pseudo-console,
+            # so the terminal is empty by nature rather than by failure — the UI says
+            # so instead of showing a blank pane.
+            "terminal_available": self.origin == ServiceOrigin.SUPERVISED,
             "can_takeover": self.origin == ServiceOrigin.EXTERNAL,
             # `external` is what takeover would kill; `port_owner` is what actually
-            # holds the socket, which is often a descendant of it.
+            # holds the socket, which is often a descendant of it (D11).
             "external": _describe(self._external),
             "port_owner": _describe(self._external_owner),
             "cmd": self.spec.cmd,
@@ -119,6 +116,8 @@ class ManagedService:
             status["pid"],
             status["restart_count"],
             status["exit_code"],
+            status["self_heal"],
+            status["autostart"],
             bool(self.probe and self.probe.ok),
         )
 
@@ -128,6 +127,24 @@ class ManagedService:
         if signature != self._signature:
             self._signature = signature
             await self._bus.publish("services.status", status)
+
+    def configure(self, *, self_heal: bool | None = None, autostart: bool | None = None) -> None:
+        with self._lock:
+            changes: dict[str, bool] = {}
+            if self_heal is not None and self_heal != self.self_heal:
+                self.self_heal = changes["self_heal"] = self_heal
+                self.ring.note(f"self-heal turned {'on' if self_heal else 'off'}")
+                # Turning it on should rescue a service that already gave up, rather
+                # than waiting for the next crash to prove the switch works.
+                if self_heal and self.state == ServiceState.FAILED:
+                    self._desired = True
+                    self._backoff = self.spec.backoff_initial
+                    self._retry_at = 0.0
+                    self.state = ServiceState.BACKOFF
+            if autostart is not None and autostart != self.autostart:
+                self.autostart = changes["autostart"] = autostart
+            if changes:
+                settings.update(self.spec.name, **changes)
 
     # ----------------------------------------------------------------- spawn
 
@@ -152,46 +169,51 @@ class ManagedService:
     def _clear_pid_file(self) -> None:
         self._pid_file().unlink(missing_ok=True)
 
-    def _pump(self, pipe: IO[str], stream: str) -> None:
-        try:
-            for line in pipe:
-                entry = self.ring.append(line.rstrip("\r\n"), stream)
-                with self._pending_lock:
-                    self._pending.append(entry)
-        except (ValueError, OSError):
-            pass  # pipe closed under us while the process was being killed
-        finally:
-            pipe.close()
+    def _pump(self, proc: PtyProcess) -> None:
+        """Drain the pseudo-console until it closes. Everything is kept verbatim —
+        colour, cursor moves, carriage returns — because the UI renders it in a real
+        terminal emulator rather than a list of strings."""
+        while True:
+            try:
+                data = proc.read(READ_SIZE)
+            except EOFError:
+                break
+            except OSError:
+                break
+            if not data:
+                if not proc.isalive():
+                    break
+                time.sleep(0.02)
+                continue
+            entry = self.ring.append(data)
+            with self._pending_lock:
+                self._pending.append(entry)
 
     def _spawn(self) -> None:
         env = {**os.environ, **self.spec.env}
         logger.info(f"{self.spec.name}: starting — {' '.join(self.spec.cmd)}")
+        self.ring.note(f"starting: {' '.join(self.spec.cmd)}")
 
-        # Claim ownership before the blocking Popen, not after: on Windows the call
+        # Claim ownership before the blocking spawn, not after: on Windows the call
         # takes long enough for the service to bind its port while this thread is
-        # still inside it.
+        # still inside it (D9).
         self.origin = ServiceOrigin.SUPERVISED
         self.state = ServiceState.STARTING
         self._started_at = time.time()
         try:
-            self._proc = subprocess.Popen(
+            self._proc = PtyProcess.spawn(
                 self.spec.cmd,
                 cwd=str(self.spec.cwd) if self.spec.cwd else None,
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
+                dimensions=(self._rows, self._cols),
             )
-        except OSError as error:
+        except Exception as error:  # pywinpty raises bare OSError/RuntimeError
             self.error = str(error)
             self.state = ServiceState.FAILED
             self.origin = ServiceOrigin.NONE
             self._started_at = None
-            self.ring.append(f"failed to start: {error}", "agent")
+            self._proc = None
+            self.ring.note(f"failed to start: {error}")
             logger.error(f"{self.spec.name}: spawn failed — {error}")
             return
 
@@ -203,12 +225,8 @@ class ManagedService:
         self._external_owner = None
         self._adopted = None
 
-        self._readers = [
-            threading.Thread(target=self._pump, args=(pipe, stream), daemon=True)
-            for pipe, stream in ((self._proc.stdout, "stdout"), (self._proc.stderr, "stderr"))
-        ]
-        for reader in self._readers:
-            reader.start()
+        self._reader = threading.Thread(target=self._pump, args=(self._proc,), daemon=True)
+        self._reader.start()
 
         try:
             self._write_pid_file(psutil.Process(self._proc.pid))
@@ -224,21 +242,21 @@ class ManagedService:
         self.origin = ServiceOrigin.NONE
         self.probe = None
         self._clear_pid_file()
-        self.ring.append(f"process exited with code {code}", "agent")
+        self.ring.note(f"process exited with code {code}")
         logger.warning(f"{self.spec.name}: exited with code {code}")
 
-        should_restart = self._desired and (
-            self.spec.restart == RestartPolicy.ALWAYS
-            or (self.spec.restart == RestartPolicy.ON_FAILURE and code not in (0, None))
-        )
-        if should_restart:
+        # A core service exiting is a failure whatever the code says — none of these
+        # are meant to return. So self-heal alone decides, with no exit-code nuance.
+        if self._desired and self.self_heal:
             self.state = ServiceState.BACKOFF
             self._retry_at = time.time() + self._backoff
-            self.ring.append(f"restarting in {self._backoff:.0f}s", "agent")
+            self.ring.note(f"self-heal: restarting in {self._backoff:.0f}s")
             self._backoff = min(self._backoff * 2, self.spec.backoff_max)
         else:
             self._desired = False
-            self.state = ServiceState.STOPPED if code == 0 else ServiceState.FAILED
+            self.state = ServiceState.FAILED
+            if not self.self_heal:
+                self.ring.note("self-heal is off — leaving it stopped")
 
     # ------------------------------------------------------------------ kill
 
@@ -291,16 +309,16 @@ class ManagedService:
             target = psutil.Process(self._proc.pid) if self._proc else self._adopted
             if target is not None:
                 logger.info(f"{self.spec.name}: stopping pid {target.pid}")
-                self.ring.append(f"stopping pid {target.pid}", "agent")
+                self.ring.note(f"stopping pid {target.pid}")
                 self._kill_tree(target)
         except psutil.Error:
             pass  # already gone — the teardown below still has to run
 
         if self._proc is not None:
             try:
-                self._proc.wait(timeout=STOP_GRACE)
-            except subprocess.TimeoutExpired:
-                logger.warning(f"{self.spec.name}: pid {self._proc.pid} did not reap in time")
+                self._proc.close(force=True)
+            except Exception:
+                pass
         self._proc = None
         self._adopted = None
         self._started_at = None
@@ -322,7 +340,7 @@ class ManagedService:
             if self.origin != ServiceOrigin.EXTERNAL or self._external is None:
                 raise ServiceError(f"{self.spec.name} has no external process to take over")
             logger.info(f"{self.spec.name}: taking over pid {self._external.pid}")
-            self.ring.append(f"taking over external pid {self._external.pid}", "agent")
+            self.ring.note(f"taking over external pid {self._external.pid}")
             try:
                 self._kill_tree(self._external)
             except psutil.NoSuchProcess:
@@ -332,12 +350,24 @@ class ManagedService:
             self.origin = ServiceOrigin.NONE
             self.start()
 
+    def resize(self, rows: int, cols: int) -> None:
+        """Keep the pseudo-console the same shape as the terminal on screen —
+        without this, anything that draws to the full width wraps at the wrong
+        column and the pane fills with broken lines."""
+        with self._lock:
+            self._rows, self._cols = rows, cols
+            if self._proc is not None:
+                try:
+                    self._proc.setwinsize(rows, cols)
+                except Exception as error:
+                    logger.debug(f"{self.spec.name}: resize failed — {error}")
+
     # -------------------------------------------------------------- adoption
 
     def adopt(self) -> None:
         """Called once at agent start. A live PID file means a previous agent run
         left this service running; adopting it is what allows the agent to restart
-        mid-scrape without taking the pipeline down with it."""
+        mid-scrape without taking the pipeline down with it (D10)."""
         path = self._pid_file()
         if not path.exists():
             return
@@ -355,7 +385,11 @@ class ManagedService:
         self.state = ServiceState.RUNNING
         self._desired = True
         self._started_at = record.get("started_at") or process.create_time()
-        self.ring.append(f"adopted running pid {process.pid} from a previous agent run", "agent")
+        self.ring.note(
+            f"adopted running pid {process.pid} from a previous agent run — "
+            "its console belonged to that process, so there is no output to show "
+            "until it is restarted"
+        )
         logger.info(f"{self.spec.name}: adopted pid {process.pid}")
 
     def detect_external(self) -> None:
@@ -366,17 +400,16 @@ class ManagedService:
         call the service: uv venv pythons and console-script .exe files are
         trampolines that re-exec the managed interpreter, and vl-server's launcher
         supervises llama-server.exe. So the port owner identifies the service, but
-        `_service_root` is what takeover has to kill."""
+        `_service_root` is what takeover has to kill (D11)."""
         owner = _port_owner(self.spec.probe.port)
         if owner is None:
             return
         root = _service_root(owner)
         if self._external is None or self._external.pid != root.pid:
             described = _describe(root)
-            self.ring.append(
+            self.ring.note(
                 f"port {self.spec.probe.port} held by external pid {owner.pid}, "
-                f"owned by {described['cmdline'] if described else root.pid}",
-                "agent",
+                f"owned by {described['cmdline'] if described else root.pid}"
             )
             logger.info(f"{self.spec.name}: external root pid {root.pid} (port owner {owner.pid})")
         self._external = root
@@ -387,7 +420,7 @@ class ManagedService:
 
     # ------------------------------------------------------------------ tick
 
-    async def _flush_logs(self) -> None:
+    async def _flush_terminal(self) -> None:
         with self._pending_lock:
             if not self._pending:
                 return
@@ -395,7 +428,7 @@ class ManagedService:
         await self._bus.publish(f"services.logs.{self.spec.name}", batch)
 
     async def tick(self) -> None:
-        await self._flush_logs()
+        await self._flush_terminal()
 
         now = time.time()
         if now - self._last_probe_at < self.spec.probe_interval:
@@ -405,7 +438,7 @@ class ManagedService:
         # authoritative until it finishes, so skip this round rather than race it.
         # The lock is held across the probe await deliberately: a probe is bounded
         # by its timeout, and letting an action interleave with the result being
-        # applied is what produced a stale verdict in the first place.
+        # applied is what produced a stale verdict in the first place (D9).
         if not self._lock.acquire(blocking=False):
             return
         try:
@@ -413,9 +446,8 @@ class ManagedService:
 
             # 1. reap anything of ours that died
             if self.origin == ServiceOrigin.SUPERVISED and self._proc is not None:
-                code = self._proc.poll()
-                if code is not None:
-                    self._on_exit(code)
+                if not self._proc.isalive():
+                    self._on_exit(_exit_status(self._proc))
             elif self.origin == ServiceOrigin.ADOPTED and self._adopted is not None:
                 if not self._adopted.is_running():
                     self._on_exit(None)
@@ -446,13 +478,20 @@ class ManagedService:
         if within_grace:
             return
 
+        # Wedged rather than crashed: still holding the port, answering nothing.
+        # A crash-only policy never notices this, which is why self-heal covers it.
         if self._unhealthy_since is None:
             self._unhealthy_since = now
         elif (
-            self.spec.unhealthy_grace > 0
+            self.self_heal
+            and self.spec.unhealthy_grace > 0
             and now - self._unhealthy_since >= self.spec.unhealthy_grace
         ):
-            self.ring.append("probe failing past its grace period — restarting", "agent")
+            self.ring.note(
+                f"self-heal: probe failing for {self.spec.unhealthy_grace:.0f}s "
+                "while the process is still alive — restarting"
+            )
+            self._unhealthy_since = None
             self.restart()
 
     async def _probe_idle(self, now: float) -> None:
@@ -462,16 +501,24 @@ class ManagedService:
             return
 
         if self.origin == ServiceOrigin.EXTERNAL:
-            self.ring.append("external process is gone", "agent")
+            self.ring.note("external process is gone")
             self._external = None
             self._external_owner = None
             self._started_at = None
             self.origin = ServiceOrigin.NONE
             self.state = ServiceState.STOPPED
 
-        if self._desired and now >= self._retry_at:
+        if self._desired and self.self_heal and now >= self._retry_at:
             self.restart_count += 1
             self._spawn()
+
+
+def _exit_status(proc: PtyProcess) -> int | None:
+    try:
+        proc.wait()
+    except Exception:
+        pass
+    return proc.exitstatus
 
 
 # Processes that host a service but are not part of it. Walking up the parent chain
@@ -580,7 +627,7 @@ class Supervisor:
                 if service.probe.ok:
                     service.detect_external()
 
-            if service.spec.autostart and service.origin == ServiceOrigin.NONE:
+            if service.autostart and service.origin == ServiceOrigin.NONE:
                 try:
                     service.start()
                 except ServiceError as error:
@@ -600,7 +647,7 @@ class Supervisor:
     async def shutdown(self) -> None:
         """Supervised processes are deliberately left running: their PID files are
         what the next agent run adopts. Stopping a service is an explicit action,
-        never a side effect of the agent restarting."""
+        never a side effect of the agent restarting (D10)."""
         if self._task is None:
             return
         self._task.cancel()

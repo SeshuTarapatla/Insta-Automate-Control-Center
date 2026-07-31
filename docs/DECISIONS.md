@@ -5,6 +5,69 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 2 implementation session (CP 2.1, revised after review)
+
+### D15 · Services are spawned into a ConPTY, and their output is kept verbatim
+**Chosen:** `PtyProcess.spawn` (pywinpty) instead of `subprocess.Popen`, with the raw stream stored
+as chunks — ANSI escapes, cursor moves and carriage returns intact — and rendered in the app with a
+real terminal emulator (`xterm.dart`). The rotating file on disk is the only flattened copy
+(`render_plain` strips escapes and keeps the last carriage-return frame).
+**Rejected:** pipes with line-oriented storage, which is what CP 2.1 originally shipped.
+**Why:** the requirement is a terminal, not a log list, and these panes replace `wt.exe` tabs — so
+they have to show what those tabs showed. Measured on this machine: under a pipe the child sees
+`isatty() == False` and suppresses colour; under ConPTY it reports `isatty: True` and emits
+`\x1b[32m…` and `\rprogress 3/3` exactly as the terminal did. Line-oriented storage
+(`line.rstrip("\r\n")`) destroys precisely the bytes a terminal needs — a progress bar is one line
+rewritten a thousand times, and splitting on newlines turns it into nothing.
+**Cost:** a pseudo-console has one stream, so stdout and stderr merge and can no longer be tagged
+separately. Terminal size must be plumbed from the UI to the process (`POST /services/{name}/resize`),
+because otherwise anything drawing to the full width wraps at the wrong column. Scrollback is
+bounded by bytes (512 KB), not lines, since a line count no longer bounds memory.
+
+### D14 · The agent owns restart; the services' own restart loops are switched off
+**Chosen:** one supervisor, at the agent. `start_vl_server.py` is launched with its existing
+`--no-autorestart` flag, and adb runs as `-a nodaemon server start` rather than `-a start-server`.
+**Rejected:** leaving each service to heal itself.
+**Why:** the restart logic was in the wrong place and covered one service of four. Measured before
+changing anything: only `start_vl_server.py` retried; wsl-bridge had none; and `adb -a start-server`
+forks so the shortcut's tab exits immediately and *nothing* supervises adb at all. Nested
+supervisors also fight — the launcher would resurrect llama-server underneath a stop or takeover
+(D11) — and a restart count printed to an unread terminal tab is information destroyed at the
+moment it is produced, which is exactly the diagnostic needed for "vl-server sometimes crashes".
+**Cost:** the flag must stay in the spec; if someone launches `start_vl_server.py` by hand it will
+still self-restart and be detected as `external` rather than supervised. No change was needed in the
+`Insta-Automate` repo — the flag already existed.
+
+### D13 · `ollama serve` is dropped, not supervised
+**Chosen:** the agent supervises three services; `ollama serve` leaves the startup set entirely.
+**Rejected:** carrying it over as a fourth supervised service.
+**Why:** nothing in the pipeline talks to 11434 — `vars.py` points at `VL_SERVER_URL` on 11500, and
+`OLLAMA_URL` is defined but never read. `start_vl_server.py` needs Ollama *installed* (it resolves
+the model blob out of `~/.ollama/models` and runs Ollama's bundled `llama-server.exe`), not serving.
+`Ollama.lnk` is independently in the Startup folder, so the tab was redundant twice over.
+**Cost:** if something outside Insta-Automate ever wants Ollama's own API, it is no longer started
+by this path — the Startup shortcut still covers it.
+
+### D12 · Service switches live in `services.json`, not `config.env`
+**Chosen:** per-service `self_heal` and `autostart` persist to
+`%LOCALAPPDATA%\ia-agent\services.json`, applied over the spec defaults at construction.
+**Rejected:** adding them to `config.env` alongside the flow switches.
+**Why:** `config.env` is IA_DIR-relative, Syncthing-replicated to the phone and read live by the
+flows inside the pods. Which Windows processes *this machine* supervises is meaningless to a pod and
+actively wrong to sync to a phone. The two files answer different questions: `config.env` is what
+the pipeline does, `services.json` is how this host runs it.
+**Cost:** a second settings file, and the Services UI cannot reuse the config screen's plumbing.
+
+### Self-heal semantics (implements the requirement, no separate decision)
+`RestartPolicy` (always / on-failure / never) collapsed into one `self_heal` boolean, because that
+is what was actually asked for. On: restart on exit *whatever the code*, since none of these
+services is meant to return, and also restart a process that stays alive while its probe fails for
+`unhealthy_grace` (60 s) — wedging is the failure a crash-only policy never notices. Off: leave it
+`failed` with its exit code and terminal intact. Turning the switch back on rescues an
+already-failed service rather than waiting for the next crash to prove the switch works.
+
+---
+
 ## 2026-07-31 — Phase 2 implementation session (CP 2.1)
 
 ### D11 · Takeover targets the *service root*, not the process holding the port

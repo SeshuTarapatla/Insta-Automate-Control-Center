@@ -6,12 +6,13 @@ Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 so there is nothing for the user to click until CP 2.4.
 
 `config.env` is fully controllable from the app (CP 1.1–1.4). The agent now also supervises
-processes: `agent/src/ia_agent/services/` holds the spec/probe/log-ring/supervisor engine plus the
-three real service specs, exposed at `GET /api/services` and
-`POST /api/services/{name}/{start|stop|restart|takeover}`. Autostart is **off** — the `wt.exe`
-shortcut still owns startup until CP 2.5 — so today the agent adopts or observes rather than
-spawns. Next up is **CP 2.2** (health probes + functional self-tests, especially vl-server's
-ms/image).
+processes: `agent/src/ia_agent/services/` holds the spec/probe/terminal-ring/supervisor engine plus
+the three real service specs, exposed at `GET /api/services`, `PATCH /api/services/{name}` and
+`POST /api/services/{name}/{start|stop|restart|takeover|resize}`. Services are spawned into a
+**ConPTY** and their output kept verbatim, so CP 2.4 renders a real terminal rather than a log list.
+Each service has a **self-heal** switch (persisted in `services.json`); autostart is **off** until
+CP 2.5 hands startup ownership to the agent, so today it adopts or observes rather than spawns.
+Next up is **CP 2.2** (functional self-tests, especially vl-server's ms/image).
 
 ---
 
@@ -96,6 +97,11 @@ with its own restart loop. Live chains, all launched from one `WindowsTerminal.e
 `wsl-bridge.exe → python → python:8000`, `python start_vl_server.py → llama-server.exe:11500`.
 Anything that identifies, kills, or adopts a process must walk the tree — see D11.
 
+**Startup today** — `%APPDATA%\…\Startup\dev-startup.exe.lnk`, despite the name, is `wt.exe` with
+four tabs: `adb -a start-server ; ollama serve ; start_vl_server.py ; wsl-bridge.exe`. Note
+`start-server` *forks*, so that tab exits and nothing supervises adb. CP 2.5 replaces the whole
+shortcut with a logon task running `ia-agent`; `ollama serve` is dropped (D13).
+
 **IA_DIR** = `C:\Users\seshu\Pictures\insta-automate`, hostPath-mounted into both IA pods at
 `/insta-automate`. Paths that cross the pod↔host boundary must be **IA_DIR-relative**.
 
@@ -139,6 +145,10 @@ Recorded in [docs/DECISIONS.md](docs/DECISIONS.md):
    because `uv`/`python` are console-subsystem executables and `dart:io` doesn't expose that flag.
 6. Killing a service means killing its **root**, not the process holding the port (D11), and the
    agent never stops services when it exits (D10). Supervisor state is lock-guarded (D9).
+7. **The agent is the only supervisor.** Services' own restart loops are switched off
+   (`start_vl_server.py --no-autorestart`), because nested supervisors fight each other and hide
+   their restart counts (D14). Service output is a raw ConPTY stream kept verbatim — never
+   line-strip it, that is what a terminal needs (D15).
 
 ---
 

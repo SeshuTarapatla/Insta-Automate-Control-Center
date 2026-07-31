@@ -22,6 +22,7 @@ dependencies = [
     "telethon>=1.42.0",
     "my-modules",
     "pillow>=12.2.0",
+    "pywinpty>=3.0.5",
 ]
 
 [project.scripts]
