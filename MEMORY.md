@@ -18,9 +18,14 @@ Full context lives in [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHIT
 - **Committed secrets** — `Insta-Automate/Dockerfile` holds the Postgres password, the Telegram
   bot token and two Telethon session strings in plaintext; `ia build` regenerates it, so it never
   needed committing. Rotation pending (PLAN Q10).
-- **Phase 0 status** — CP 0.1 and CP 0.2 committed. CP 0.3 (Flutter shell) is built; the user
-  tests UI/manual behavior themselves and reports back (EXPECTATION.md #8) rather than Claude
-  driving the app or taking screenshots.
+- **The user drives the app, never Claude** — Claude may build, analyze and *start* the Flutter
+  app, then must stop and hand over. No clicking, navigating or screenshotting the GUI: the laptop
+  is single-screen with VS Code maximized, so driving the window disrupts the workspace.
+  EXPECTATION.md #8, CLAUDE.md rule 5. Backend (agent REST/WS, config round-trips) is still
+  Claude's to verify with curl/scripts. **Violated once in the CP 1.3 session — do not repeat.**
+- **Phase status** — Phase 0 complete (CP 0.1–0.3). Phase 1 in progress: CP 1.1 (config engine)
+  and CP 1.2 (config API) committed and backend-verified; CP 1.3 (Limits UI) is built and awaiting
+  the user's manual test.
 - **Agent launch avoids a console flash** — `app/lib/core/agent_launcher.dart` uses
   `package:win32`'s `CreateProcess` with `CREATE_NO_WINDOW`, not `dart:io`'s `Process.start`. See
   DECISIONS D5.

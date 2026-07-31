@@ -14,6 +14,7 @@ This is a very complex question due to the complexity of the `Insta-Automate` pr
 7. Even though prefect is exposed to my machine via localhost from k3s. I need to see the ui in browser for flows and everytime and have to manually change/navigate to new flowruns manually.
 8. I have an other flutter project which is for mobile called `Insta-Automate-Client`. The IA_DIR is actually synced with android using `Syncthing` app and then I use the app to review images, move them for next flow stage run or delete them. I also use this to update some of the limits and trigger switches which are present as `config.env` in IA_DIR. And since this is syncthing based there is a delay and also this app doesnt have any notifications.
 For now these are the complexities I can think of & I'll update if I find any new
+9. Deployment: Everytime anything changes I have to manually run the kubectl commands to undeploy and redeploy.
 
 So what features the control center should have to solve about issues?
 1. Ability to control & change each flow limits via control center making the limits dynamic and easy to modify from config.env
@@ -24,11 +25,12 @@ So what features the control center should have to solve about issues?
 6. I explained wsl bridge for you to have a look at it and we need to run the wsl-bridge just like a core service as it provides scrcpy endpoint. Same point 5 expectations
 7. For this I want live logs within the app that changes to currently running flow automatically. Now this should also somehow display/render the respective screenshot being scanned or processed from within the flow. Each flow has a different task hence you need to consider all images and proper way of rendering them so that what ever we are showing on this screen actually makes sense with the objective of the flow
 8. For this I can't be at the laptop 24/7 so syncthing does makes sense. But lets say I'm within the same wifi of my laptop I wish to connect to the control center to my mobile app via qr code scan and then my app also becomes much more powerful and instantenous also serving notifications via app itself etc. For this we may need to rewrite the current implementation of sending notifications from flows via telethon to dynamic way of if a client is active then send normal app notifications if not then fallback to telegram.
+9. Ability to deploy, undeploy and restart helmchart and pods from within the app.
 
 Important things to remembers:
 1. All the context files like CLAUDE.md and memory files like MEMORY.md should always be put only inside the repository and not anywhere else in the laptop file system
 2. Whenever I'm having claude session all the important things and decisions should be updated in the CLAUDE.md or plans md files 
-3. The app itself should be very sophisticated like a very mature control center with best UI and UX no compromise. 
+3. The app itself should be very sophisticated like a very mature control center with best UI and UX no compromise. It should be visually very mature like making right decision for the UI and UX makes the app usage that easier.
 4. When this huge of a project is being coded I know you do have to modify some code in other dependent repositories as well. For that you should always remember that all the projects currently work fine so if youre editing anything for the sake this repository in others always be on feature branch until I'm satified here in the project you should not at all merge anything from outside repositories
 5. You should plan in phases and implement stuff in a checkpoints so that I can keep up test things and then commit
 6. For every meaningful session you should remind me of thing like this sessions goal is done open a new session You have to notify me.

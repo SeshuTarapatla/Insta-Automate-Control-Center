@@ -254,13 +254,18 @@ Kill the mobile app → the next notification arrives on Telegram instead.
 
 ---
 
-## Phase 7 — Ops & insight
+## Phase 7 — Ops & insight · solves #9
 
 ### CP 7.1 — Ops panel 🟢 🟣
 `ia build`, `helm upgrade`/`uninstall`, pod restart, `prefect-k3s purge`, `ia db backup`/`restore`
 — each with streamed output on `ops.logs`. Surface `IA_AGENT_URL`/`IA_AGENT_TOKEN` through helm
 values so they change without an image rebuild. This closes the loop on the
-*change → commit → build → undeploy → deploy* chore for the cases that still need a rebuild.
+*change → commit → build → undeploy → deploy* chore for the cases that still need a rebuild,
+and retires the hand-run `kubectl` undeploy/redeploy cycle (EXPECTATION.md complexity #9).
+
+Note that Phases 1 and 3 already remove *most* of the reason to redeploy at all: limits and
+delays become live-read config, so the rebuild chore stops applying to the changes you make
+most often. Phase 7 covers what genuinely still needs an image or a chart change.
 
 ### CP 7.2 — Insights 🟢
 Funnel charts, daily limit burn-down history, per-entity yield ranking, and a classify-accuracy
@@ -335,6 +340,10 @@ Per your working rules:
 - Cross-repo work happens only on the feature branches named at the top of this file and is
   **never merged** until you accept the control center.
 - Every checkpoint ends with a commit and a manual test you run.
+- **Every UI test in this document is yours to perform, not Claude's** (EXPECTATION.md #8).
+  Claude builds, analyzes and starts the app, then hands over and waits. It never clicks,
+  navigates or screenshots the window — single screen, VS Code maximized. Agent-side checks
+  (REST, WS, `config.env` round-trips) Claude still verifies itself.
 - Decisions land in [DECISIONS.md](DECISIONS.md); durable context lands in
   [../CLAUDE.md](../CLAUDE.md).
 - A natural session boundary is one phase (or one checkpoint for Phases 4 and 5, which are

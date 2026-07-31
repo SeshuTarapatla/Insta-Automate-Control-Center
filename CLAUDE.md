@@ -49,10 +49,19 @@ Supporting: `D:\Coding\my-modules` (logger, postgres, kubernetes, scrcpy, win32,
    until the control center is accepted. Never commit to `main` in another repo.
 4. **Build in phases, stop at checkpoints.** Each `CP` in the plan is a commit boundary with a
    manual test the user runs before moving on.
-5. **Say when a session is done.** When a phase's goal is met, tell the user explicitly that the
+5. **The user drives the app, never you.** (EXPECTATION.md #8 — this is absolute.) Do **not**
+   click, navigate, screenshot, or otherwise drive the Flutter app, and do not use the `run`
+   skill's GUI-driving patterns on it. The laptop has a single screen with VS Code maximized, so
+   automated window driving actively disrupts the user's workspace. What you may do: build it,
+   `flutter analyze` it, start it, and then **stop and hand over** — say it's running and what to
+   check. The user tests, kills it, and reports back. Backend pieces (the agent's REST/WS surface,
+   `config.env` round-trips) you *should* still verify yourself with `curl`/scripts — the rule is
+   about the GUI, not about skipping verification.
+6. **Say when a session is done.** When a phase's goal is met, tell the user explicitly that the
    session's goal is complete and a fresh session should be opened.
-6. **No compromise on UI/UX.** This is meant to feel like a mature control center, not a form
-   over a config file.
+7. **No compromise on UI/UX.** This is meant to feel like a mature control center, not a form
+   over a config file — visually mature, with UI/UX decisions that make the app genuinely easier
+   to use, not merely functional.
 
 ---
 
