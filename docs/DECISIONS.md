@@ -5,6 +5,79 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 4 implementation session (CP 4.1, log aggregation)
+
+### D30 · Flow-run log tailing: heartbeat-first discovery, per-run rings, scheduler-pod lines merged by append order
+
+**Chosen:** `ia_agent/flowruns.py`'s `FlowRunTailer` ticks every `TICK = 1.0`s. Active-run
+discovery (ARCHITECTURE §5.2) checks the scheduler mirror first — any flow whose heartbeat reads
+`phase == "running"` hands over `last_run.id` directly, since `Deployment._last_run` (pipeline
+side, CP 3.2) already carries the in-progress run's real id regardless of state, no pipeline change
+needed. Falling back to Prefect's own `flow_runs/filter` (state type `RUNNING`, filtered to the five
+deployment ids resolved once and cached) only fires when the mirror is offline or reports nothing
+running — the gap right after an agent restart, before any heartbeat has landed.
+
+Each tracked run gets its own `Ring` (structured entries: `seq`, `ts`, `source`, `level`, `task`,
+`message`), polled via `POST /logs/filter` with `timestamp.after_=<cursor>` — exclusive, so the
+same-timestamp boundary is deduped by log `id`, not by timestamp, since two rows in one tick
+legitimately share a timestamp. `task_run_id` → task name is resolved once per id and cached
+process-wide (`GET /task_runs/{id}`), not per row.
+
+**The scheduler pod's container log (where trigger/gate decisions print, not inside any flow run)
+is merged by writing its lines directly into every currently-active run's ring**, in the order
+observed — not by a timestamp-sorted interleave with a separate seq space. This reuses D18's
+already-accepted precedent exactly: a ring's `seq` means "the order this was appended," and replay
+correctness follows from that, not from wall-clock ordering. The alternative (merge-at-read-time by
+sorting two independently-seq'd streams by `ts`) would need seq to be reassigned per request, which
+breaks the "since= means resume, never re-see, never gap" contract every other channel in this repo
+holds. A concurrent-flows edge case exists (two flows "running" at once both get every scheduler
+line) — accepted as harmless duplication rather than engineered around, since it is rare.
+
+A run that leaves the active set is still polled for `FINISHED_GRACE = 5.0`s to catch trailing log
+lines (Prefect's own log-write lag is a few hundred ms, not zero), then frozen — replayable via
+`?since=` forever after, but no longer costing an API call every tick. `RETENTION_RUNS = 20`: oldest
+*inactive* ring is evicted once exceeded; an active run is never evicted regardless of count.
+
+**REST** (`api/flowruns.py`): `GET /api/flow-runs?limit=` always asks Prefect directly (cheap, one
+POST, always authoritative) rather than only listing what this agent happened to tail, annotating
+each row with `active` from the local tailer. `GET /api/flow-runs/{id}/logs?since=` replays the
+local ring (`live: true`) when one exists; a run this agent never tailed — from before this agent
+started, or one that finished without ever being "active" while it was up — gets a one-shot fetch
+straight from Prefect instead (`live: false`, real content, no further updates). **WS**:
+`flowrun.logs`, one channel, every new entry tagged with its `flow_run_id`/`flow` — matches D6's
+existing "the app filters by channel and payload, not per-run subscriptions" shape.
+
+**Measured, not reasoned — the installed `kubernetes` client's `read_namespaced_pod_log` silently
+drops `since_time`.** ARCHITECTURE §5.2 assumed an absolute cursor; live against the real cluster,
+passing `since_time` raised `ApiTypeError: unexpected keyword argument` — the generated Python
+bindings for this endpoint never wired that parameter up at all (a known gap in the client, not a
+server limitation: the k8s API itself accepts it fine). Switched to `since_seconds` (relative),
+computed each poll from `time.time() - cursor`, with the caller re-filtering the returned window
+against the exact parsed timestamp — the same "trust nothing about the boundary, dedupe yourself"
+shape `run_logs` already needed for its own `after_` cursor.
+
+**Also measured: this client version hands back `str(bytes)` for this one endpoint** — the literal
+characters `b'2026-08-01T...'`, not real bytes and not decoded text — rather than the plain string
+every other call in `integrations/kube.py` gets. `_decode_pod_log` detects the `b'`/`b"` prefix and
+`ast.literal_eval`s it back before decoding UTF-8; every other kube.py function was unaffected and
+left alone.
+
+**Verified:** `agent/tests/test_flowruns.py` (36/36) — `Ring` seq/replay, both discovery paths,
+per-run polling (boundary dedup, task-name caching, level mapping), scheduler-pod merge scoped to
+active runs only, eviction protecting active runs, and a live app exercising every REST endpoint
+plus a real `flowrun.logs` WS delivery — all with `prefect`/`kube` module functions monkeypatched,
+same convention as `test_scheduler.py`'s `build_specs` swap. `agent/tests/check_flowruns.py` (new,
+read-only) then ran the *real* functions against the live Prefect server and k3s cluster — resolved
+all five deployment ids, listed real recent flow runs, fetched real logs for one and resolved a real
+task name, and tailed the real scheduler pod's container log end to end, which is what caught both
+`since_time` and the bytes-repr quirk above; nothing it touches is capable of starting, stopping, or
+otherwise mutating a flow run, pod, or service. All five prior suites unchanged: 71/71, 32/32,
+26/26, 24/24, 20/20. `test_ui_contract.py`'s `terminal_available` `KeyError` reproduces identically
+on a clean `main` with none of this session's changes applied (confirmed via `git stash`) — a
+pre-existing issue, not a regression from this work, and out of scope for this checkpoint.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.5, Flows UI)
 
 ### D29 · `force_run` bypasses the rate gate and the switch, never the no-work gate; `pause`/`resume`/`reload_config` stay unwired

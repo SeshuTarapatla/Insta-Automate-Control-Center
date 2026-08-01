@@ -2,6 +2,7 @@
 log streaming arrive in later phases, and guessing their shape now would be
 speculation."""
 import threading
+from ast import literal_eval
 
 from kubernetes import client, config
 
@@ -72,6 +73,59 @@ def pods(deployment: str) -> list[dict]:
             }
         )
     return found
+
+
+def _decode_pod_log(raw: object) -> str:
+    """The installed client sometimes hands back `str(bytes_response)` instead
+    of a decoded string for this endpoint — i.e. the literal characters
+    `b'...'` — rather than actual bytes or real text. Unwrap that case; pass
+    everything else through untouched."""
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    if isinstance(raw, str) and (raw.startswith("b'") or raw.startswith('b"')):
+        try:
+            return literal_eval(raw).decode("utf-8", errors="replace")
+        except (ValueError, SyntaxError):
+            pass
+    return raw  # type: ignore[return-value]
+
+
+def pod_logs(deployment: str, since_seconds: int | None = None, tail_lines: int = 200) -> list[tuple[str, str]]:
+    """New lines from one pod's container log, each as `(rfc3339_timestamp, text)`.
+
+    `timestamps=True` prefixes every line with its own RFC3339 nanosecond
+    timestamp, which is what lets the caller dedupe against a cursor (CP 4.1).
+    The cursor here is `since_seconds` (relative), **not** `since_time`
+    (absolute) — the installed `kubernetes` client's generated bindings for
+    this endpoint never wired up `since_time` at all (`ApiTypeError:
+    unexpected keyword argument`), a known gap in the generated client rather
+    than a server limitation. The caller is expected to re-filter the
+    (slightly overlapping) window this returns against its own last-seen
+    timestamp, the same dedupe-at-the-boundary shape `run_logs` needs too.
+
+    Only the first Running pod of the deployment is read — the scheduler runs
+    as a single replica, and reading more would interleave two pods' lines
+    with no way to tell them apart.
+
+    A line the pod itself wrapped (Rich renders to the container's detected
+    console width) still arrives as separate k8s log lines with no marker
+    tying them back together — merged multi-line messages are a known gap,
+    not attempted here."""
+    core, _ = _clients()
+    target = next((pod for pod in pods(deployment) if pod["phase"] == "Running"), None)
+    if target is None:
+        return []
+    kwargs: dict = {"timestamps": True, "tail_lines": tail_lines}
+    if since_seconds is not None:
+        kwargs["since_seconds"] = max(1, since_seconds)
+    raw = core.read_namespaced_pod_log(target["name"], NAMESPACE, **kwargs)
+    text = _decode_pod_log(raw)
+    lines = []
+    for line in text.splitlines():
+        ts, _, rest = line.partition(" ")
+        if ts:
+            lines.append((ts, rest))
+    return lines
 
 
 def secret(name: str) -> dict:

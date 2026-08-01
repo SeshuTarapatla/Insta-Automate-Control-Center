@@ -503,10 +503,42 @@ a multi-second gap.
 
 Goal: the showpiece screen.
 
-### CP 4.1 — Log aggregation 🟢
+### CP 4.1 — Log aggregation 🟢 ✅ done
 Prefect log tailer (incremental by timestamp cursor, ~1 s per active run), active-run discovery
 from the heartbeat with a `flow_runs/filter` fallback, and the scheduler pod's container log
 merged in via the k8s API. Unified log model: ts, source, level, task, message.
+
+**What landed** — `ia_agent/flowruns.py`'s `FlowRunTailer`: heartbeat-first active-run discovery
+(a running flow's `last_run.id` *is* its in-progress run, no pipeline change needed) falling back to
+Prefect's `flow_runs/filter` when the mirror is offline; a per-run `Ring` (`seq`-replayable, same
+discipline as D18's service terminal ring) polled via `logs/filter`, deduped at the `after_`
+boundary by log id, with `task_run_id` → name resolved once and cached; the scheduler pod's
+container log merged into every currently-active run's ring in append order rather than a
+timestamp-sorted interleave, which would have needed a second seq space (D30). New REST —
+`GET /api/flow-runs?limit=` · `GET /api/flow-runs/{id}` · `GET /api/flow-runs/{id}/logs?since=`
+(§3.1) — and WS channel `flowrun.logs` (§3.2), wired into `app.py`'s lifespan alongside the
+scheduler mirror and supervisor.
+
+Two things only live verification against the real cluster caught (D30): the installed
+`kubernetes` client's generated bindings never wired up `since_time` for pod log reads at all, so
+the cursor is `since_seconds` (relative) with the caller re-filtering the overlap by parsed
+timestamp instead; and the same client hands back the literal string `b'...'` — not real bytes,
+not decoded text — for that one endpoint, unwrapped via `ast.literal_eval`.
+
+**Verified:** `agent/tests/test_flowruns.py`, 36/36 (Ring replay, both discovery paths, per-run
+polling, scheduler-pod merge scoped to only-active runs, eviction, and a live app exercising every
+REST endpoint plus a real WS delivery — all against monkeypatched `prefect`/`kube` functions, same
+convention as `test_scheduler.py`). `agent/tests/check_flowruns.py` (new, read-only) then ran the
+real functions against the live Prefect server and k3s cluster: resolved all five deployment ids,
+listed real recent runs, fetched real logs and a real task name, and tailed the real scheduler pod
+end to end — nothing it touches can start, stop, or mutate anything. All five prior suites
+unchanged (71/71, 32/32, 26/26, 24/24, 20/20); `test_ui_contract.py`'s pre-existing
+`terminal_available` `KeyError` reproduces identically on a clean `main`, unrelated to this
+checkpoint.
+
+**No UI to test yet** — CP 4.4 is what puts these endpoints on screen. This checkpoint is agent-only
+(🟢) and was verified the same way CP 3.4 was: agent-side test suite plus live read-only calls
+against the real Prefect/k3s, no GUI involved.
 
 ### CP 4.2 — Event pipeline 🟢
 `POST /api/events`; **cache image bytes on receipt** (content-addressed under

@@ -1,14 +1,16 @@
 # CLAUDE.md — Insta-Automate Control Center
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted** (accepted
-2026-07-31 — the user accepted Phase 2 outright without a separate CP 2.6 verification pass). The
+[docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1 done**
+(Live logs & flow-aware imagery; log aggregation). Phase 2 accepted 2026-07-31 — the user accepted
+it outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
 lives in a detached service-host process, so a service survives the agent dying any way (D23).
-**Phase 3 is open, CP 3.1–3.4 done** (Trigger delays & conditions; CP 3.1–3.3 in `Insta-Automate` on
-`feat/control-center`, CP 3.4 in this repo's agent). `Limit` in `models/meta.py` is generalised
+**Phase 3, CP 3.1–3.4** (Trigger delays & conditions; CP 3.1–3.3 in `Insta-Automate` on
+`feat/control-center`, CP 3.4 in this repo's agent) landed first. `Limit` in `models/meta.py` is generalised
 into typed `Config` (`Limit = Config` alias, no call sites changed), carrying every key from
 ARCHITECTURE §4.1 with coded defaults for the ones not yet in `config.env`. Q3 is answered:
 `PROFILES/REELS/POSTS` really are the live daily scan caps, and the `config.env` comment that said
@@ -51,6 +53,25 @@ glitch (D29 — unverified by Claude directly, reasoned from your screenshots, s
 is your job per rule 5). Verified without any live Telegram/DB/device call throughout — see D29 for
 the full history, including the live pipeline verification technique (`GIT_BRANCH` env var pointing
 a rebuilt image's flow deployments at `feat/control-center` for testing, reverts once merged).
+
+**Phase 4 (Live logs & flow-aware imagery) is open, CP 4.1 (Log aggregation) done, agent-only, 🟢.**
+New `ia_agent/flowruns.py`'s `FlowRunTailer`: active-run discovery prefers the scheduler heartbeat
+(a `phase == "running"` flow's `last_run.id` already *is* the in-progress run — no pipeline change
+needed), falling back to Prefect's `flow_runs/filter` when the mirror is offline; a per-run `Ring`
+(same `seq`-replay discipline as the service terminal's, D18) polled via `logs/filter`, deduped at
+the boundary by log id; the scheduler pod's own container log (where trigger/gate decisions print)
+merged into every currently-active run's ring in append order, not a timestamp-sorted interleave —
+reusing D18's precedent rather than inventing a second seq space (D30). New REST
+(`GET /api/flow-runs[?limit=]` · `GET /api/flow-runs/{id}` · `GET /api/flow-runs/{id}/logs?since=`)
+and WS channel `flowrun.logs`. Live verification against the real cluster caught two client-library
+quirks before they could ship: the installed `kubernetes` package's generated bindings never wired
+up `since_time` for pod log reads (switched to relative `since_seconds`, re-filtered by the caller),
+and that same call hands back the literal string `b'...'` instead of decoded text for pod logs only
+(unwrapped via `ast.literal_eval`) — both D30. Verified: `agent/tests/test_flowruns.py` (36/36,
+Prefect/k8s calls monkeypatched) plus new read-only `check_flowruns.py` against the real Prefect
+server and k3s cluster. All prior suites unchanged; `test_ui_contract.py`'s `terminal_available`
+`KeyError` is a pre-existing issue (reproduces on a clean `main`, confirmed via `git stash`), not a
+regression from this session. Nothing to test in the GUI yet — CP 4.4 is what puts this on screen.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

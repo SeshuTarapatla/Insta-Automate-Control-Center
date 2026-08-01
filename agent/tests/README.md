@@ -9,9 +9,13 @@ uv run --project agent python agent/tests/test_supervisor.py     # 57 checks, en
 uv run --project agent python agent/tests/test_e2e.py            # 32 checks, real app + real WS
 uv run --project agent python agent/tests/test_dependencies.py   # 26 checks, cluster faked out
 uv run --project agent python agent/tests/test_ui_contract.py    # 49 checks, payloads the app decodes
+uv run --project agent python agent/tests/test_scheduler.py      # 24 checks, scheduler mirror (CP 3.4)
+uv run --project agent python agent/tests/test_startup.py        # 20 checks, logon task install/remove
+uv run --project agent python agent/tests/test_flowruns.py       # 36 checks, flow-run log tailer (CP 4.1)
 uv run --project agent python agent/tests/check_roots.py         # read-only, live machine
 uv run --project agent python agent/tests/check_services.py      # runs the real self-tests
 uv run --project agent python agent/tests/check_deps.py [-v]     # runs the real dependency panel
+uv run --project agent python agent/tests/check_flowruns.py      # read-only, real Prefect + k3s log calls
 ```
 
 The `check_*` scripts are the only ones that touch the real adb / vl-server / wsl-bridge / cluster,
