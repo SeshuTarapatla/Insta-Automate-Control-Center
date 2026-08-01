@@ -12,7 +12,10 @@ parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mut
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
 pairing & notification rework) is open, CP 6.1 (Pairing + notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡** —
-see the dedicated paragraphs below. Phase 2 accepted
+see the dedicated paragraphs below. **2026-08-02: a live incident (`entity-follow` permanently
+frozen "running", zero triggers for hours) uncovered and fixed five chained bugs — see D55 and the
+dedicated paragraph below. CP 6.2 is now deployed to the live worker pod for the first time**,
+earlier than rule 3's original "wait until accepted" plan, because it was needed for the fix. Phase 2 accepted
 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
@@ -532,6 +535,37 @@ its CP 0.3 placeholder. Checked with you before writing any code, same as CP 4.5
 forks: pairing (QR, paired-device list, revoke) becomes a new "Devices" tab in Settings alongside
 Flows/Limits/Queue; the notification center becomes a bell icon in the title bar, reachable from
 every screen. Neither gets a new nav destination.
+
+**2026-08-02 live incident: `entity-follow` frozen at `phase="running"` for hours, zero flow runs
+triggered despite 191 real files queued (D55, full chain in DECISIONS.md).** Root cause:
+`wait_for_device()` (`tasks/device.py`) had no exception handling, so a transient adb connection
+refusal killed `entity_follow_trigger()`'s `asyncio.create_task()` permanently and silently — the
+frozen phase was just the last state written before the task died. Fixed at the source
+(`wait_for_device` now treats a raised exception the same as "not connected yet") plus defense in
+depth (all five trigger loops and `keep_telegram_alive` now wrapped in try/except, retrying after
+one `TICK` instead of dying forever). Chasing why adb kept refusing connections surfaced four more
+real bugs, chained: the host's external (non-agent) adb process was bound to `127.0.0.1` only —
+unreachable from any pod — because scrcpy's bundled adb.exe (version-mismatched vs the one
+actually running the server) kills and restarts the server on every launch, and
+`device.start_scrcpy()` fires on every successful device check; fixed with `my_modules.scrcpy`
+now pinning `--adb=` to the canonical binary (branch `fix/scrcpy-adb-version-pin` in `my-modules`,
+hotfixed live into `wsl-bridge`'s venv pending a real release). Deploying the scheduler fix hit the
+same churn mid-restart and produced a genuine `CrashLoopBackOff` (`serve()`'s own unguarded
+`wait_for_device()` call) — also taught that `ia build` reuses the same image tag every time, so
+`kubectl rollout undo` does **not** actually restore old code once a new build has overwritten that
+tag locally. Once recovered, the first real flow run crashed on `ModuleNotFoundError:
+insta_automate.controllers.notify` — the worker pod predated CP 6.2 entirely (deliberately never
+redeployed per its own checkpoint notes) — restarted with your explicit approval, which re-hit
+D38's known work-pool-orphaning init container, fixed the documented way (`ia prefect deploy`).
+That command run from a bare local shell turned out to silently deploy from `main` instead of
+`feat/control-center` (`GIT_BRANCH` unset locally, unlike the pod), regressing `entity-follow`'s
+deployment schema and dropping its `force` parameter — fixed by setting `GIT_BRANCH` explicitly
+for the command. **Verified end-to-end for real:** a `force_run` via the agent's REST API (not the
+GUI) completed in 92.4s, matching historical successful-run durations; adb held `0.0.0.0`-bound and
+`origin: supervised` for the rest of the session. All other four flows confirmed still gating
+correctly after every restart. Not yet watched over a long unattended window — see D55 for what's
+still a hotfix rather than a real fix (the scrcpy pin) and what's now live earlier than planned (CP
+6.2 on the worker).
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
