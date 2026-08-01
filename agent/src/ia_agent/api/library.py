@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ia_agent import images
-from ia_agent.library import folders, ops, settings
+from ia_agent.library import entity_view, folders, ops, settings
 from ia_agent.library.counts import LibraryCounts
 
 MIN_WIDTH = 16
@@ -106,6 +106,15 @@ def create_library_router(counts: LibraryCounts) -> APIRouter:
         if thumb is None:
             raise HTTPException(status_code=404, detail=f"not found: {path}")
         return FileResponse(thumb, media_type="image/jpeg")
+
+    @router.get("/entity/{root}/yield")
+    async def get_entity_yield(root: str) -> dict:
+        """CP 5.4 — one entity's funnel across every stage. 404 when `root`
+        isn't a known `Entity.id`, same as any other not-found path here."""
+        result = await asyncio.to_thread(entity_view.fetch, root, counts)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"unknown entity: {root}")
+        return result
 
     @router.get("/move-targets")
     async def get_move_targets() -> dict:

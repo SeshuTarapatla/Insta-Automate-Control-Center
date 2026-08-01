@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/library_models.dart';
+import 'entity_yield_dialog.dart';
 import 'library_controller.dart';
 
 /// Shared by the toolbar's Delete button and the grid's Delete-key shortcut
@@ -123,6 +124,12 @@ class LibraryToolbar extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (entity != null)
+                IconButton(
+                  tooltip: 'View entity across every stage',
+                  icon: const Icon(Icons.query_stats, size: 20),
+                  onPressed: () => showEntityYieldDialog(context, entity!),
+                ),
               if (images != null) ...[
                 const SizedBox(width: 12),
                 Text('${images.total}', style: theme.textTheme.bodySmall),

@@ -7,8 +7,10 @@ log + event aggregation, flow instrumentation, the Live screen, device view — 
 2026-08-01. The Live screen's visual polish pass flagged as open at the time happened later the same
 day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wrong against for the
 first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
-parity) is open, CP 5.1 (Library API), CP 5.2 (Mutations) and CP 5.3 (Library UI) done** (CP 5.1/5.2
-agent-only 🟢, CP 5.3 user-verified 🟢) — see the dedicated paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
+parity) — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3 (Library UI) and CP 5.4 (Entity view), all
+done** (CP 5.1/5.2 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — every checkpoint PLAN.md scoped for
+this phase, awaiting your explicit acceptance the way Phases 0–3 got theirs — see the dedicated
+paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -405,6 +407,45 @@ the durable rule this sets for any future multi-select surface in this app.
 Built and started for you per D19/rule 5 — you confirmed the corrected selection mechanics live;
 Apply/Delete against real data and a real-window resize check weren't separately confirmed back in
 this session.
+
+**CP 5.4 (Entity view) done, user-verified, 🟢.** New `ia_agent/library/entity_view.py`'s `fetch(root,
+counts, engine=...)` queries Postgres directly (`entity`/`scanned`/`user` tables, read-only) for
+scanned → private → female (male shown alongside, not counted forward) → scraped per entity root, on
+new `GET /api/library/entity/{root}/yield`. `postgres.py`'s engine getter made public (`get_engine()`,
+was `_get_engine()`) as the module's second real consumer, pool bumped 1→2 accordingly.
+`LibraryCounts` gained `count_for(folder, root)` for a direct per-root lookup outside its `entities()`
+list shape. **"Followed" has no per-entity DB source at all** — `entity_follow` unlinks the image on
+every terminal verdict without ever writing a row — so it's approximated as
+`scraped − still in scraped/ − still in follow_queued/` using the same live folder counts CP 5.1
+already tracks, clamped at 0. Flutter: `core/entity_yield_models.dart` + a new
+`features/library/entity_yield_dialog.dart`, opened from a new icon button on `LibraryToolbar`'s
+breadcrumb row whenever an entity is selected (the drill-in entry point, not a new nav destination —
+Overview/Insights stay reserved for later phases). The funnel is five proportional-width bars, one
+hue throughout (magnitude carried by length, not lightness — there's one metric across stages here,
+not several series needing color to distinguish them), with the "Followed (est.)" bar captioned to
+say plainly that it's an approximation.
+
+**Verified:** `agent/tests/test_entity_view.py` (16/16 — a scratch SQLite engine standing in for
+Postgres via `StaticPool` so `asyncio.to_thread`'s worker thread sees the same fixture tables the
+main thread wrote, `LibraryCounts` seeded from a scratch `IA_DIR`, the full funnel math, an unknown
+root returning `None` not raising, `followed_est` clamped at 0 even against an inconsistent fixture,
+then the same coverage again over live REST including the 404 path) plus all nine prior suites
+unchanged (71/71, 49/49, 26/26, 32/32, 16/16, 35/35, 36/36, 65/65, 14/14, 24/24, 20/20 — the full
+current set). Also verified against the real running agent (restarted to pick up the new code, same
+step every checkpoint since CP 4.4 has needed; all three supervised services confirmed still running
+across it) — hit against the real Postgres/`IA_DIR` (`sejjjalll`: 2529 scanned → 1544 private → 1044
+female, 500 male → 365 scraped → 365 followed_est, nothing left in either queue folder for that root)
+and a real unknown-root 404. `flutter analyze` clean, `flutter test` 34/34 (32 prior + 2 new in
+`entity_yield_layout_test.dart` — a 60-char root with six-figure counts, and an all-zero funnel).
+
+**Real per-entity follow tracking was scoped and deliberately not built — see D49.** A genuine fix
+exists (a small Postgres table written alongside `profile_follow`'s existing `follow.result` `emit()`
+calls, riding `entity_follow`'s already-scheduled `db_backup()` → Telegram channel for free) but it is
+a cross-repo `Insta-Automate` change, and you judged "followed" a metric you may not use enough to
+justify it. The approximation ships as the permanent answer unless that changes.
+
+**Phase 5 is now open with CP 5.1–5.4 all done** — CP 5.4 was the last item PLAN.md scoped for this
+phase.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

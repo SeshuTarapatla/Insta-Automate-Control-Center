@@ -851,13 +851,44 @@ mouse click-to-toggle and keyboard arrow-then-space both build up a multi-image 
 expected, after the D48 fix above. Apply/Delete against real data, and a real-window resize check,
 weren't separately confirmed back to me in this session — worth a look next time you're in the app.
 
-### CP 5.4 — Entity view 🟢
+### CP 5.4 — Entity view 🟢 ✅ done, user-verified
 One entity across every stage at once, with DB-backed yield: scanned → private → female →
 scraped → followed. This is the genuinely new capability — it tells you which source entities
 are worth queueing.
 
-**Test:** clear a 118-entity `scrape_queued` backlog from the desktop; counts stay correct
-throughout; the mobile app agrees after Syncthing settles.
+**What landed** — new `ia_agent/library/entity_view.py`'s `fetch(root, counts, engine=...)` queries
+Postgres directly (`entity`/`scanned`/`user` tables) for scanned → private → female (male shown
+alongside) → scraped per root, on new `GET /api/library/entity/{root}/yield`. Two real design forks
+were checked with you before writing any code rather than guessed: where the entry point lives
+(chosen: a drill-in icon on Library's toolbar breadcrumb, not a new nav destination) and how to show
+"followed" given no per-entity DB record for it exists anywhere — `entity_follow` unlinks the image on
+every terminal verdict without ever writing a row. **Chosen: approximate it** as
+`scraped − still in scraped/ − still in follow_queued/`, using CP 5.1's live folder counts, clamped at
+0. Flutter: `core/entity_yield_models.dart` + `features/library/entity_yield_dialog.dart` — a
+five-stage proportional-bar funnel, one hue throughout, the "Followed (est.)" bar captioned as an
+approximation.
+
+**A real per-entity fix was scoped and then deliberately set aside — see D49.** `profile_follow`
+already emits a `follow.result` event with a real verdict for every attempt, so an exact fix is
+small (one Postgres table, one write alongside the existing `emit()` calls) and would ride
+`entity_follow`'s already-scheduled `db_backup()` → Telegram backup channel for free — no new backup
+infrastructure needed. Set aside anyway: it is a cross-repo `Insta-Automate` change, and you judged
+"followed" a metric you may not use enough to justify it. The approximation ships as the permanent
+answer.
+
+**Verified:** `agent/tests/test_entity_view.py` (16/16 — a scratch SQLite engine via `StaticPool` so
+the live app's worker thread sees the same fixture tables, `LibraryCounts` seeded from a scratch
+`IA_DIR`, the funnel math, an unknown root returning `None`, `followed_est` clamped at 0, then the
+same again over live REST). All nine prior suites unchanged. Verified against the real running agent
+(restarted to pick up the new code) against real Postgres/`IA_DIR` data. `flutter analyze` clean,
+`flutter test` 34/34 (32 prior + 2 new).
+
+**Test (yours) — passed:** opened Library, selected an entity in a non-flat folder, opened the new
+funnel dialog, confirmed the numbers looked right and nothing overflowed; flagged the "followed"
+estimate as inaccurate for historic data, which is expected and by design (see above).
+
+Phase 5 is now feature-complete per this plan — CP 5.1 through CP 5.4 all done — awaiting your
+explicit acceptance the way Phases 0–3 got theirs.
 
 ---
 

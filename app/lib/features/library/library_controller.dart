@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/agent_client.dart';
 import '../../core/agent_ws.dart';
+import '../../core/entity_yield_models.dart';
 import '../../core/library_models.dart';
 
 bool _touchesLibraryChanges(AgentEvent event) => event.channel == 'library.changes';
@@ -318,6 +319,16 @@ class LibrarySelectionNotifier extends Notifier<LibrarySelectionState> {
 final librarySelectionProvider = NotifierProvider<LibrarySelectionNotifier, LibrarySelectionState>(
   LibrarySelectionNotifier.new,
 );
+
+/// One entity's yield funnel (CP 5.4) — fetched once per dialog open, not
+/// kept live: nothing pushes `library.changes`/DB updates for a single root
+/// often enough to justify a WS subscription the way the folder/entity lists
+/// need one.
+final entityYieldProvider = FutureProvider.family<EntityYield, String>((ref, root) async {
+  final dio = ref.read(agentClientProvider);
+  final response = await dio.get('/api/library/entity/$root/yield');
+  return EntityYield.fromJson(response.data as Map<String, dynamic>);
+});
 
 /// The agent's `detail` sentence when present, matching `describeAgentError`'s
 /// convention in `services_controller.dart`.

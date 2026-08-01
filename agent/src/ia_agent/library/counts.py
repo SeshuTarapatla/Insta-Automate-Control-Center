@@ -113,6 +113,13 @@ class LibraryCounts:
             roots = dict(self._entities.get(folder.name, {}))
         return [{"root": root, "count": roots[root]} for root in sorted(roots)]
 
+    def count_for(self, folder_name: str, root: str) -> int:
+        """Current file count for one `(folder, root)` pair, 0 if the folder
+        is unknown or the root has nothing there — CP 5.4's entity view reads
+        this directly rather than through `entities()`'s full-list shape."""
+        with self._lock:
+            return self._entities.get(folder_name, {}).get(root, 0)
+
 
 def _require_non_flat(folder_name: str) -> LibraryFolder:
     folder = folders.FOLDERS.get(folder_name)

@@ -5,6 +5,18 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 5 implementation session (CP 5.4, Entity view)
+
+### D49 · "Followed" stays a folder-count estimate — no Postgres ledger, deliberately, after weighing where the exact fix belongs
+
+**The gap is real: no per-entity "followed" record exists anywhere.** `entity_follow` sends the request and unlinks the image on every terminal verdict — nothing is ever written to Postgres, so `entity_view.fetch()` can only approximate: `scraped − still in scraped/ − still in follow_queued/`. That's what shipped. Confirmed via your live test as "okay" with the one caveat that it can't be exact, especially for anything followed before this checkpoint existed (unrecoverable — the image is gone, no record was ever kept).
+
+**The exact fix was scoped, not guessed at, before being set aside.** `profile_follow` already emits a `follow.result` event with a real `verdict` for every attempt (`Insta-Automate/tasks/ia.py`), so a real fix is genuinely small: one new SQLModel table, one `session.merge()` alongside the existing `emit()` call sites, no migration system to fight (this repo's schema is a bare `SQLModel.metadata.create_all()`, `controllers/postgres.py` — additive and idempotent). Where to persist it was the real question — weighed against IA_DIR-as-file, agent-local JSON (D12's precedent for machine-local settings), and Postgres — and Postgres won decisively: `entity_follow` already calls `db_backup()` at the end of every run, which `pg_dump`s the whole database to the Telegram backup channel (`db_restore()` to bring it back). Any new table rides that exact mechanism for free — zero new backup infrastructure for you to set up, unlike an agent-local file, which would need one from scratch to survive a laptop reset.
+
+**Set aside anyway, on your call: not worth a cross-repo `Insta-Automate` change for a metric you said you may not use.** This project's own working rules already say not to design for hypothetical requirements — "followed" isn't what the funnel exists to answer (that's scanned → private → female → scraped, "which source entities are worth queueing," per PLAN CP 5.4's own framing), and every cross-repo change carries real weight here (unmerged on `feat/control-center` until the whole control center is accepted, per rule 3). The approximation ships as-is, undocumented as anything other than what it says on the label (`entity_view.py`'s own docstring already spells out exactly what it can't distinguish). If real per-entity follow tracking becomes worth it later, the design above is the one to build: a small Postgres table, written at the same `follow.result` call sites, backed up for free by the flow that already runs.
+
+---
+
 ## 2026-08-01 — Phase 5 implementation session (CP 5.3, Library UI)
 
 ### D48 · Focus and selection are separate axes, keyboard and mouse both toggle rather than replace, and range-select anchors from whatever was last touched
