@@ -5,6 +5,22 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 — Phase 6 implementation session (CP 6.3 groundwork, checked before writing any code)
+
+### D54 · Pairing UI lives in a new Settings tab; the notification center is a title-bar bell icon — neither gets a new nav destination
+
+**The gap:** ARCHITECTURE §9's seven nav destinations (Overview · Flows · Live · Services · Library · Insights · Settings) have no slot for either piece PLAN CP 6.3 scopes ("QR screen, paired-device list with last-seen and revoke, notification center with history and per-tag mute"). §9 originally imagined the notification feed living inside Overview, but Overview itself was never built past its CP 0.3 placeholder — no checkpoint in PLAN.md ever scoped it — so building the notification center "inside Overview" would mean building a minimum Overview screen first, unscoped work nothing asked for yet.
+
+**Chosen, asked before any code was written (matching the CP 4.5/CP 5.4 precedent of checking real design forks rather than guessing):**
+- **Pairing (QR code, paired-device list, revoke) is a new "Devices" tab in Settings**, alongside the existing Flows/Limits/Queue tabs — no shell changes, fits the established multi-tab pattern for "things backed by machine-local config," which pairing already is (CP 6.1's `pairing.json`).
+- **The notification center is a bell icon in the title bar**, opening a dropdown/panel with history, unread state, and per-tag mute — reachable from every screen without requiring Overview to exist, and it's the standard place a user already expects to find this.
+
+**Rejected:** a new top-level nav destination for pairing (grows the rail past ARCHITECTURE's planned seven for a screen that's mostly a one-time setup action), and building notifications inside Overview (blocked on unscoped work).
+
+**Not yet built — this is groundwork only.** CP 6.3 itself starts from this placement decision.
+
+---
+
 ## 2026-08-02 — Phase 6 implementation session (CP 6.2, Notifier facade)
 
 ### D53 · `notify()`'s Telegram fallback keeps the old search-and-delete dedupe by message text; a live screenshot buffer only reaches Telegram, not the agent; and a real risk was found and flagged, not silently shipped

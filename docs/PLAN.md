@@ -971,6 +971,13 @@ the live pod.
 QR screen, paired-device list with last-seen and revoke, notification center with history and
 per-tag mute.
 
+**Placement decided before writing any code (D54):** ARCHITECTURE §9's seven nav destinations have
+no slot for either piece, and §9's original plan to put the notification feed inside Overview is
+blocked on Overview itself, never built past its CP 0.3 placeholder. Pairing (QR, device list,
+revoke) becomes a new "Devices" tab in Settings, alongside Flows/Limits/Queue. The notification
+center becomes a bell icon in the title bar, reachable from every screen. Neither gets a new nav
+destination.
+
 ### CP 6.4 — Mobile client 🔵
 QR scan (`mobile_scanner`), agent client, foreground-service WebSocket
 (`flutter_foreground_task`), local notifications, a compact live flow view, and config writes

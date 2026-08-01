@@ -525,6 +525,14 @@ split against `AgentClient.notify`/`IaTelegram.get_client` monkeypatched to reco
 Nothing deployed to the live pod — same standing precedent as every `Insta-Automate` checkpoint
 since CP 4.3.
 
+**CP 6.3 (Desktop pairing & notification center) groundwork: placement decided, not yet built
+(D54).** ARCHITECTURE §9's seven nav destinations have no slot for either piece, and §9's original
+plan to put the notification feed inside Overview is blocked on Overview itself, never built past
+its CP 0.3 placeholder. Checked with you before writing any code, same as CP 4.5/CP 5.4's design
+forks: pairing (QR, paired-device list, revoke) becomes a new "Devices" tab in Settings alongside
+Flows/Limits/Queue; the notification center becomes a bell icon in the title bar, reachable from
+every screen. Neither gets a new nav destination.
+
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
 
