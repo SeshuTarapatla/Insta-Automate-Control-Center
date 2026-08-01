@@ -936,9 +936,36 @@ the live `%LOCALAPPDATA%\ia-agent`.
 CP 6.2 (cross-repo `Insta-Automate` notifier facade) is what makes the pipeline actually call
 `POST /api/notify` for real, the same gap CP 4.1/4.2 had until CP 4.3 wired the pipeline side in.
 
-### CP 6.2 — Notifier facade 🟡
+### CP 6.2 — Notifier facade 🟡 ✅ done, cross-repo, `Insta-Automate` on `feat/control-center`
 `controllers/notify.py`, `NOTIFY_POLICY`, and conversion of all seven call sites
 (ARCHITECTURE §6), preserving `transient` and dedupe semantics. Telegram stays the backstop.
+
+**What landed** — new `controllers/notify.py`'s `notify()` matches ARCHITECTURE §6's signature
+exactly (`msg, *, image, transient, dedupe, level, tags`); `AgentClient.notify` already existed
+from CP 3.3, so this checkpoint is purely the policy layer (`NOTIFY_POLICY`: `telegram_only` /
+`app_first` / `both`, already in `models/meta.py`'s `Config._DEFAULTS` since CP 3.1) plus the
+Telegram fallback every call site used to hand-roll individually. All seven call sites converted:
+`tasks/telegram.py`'s four `@ia_task()` functions (`notify_scan_limit_reached`,
+`notify_new_entities_classified`, `notify_new_entities_scraped`, `notify_profile_unfollow` — the
+old `notify_transient` helper is gone, folded into the facade's dedupe handling), `tasks/device.py
+::wait_for_device` (connect/disconnect), `tasks/ia.py::add_new_entity` and `::profile_follow`, and
+the scrape/follow limit-reached messages in `flows/entity_scrape.py`/`flows/entity_follow.py`.
+
+**Two real edge cases, handled rather than glossed over (D53):** `notify_profile_unfollow`'s image
+is a live `ui.profile_header.screenshot()` buffer, not an `IA_DIR` file like every other image this
+project passes around — the agent notification carries no image for that one message (no bytes-
+upload path exists yet), but Telegram, which gets the original object untouched, still shows the
+real screenshot regardless of policy. And CP 6.1's `delivered` counts any live WS connection, not a
+client actually watching notifications (nothing renders the `notifications` channel yet) — flagged
+as a real risk for `app_first` once this branch is ever deployed, not fixed now, since CP 6.3 will
+exist and this branch stays undeployed until acceptance either way.
+
+**Verified:** `Insta-Automate` has no test suite (same precedent as CP 3.1/3.2/4.3) — an import
+sanity-check across every changed module plus the full `IaFlows` registry, and a throwaway script
+(18/18) exercising the facade's actual policy branching, dedupe search-and-delete, and the
+`Path`-vs-buffer image split against `AgentClient.notify`/`IaTelegram.get_client` monkeypatched to
+recording fakes — never the real Telegram channel or the real running agent. Nothing deployed to
+the live pod.
 
 ### CP 6.3 — Desktop pairing & notification center 🟢
 QR screen, paired-device list with last-seen and revoke, notification center with history and
