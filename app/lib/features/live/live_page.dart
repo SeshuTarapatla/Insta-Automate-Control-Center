@@ -14,8 +14,12 @@ import 'surfaces/scrape_surface.dart';
 
 /// The showpiece screen (CP 4.4): a log console that follows whichever run is
 /// selected, a flow-specific visualization surface, and a run summary with
-/// counters — three panes side by side rather than tabs, so "what's happening"
-/// and "why" are never more than a glance apart.
+/// counters. Two columns, not three (D42's follow-up) — the visualization
+/// surface is the whole point of this screen and images need real room, so
+/// it gets everything to the right of a fixed-width left column; the summary
+/// (a handful of rows plus the device pane) sizes to its own content at the
+/// top of that column rather than stretching to fill it and leaving the rest
+/// blank, and the log console takes whatever height is left below it.
 class LivePage extends ConsumerStatefulWidget {
   const LivePage({super.key});
 
@@ -80,14 +84,24 @@ class _LivePageState extends ConsumerState<LivePage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: 420, child: Card(margin: const EdgeInsets.all(12), child: const LogConsole())),
+              SizedBox(
+                width: 420,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Card(margin: const EdgeInsets.fromLTRB(12, 12, 12, 6), child: const RunSummary()),
+                    Expanded(
+                      child: Card(margin: const EdgeInsets.fromLTRB(12, 6, 12, 12), child: const LogConsole()),
+                    ),
+                  ],
+                ),
+              ),
               Expanded(
                 child: Card(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   child: const _VisualizationSurface(),
                 ),
               ),
-              SizedBox(width: 320, child: Card(margin: const EdgeInsets.all(12), child: const RunSummary())),
             ],
           ),
         ),

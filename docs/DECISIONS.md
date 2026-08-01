@@ -7,6 +7,42 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D43 · Live screen: two columns, not three — summary sizes to content instead of stretching
+
+**The layout itself was the last complaint**, once the data and per-flow visuals were actually
+correct: the fixed 320px `RunSummary` column stretched to the window's full height regardless of how
+little content it actually had, leaving visible dead space below the device pane, while the
+visualization surface — the actual point of this screen, per its own docstring ("the showpiece
+screen") — was squeezed into whatever was left between two other panes.
+
+**Chosen: two columns, not three.** Left column (still a fixed 420px) is now a `Column`, not a
+`Row` slot: `RunSummary` on top, sized to its own content (a non-flexible `Column` child gets
+unbounded main-axis space to size itself — confirmed empirically in the test below, not just assumed
+— so it never stretches further than it needs), and `LogConsole` in an `Expanded` below it taking
+whatever height that leaves. The right side is now a single `Expanded` visualization surface, which
+picks up both the freed 320px and log console's old share of the middle — a real, meaningful width
+increase for the panel that actually needed it.
+
+**Summary goes on top, not bottom** — a status glance (phase, today's count, last run, the counters,
+device state) reads naturally as "here's where things stand" before "here's the detail log," matching
+the same top-to-bottom priority `RunSummary`'s own internal ordering already uses.
+
+**Verified the specific risk this change introduces, not just the width number.** `SingleChildScrollView`
+(what `RunSummary` is built on) behaves differently under an unbounded main-axis constraint than
+under the fixed `height: 700` every existing test gave it — genuinely worth checking rather than
+assuming, since `ListView`/`CustomScrollView` (sliver-based scrollables) throw exactly this shape of
+error ("Vertical viewport was given unbounded height") in the same situation. Rewrote both
+`RunSummary` tests to reproduce the real constraint shape (`Column(children: [RunSummary(),
+Expanded(...)])` inside a bounded outer height, not just `RunSummary()` alone in a fixed box) —
+confirmed clean, since `SingleChildScrollView` (unlike its sliver-based cousins) measures its child
+directly rather than needing a bounded viewport to lay out lazily. Also widened both `RunSummary`
+tests from 320 to 420px to match the column's real new width — 320 was still a technically-valid
+(narrower, stricter) case, but no longer representative of what production actually gives it.
+
+**Verified:** `flutter analyze` clean, `flutter test` 25/25 (no new test count — two existing
+`RunSummary` cases rewritten to the real constraint shape and width rather than added to). Not yet
+verified against a live run / real window.
+
 ### D42 · The in-progress scrape card's own image ratio was still wrong, and roots are worth naming
 
 **Found immediately by you testing D41's fix**: the still-in-progress card looked right structurally

@@ -15,12 +15,13 @@ import 'package:ia_control_center/features/live/surfaces/ingest_surface.dart';
 import 'package:ia_control_center/features/live/surfaces/scan_surface.dart';
 import 'package:ia_control_center/features/live/surfaces/scrape_surface.dart';
 
-/// The Live screen's three panes have fixed widths regardless of window size
-/// (420 / Expanded / 320, `live_page.dart`) — same overflow shape as
-/// `FlowCard` (`flows_layout_test.dart`): unbounded-length real-world strings
-/// (usernames, reason text, a run id) inside a fixed-width pane, not window
-/// resizing. `AgentImage` is exercised with `imageKey: null` throughout,
-/// which is the real placeholder path and needs no network mock.
+/// The Live screen's left column (run summary over the log console) is a
+/// fixed 420px regardless of window size (D42's follow-up, `live_page.dart`)
+/// — same overflow shape as `FlowCard` (`flows_layout_test.dart`):
+/// unbounded-length real-world strings (usernames, reason text, a run id)
+/// inside a fixed-width pane, not window resizing. `AgentImage` is exercised
+/// with `imageKey: null` throughout, which is the real placeholder path and
+/// needs no network mock.
 FlowEvent _event({
   required String kind,
   String? subject,
@@ -145,8 +146,16 @@ void main() {
     );
     await _render(
       tester,
-      const SizedBox(width: 320, height: 700, child: RunSummary()),
-      const Size(320, 700),
+      // RunSummary now sizes to its own content at the top of the left
+      // column (D42's follow-up) rather than stretching to fill a fixed
+      // height — a Column's non-flexible child, unbounded main-axis space,
+      // exactly like `live_page.dart`'s real structure.
+      SizedBox(
+        width: 420,
+        height: 700,
+        child: Column(children: [const RunSummary(), Expanded(child: Container())]),
+      ),
+      const Size(420, 700),
       liveState: state,
     );
     expect(tester.takeException(), isNull);
@@ -163,8 +172,16 @@ void main() {
     final state = LiveState(flow: 'entity-follow', runId: 'run-1', logs: const [], events: events);
     await _render(
       tester,
-      const SizedBox(width: 320, height: 700, child: RunSummary()),
-      const Size(320, 700),
+      // RunSummary now sizes to its own content at the top of the left
+      // column (D42's follow-up) rather than stretching to fill a fixed
+      // height — a Column's non-flexible child, unbounded main-axis space,
+      // exactly like `live_page.dart`'s real structure.
+      SizedBox(
+        width: 420,
+        height: 700,
+        child: Column(children: [const RunSummary(), Expanded(child: Container())]),
+      ),
+      const Size(420, 700),
       liveState: state,
     );
     expect(tester.takeException(), isNull);

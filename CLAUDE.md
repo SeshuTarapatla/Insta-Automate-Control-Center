@@ -207,6 +207,19 @@ flows' images have (new `rootFromImage()` in `surface_common.dart`); not applied
 ingest, whose event/image shapes don't share that same structure. `flutter analyze` clean, `flutter
 test` 25/25. Not yet re-verified against a live run.
 
+**Addendum, 2026-08-01 (D43): the Live screen's outer layout, two columns not three.** The fixed
+320px `RunSummary` column stretched to fill the window's full height regardless of content, leaving
+visible dead space below the device pane while the visualization surface — this screen's actual
+point — got squeezed into the middle. Now: a fixed 420px left column holds `RunSummary` sized to its
+own content on top (a non-flex `Column` child gets unbounded main-axis space to size itself, verified
+empirically rather than assumed) and `LogConsole` in an `Expanded` below taking the rest; the right
+side is a single `Expanded` visualization surface picking up both the freed 320px and the old middle
+column's share. Verified the specific risk (`SingleChildScrollView` under an unbounded main-axis
+constraint, unlike a sliver-based `ListView` which would throw "unbounded height" in the same spot)
+by rewriting both `RunSummary` tests to the real constraint shape rather than trusting the old fixed
+`height: 700` box was equivalent. `flutter analyze` clean, `flutter test` 25/25. Not yet verified
+against a live run / real window.
+
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked
