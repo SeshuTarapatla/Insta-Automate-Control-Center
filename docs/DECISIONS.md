@@ -7,6 +7,43 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D37 · The worker pod never had `IA_AGENT_TOKEN` — every `emit()` call was 401ing silently
+
+**Found immediately after D36**, when you ran a real Force Run of Scrape after that fix and still
+saw nothing: the flow genuinely completed (180/300 scraped, up from 145 — confirmed against
+`/api/flow-runs`), but `GET /api/events` on the real agent showed **zero events ever recorded**.
+`kubectl exec` into both pods directly (not the deployment spec — the actual running containers)
+showed why: the **scheduler** pod has `IA_AGENT_TOKEN` set (matching the real agent's token) and
+`GIT_BRANCH=feat/control-center`; the **worker** pod — the one that actually executes `profile_scrape`/
+`profile_follow`/`gender_classify` and every `emit()`/`emit_sync()` call CP 4.3 added — had neither.
+`IA_AGENT_TOKEN` is deliberately env-only, never `config.env` (D26, since it's a secret), so with it
+unset the worker's `vars.IA_AGENT_TOKEN` resolves to `""`, every event POST goes out with an invalid
+bearer token, the agent's `BearerAuthMiddleware` 401s it, and `AgentClient`'s entire design (D26) is
+to swallow every failure silently so a down agent never disturbs the pipeline — which also means a
+*misconfigured* agent connection disturbs nothing either, including never producing an error to
+notice. Both env vars were originally set only on the scheduler pod, apparently by hand (neither
+appears anywhere in the Helmcharts repo's templates), during some earlier session's live testing —
+and the worker never got the same patch.
+
+**Fixed:** `kubectl set env deployment/insta-automate-worker IA_AGENT_TOKEN=<same token>` (confirmed
+with you first, since it restarts the worker pod). No image rebuild — same reasoning as D36, it's
+just a pod env var. Confirmed the new pod (`...-75fd88d98c-fq2v9`) actually has it post-rollout.
+**Not fixed / left open:** this was a manual `kubectl set env` patch, same as the scheduler's own
+`IA_AGENT_TOKEN`/`GIT_BRANCH` — neither is in the committed helm chart, so a future `helm upgrade`
+without carrying these forward would silently reintroduce this exact bug on the worker (and revert
+the scheduler's `GIT_BRANCH` override, which is intentional per D29 — that one's *supposed* to reset
+on a real deploy). Phase 7's CP 7.1 (`ops panel`) is where `IA_AGENT_URL`/`IA_AGENT_TOKEN` are
+planned to move into helm values properly (ARCHITECTURE, CP 7.1) — until then, if the worker pod
+ever gets redeployed for any other reason, this patch needs reapplying.
+
+**How to apply — same lesson as D36, one layer deeper:** "the deployment config points at the right
+branch" and "the code that branch clones is current" were both necessary but not sufficient — the
+pod actually executing that code also needs the right *runtime* configuration (here, a secret env
+var) or its calls fail in a way `AgentClient`'s own swallow-everything design makes structurally
+invisible. When a live symptom persists after fixing one plausible cause, don't stop at "that must
+have been it" — verify the actual downstream signal (here, `GET /api/events` actually gaining
+entries) before declaring it fixed.
+
 ### D36 · `feat/control-center` in `Insta-Automate` was never pushed — the Live screen's
 visualization surfaces were blank for two sessions because of it, not because of anything missing
 

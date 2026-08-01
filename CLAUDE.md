@@ -115,6 +115,16 @@ CP 4.4/4.5 — turned out `feat/control-center` in `Insta-Automate` was never pu
 code the whole time with no instrumentation in it at all. Pushed now (`git push origin
 feat/control-center`); no pod restart needed since the worker re-clones on every flow run. See D36.
 
+**Still blank after that — a second, separate gap (D37).** The worker pod (the one that actually
+executes `emit()`/`emit_sync()`) never had `IA_AGENT_TOKEN` set at all, only the scheduler pod did —
+so every event POST 401'd, and `AgentClient`'s swallow-everything-by-design (D26) meant that failed
+completely silently, no error anywhere, even though the flow itself ran for real (180/300 scraped,
+confirmed against `/api/flow-runs`). Fixed with `kubectl set env deployment/insta-automate-worker
+IA_AGENT_TOKEN=<token>` (confirmed with you first — restarts the worker pod). Both this and the
+scheduler's own `IA_AGENT_TOKEN`/`GIT_BRANCH` are manual `kubectl set env` patches, not in the
+committed helm chart — CP 7.1 is where they're planned to move into real helm values; until then a
+worker redeploy for any other reason will need this patch reapplied.
+
 **CP 4.4 (Live screen) done and user-verified, 🟢.** `app/lib/features/live/`: a flow-selector row
 above three panes — `LogConsole` (level filter, task-change dividers, sticky expandable error strip,
 scroll-aware auto-follow), the per-flow visualization surface (scan filmstrip, classify verdict
