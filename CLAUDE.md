@@ -11,8 +11,9 @@ parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mut
 (Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
 pairing & notification rework) is open, CP 6.1 (Pairing + notification core) done, agent-only,
-🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡** —
-see the dedicated paragraphs below. **2026-08-02: a live incident (`entity-follow` permanently
+🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
+CP 6.3 (Desktop pairing & notification center) built and awaiting your test, 🟢** — see the
+dedicated paragraphs below. **2026-08-02: a live incident (`entity-follow` permanently
 frozen "running", zero triggers for hours) uncovered and fixed five chained bugs — see D55 and the
 dedicated paragraph below. CP 6.2 is now deployed to the live worker pod for the first time**,
 earlier than rule 3's original "wait until accepted" plan, because it was needed for the fix. Phase 2 accepted
@@ -528,13 +529,13 @@ split against `AgentClient.notify`/`IaTelegram.get_client` monkeypatched to reco
 Nothing deployed to the live pod — same standing precedent as every `Insta-Automate` checkpoint
 since CP 4.3.
 
-**CP 6.3 (Desktop pairing & notification center) groundwork: placement decided, not yet built
-(D54).** ARCHITECTURE §9's seven nav destinations have no slot for either piece, and §9's original
-plan to put the notification feed inside Overview is blocked on Overview itself, never built past
-its CP 0.3 placeholder. Checked with you before writing any code, same as CP 4.5/CP 5.4's design
-forks: pairing (QR, paired-device list, revoke) becomes a new "Devices" tab in Settings alongside
-Flows/Limits/Queue; the notification center becomes a bell icon in the title bar, reachable from
-every screen. Neither gets a new nav destination.
+**CP 6.3 (Desktop pairing & notification center) groundwork: placement decided (D54).** ARCHITECTURE
+§9's seven nav destinations have no slot for either piece, and §9's original plan to put the
+notification feed inside Overview is blocked on Overview itself, never built past its CP 0.3
+placeholder. Checked with you before writing any code, same as CP 4.5/CP 5.4's design forks: pairing
+(QR, paired-device list, revoke) becomes a new "Devices" tab in Settings alongside Flows/Limits/
+Queue; the notification center becomes a bell icon in the title bar, reachable from every screen.
+Neither gets a new nav destination.
 
 **2026-08-02 live incident: `entity-follow` frozen at `phase="running"` for hours, zero flow runs
 triggered despite 191 real files queued (D55, full chain in DECISIONS.md).** Root cause:
@@ -566,6 +567,37 @@ GUI) completed in 92.4s, matching historical successful-run durations; adb held 
 correctly after every restart. Not yet watched over a long unattended window — see D55 for what's
 still a hotfix rather than a real fix (the scrcpy pin) and what's now live earlier than planned (CP
 6.2 on the worker).
+
+**CP 6.3 (Desktop pairing & notification center) built on D54's placement, 🟢, awaiting your
+test (D56).** No agent-side changes were needed — CP 6.1 already shipped the full REST/WS surface
+this checkpoint is purely a Flutter client for. New
+`app/lib/features/settings/devices_controller.dart` + `devices_tab.dart` (the "Devices" Settings
+tab): a QR/6-digit-code pairing card (`qr_flutter`, payload exactly
+`iacc://pair?h=<lan-ip>&p=8787&c=<code>` per ARCHITECTURE §7) that mints a code, counts down its
+120s TTL, polls for a claim every 2s (no WS channel exists for pairing — a claim happens on the
+phone, so the desktop has nothing to subscribe to), and a paired-device list with last-seen and a
+confirm-then-revoke action. New `app/lib/features/notifications/notification_controller.dart` +
+`notification_center.dart`: a title-bar bell (unread badge) opening a
+`CompositedTransformFollower`-anchored panel — replay-then-subscribe over `GET /api/notify` +
+the `notifications` WS channel (D18's established shape), mark-read/mark-all-read, and per-tag
+mute persisted client-side via `shared_preferences` (there's no server-side "muted" concept —
+`NOTIFY_POLICY` already governs desktop-vs-Telegram routing, this is purely "don't show me this
+category").
+
+**Found by the new `notification_center_layout_test.dart`, not `flutter analyze` (D19's
+precedent again):** the panel header (title + filter icon + "Mark all read") overflowed by a
+consistent 101px regardless of window size or content — fixed by giving the title `Expanded` +
+ellipsis instead of a `Spacer()`, so it always yields space to the fixed-size trailing controls.
+See D56 for the full account, including a benign `flutter_test` hit-test-warning quirk with
+`CompositedTransformFollower` that two tests in the new suite deliberately suppress with
+`warnIfMissed: false` (verified not to be masking a real mis-tap).
+
+**Verified:** `flutter analyze` clean, `flutter test` 38/38 (26 prior + 12 new across
+`devices_layout_test.dart`/`notification_center_layout_test.dart`), `flutter build windows
+--debug` succeeds. **Not yet user-verified and not yet committed (rule 4)** — the freshly built
+exe is running now for you to test: pairing (mint a code, claim via manual entry or CP 6.4 once it
+exists, revoke), and the notification center against whatever `POST /api/notify` traffic the now-
+live CP 6.2 facade produces on the real pod.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

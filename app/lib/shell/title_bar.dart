@@ -4,6 +4,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../core/connection_state.dart';
 import '../core/window_work_area.dart';
+import '../features/notifications/notification_center.dart';
 
 class TitleBar extends ConsumerWidget {
   const TitleBar({super.key});
@@ -38,6 +39,7 @@ class TitleBar extends ConsumerWidget {
               ),
             ),
           ),
+          const NotificationCenter(),
           const _WindowButtons(),
         ],
       ),

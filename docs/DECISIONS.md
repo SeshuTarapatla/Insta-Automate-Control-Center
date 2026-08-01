@@ -5,6 +5,63 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 — Phase 6 implementation session (CP 6.3, Desktop pairing & notification center)
+
+### D56 · Built on D54's placement decision with no new agent code; a real header-row overflow was caught by the new layout test, not by `flutter analyze`
+
+**CP 6.3 needed no agent-side changes at all** — CP 6.1 already shipped the full REST surface
+(`/api/pair/*`, `/api/notify*`) and the `notifications` WS channel; this checkpoint is purely the
+Flutter client on top of it. New `app/lib/features/settings/devices_controller.dart` +
+`devices_tab.dart` (the "Devices" Settings tab D54 placed pairing in) and
+`app/lib/features/notifications/notification_controller.dart` + `notification_center.dart` (the
+title-bar bell). `core/pairing_models.dart` and `core/notification_models.dart` mirror the
+agent's JSON shapes; `core/relative_time.dart` is a small shared "3m ago" formatter for both the
+paired-device list's last-seen and the notification center's timestamps.
+
+**QR payload is exactly `iacc://pair?h=<lan-ip>&p=8787&c=<code>`, per ARCHITECTURE §7** — no new
+format decision needed, `qr_flutter` (already the planned dependency per §9) renders it directly
+from `PairingCode.qrPayload`. The pairing card has no dedicated Riverpod controller beyond
+`DevicesController` (start/list/revoke) — the mint→countdown→poll-for-claim→celebrate state
+machine is local `StatefulWidget` state (`_PairingPhase`), since none of it is data anything else
+on screen needs; polling for a claim is a 2s timer diffing device ids against a snapshot taken at
+mint time, because CP 6.1 never wired a WS channel for pairing (a claim happens on the *phone*,
+so the desktop has nothing to subscribe to — this was already flagged as a known gap in CP 6.1's
+own notes).
+
+**Per-tag mute is client-side only, persisted via `shared_preferences`** (the same store
+`WindowGeometry` already uses) — there is no server-side "muted" concept, since `NOTIFY_POLICY`
+already governs desktop-vs-Telegram routing (§6) and this is purely "don't show me this category
+in the center." `unreadNotificationCountProvider` (the bell's badge count) excludes muted tags so
+a muted category stops drawing attention to itself, matching what "mute" should mean.
+
+**Found by the new `notification_center_layout_test.dart`, not `flutter analyze` (D19's
+precedent, again):** the panel's header row (`Text('Notifications')` + `Spacer()` + filter
+`IconButton` + "Mark all read" `TextButton`) overflowed by a consistent 101px regardless of window
+size or notification content — reproducing on both the long-message test and the all-muted-empty
+test, which share nothing but that header. Fixed by wrapping the title in `Expanded` +
+`TextOverflow.ellipsis` instead of `Spacer()`, so the flexible title always yields space to the
+fixed-size trailing controls rather than the row ever demanding more width than it's given.
+
+**Also worth knowing for whoever touches this test file next:** `CompositedTransformFollower`'s
+global position resolves at paint/composite time, which `flutter_test`'s hit-test-based tap
+warning doesn't always account for on the frame right after an `OverlayEntry` is inserted —
+tapping the bell and the panel's own filter icon both print a benign "would not hit test" warning
+even though the tap genuinely lands (confirmed by asserting the `FilterChip`s the tap was
+supposed to reveal actually appear). `warnIfMissed: false` is used at both call sites for that
+reason, not to paper over a real mis-tap.
+
+**Verified:** `flutter analyze` clean, `flutter test` 38/38 (26 prior + 12 new across
+`devices_layout_test.dart` and `notification_center_layout_test.dart` — a 52-char paired device
+name, the QR/code panel at the app's 1024px minimum window, a 400-char notification message with
+no spaces, a long tag name in the filter row, and the all-tags-muted empty state). `flutter build
+windows --debug` succeeds. **Not yet user-verified** — per rule 5, Claude built, analyzed, and
+started the freshly built exe for you to test against the real running agent (real pairing round
+trip with a phone once CP 6.4 exists, or manual-code entry for now; revoke; the notification
+center against whatever `POST /api/notify` traffic the now-live CP 6.2 facade produces) — this
+checkpoint is not committed yet, per rule 4.
+
+---
+
 ## 2026-08-02 — Live incident: FOLLOW frozen "running" for hours, five things found chained together
 
 ### D55 · An uncaught adb exception froze `entity-follow`'s trigger loop forever; chasing why led to four more real, chained bugs
