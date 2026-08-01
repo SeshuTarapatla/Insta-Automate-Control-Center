@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/flow_event_models.dart';
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
 import 'device_pane.dart';
@@ -57,7 +58,7 @@ class RunSummary extends ConsumerWidget {
           const SizedBox(height: 20),
           Text('Counters this run', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          _EventCounters(),
+          _EventCounters(flow: flow),
           const SizedBox(height: 20),
           Text('Device', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -68,23 +69,62 @@ class RunSummary extends ConsumerWidget {
   }
 }
 
-/// Shows `flow.completed`'s own counters — the one event kind every flow
-/// emits exactly once, at the very end of a run, specifically to carry a
-/// whole-run summary (CP 4.3). Per-item events (`scrape.done`, `classify.
-/// gender`, ...) carry `counters` too, but those describe one entity each
-/// (e.g. `scrape.done`'s `posts`/`followers`/`following` are one profile's
-/// stats) — meaningless once merged across a run of many different entities,
-/// so they're deliberately excluded here even though they're real data
-/// (they're already shown per-card in the visualization surface instead).
+/// Tallies the per-item events already streaming into the visualization
+/// surface, live, one at a time — rather than waiting for `flow.completed`'s
+/// single end-of-run summary (which does carry the same final numbers, but
+/// only once the whole run is over). Deliberately per-flow: each flow's
+/// per-item event carries different, flow-specific information (a scrape's
+/// `posts`/`followers`/`following` are one profile's own stats, not a count
+/// to tally at all), so there is no single generic "sum every counters map"
+/// rule that stays meaningful across flows — see D40 for why that was wrong.
+Map<String, int> _liveCounters(String? flow, List<FlowEvent> events) {
+  switch (flow) {
+    case 'entity-scan':
+      // scan.item/scan.completed already carry the pipeline's own running
+      // added/scanned tally on every event — just read the latest one.
+      FlowEvent? latest;
+      for (final event in events) {
+        if (event.kind == 'scan.item' || event.kind == 'scan.completed') latest = event;
+      }
+      return latest == null ? const {} : latest.counters.map((key, value) => MapEntry(key, value as int));
+    case 'entity-classify':
+      final counts = <String, int>{};
+      for (final event in events) {
+        if ((event.kind == 'classify.access' || event.kind == 'classify.gender') && event.verdict != null) {
+          counts[event.verdict!] = (counts[event.verdict!] ?? 0) + 1;
+        }
+      }
+      return counts;
+    case 'entity-scrape':
+      final done = events.where((e) => e.kind == 'scrape.done').length;
+      final skipped = events.where((e) => e.kind == 'scrape.skipped').length;
+      return done + skipped == 0 ? const {} : {'processed': done + skipped, 'scraped': done};
+    case 'entity-follow':
+      final counts = <String, int>{};
+      for (final event in events) {
+        if (event.kind == 'follow.result' && event.verdict != null) {
+          counts[event.verdict!] = (counts[event.verdict!] ?? 0) + 1;
+        }
+      }
+      return counts;
+    case 'entity-ingest':
+      final added = events.where((e) => e.kind == 'entity.added').length;
+      return added == 0 ? const {} : {'added': added};
+    default:
+      return const {};
+  }
+}
+
 class _EventCounters extends ConsumerWidget {
+  const _EventCounters({required this.flow});
+
+  final String? flow;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final events = ref.watch(liveControllerProvider).value?.events ?? const [];
-    final counters = <String, dynamic>{};
-    for (final event in events) {
-      if (event.kind == 'flow.completed') counters.addAll(event.counters);
-    }
+    final counters = _liveCounters(flow, events);
     if (counters.isEmpty) {
       return Text(
         'No counters yet.',

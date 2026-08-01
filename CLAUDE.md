@@ -180,6 +180,22 @@ this session's own diagnostic probe events — and any future orphaned event —
 subsequent run's display forever; fixed by requiring an exact match now that injection is reliable.
 `flutter analyze` clean, `flutter test` 23/23 unchanged. Not yet re-verified against a live run.
 
+**Addendum, 2026-08-01 (D41): three more UX fixes, from your live testing against the now-working
+data.** All demonstrated against Scrape but checked individually against each of the other four
+surfaces rather than applied blindly. (1) The "large latest card" pattern only existed in
+`scrape_surface.dart` and `scan_surface.dart` — scan already keyed it off `scan.started` correctly;
+scrape kept a subject large even after it resolved, fixed to fall back to the uniform small list the
+instant it's `done`/`skipped`. (2) Image cropping was two bugs: `AgentImage`'s default `BoxFit.cover`
+lost content on genuinely-approximate aspect ratios (fixed → `BoxFit.contain`, letterboxing instead
+of losing content, a no-op for the two surfaces with exact known ratios), and `follow_surface.dart`
+had the outright wrong ratio (`1080/2246`, the entity page, instead of `1080/2000`, the actual
+scraped-composite shape `follow_queued/` images are). (3) `RunSummary`'s counters now tally live from
+per-item events as they stream, dispatched per-flow (`scan` reads the pipeline's own running tally,
+`classify`/`follow` count by verdict, `scrape`/`ingest` count specific event kinds) rather than
+waiting for `flow.completed`. `flutter analyze` clean, `flutter test` 25/25 — 2 new cases added after
+noticing existing fixtures no longer exercised the changed code paths (a real coverage gap, not just
+"tests still pass"). Not yet verified against a live run.
+
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked

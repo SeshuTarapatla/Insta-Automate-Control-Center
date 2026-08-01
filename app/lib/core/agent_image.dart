@@ -23,7 +23,7 @@ final imageBytesProvider = FutureProvider.family<Uint8List, (String key, int? wi
 /// source file before the flow deleted it (D31), which is expected often
 /// enough that a blank box would read as broken rather than as normal.
 class AgentImage extends ConsumerWidget {
-  const AgentImage({super.key, required this.imageKey, this.width, this.aspectRatio, this.fit = BoxFit.cover});
+  const AgentImage({super.key, required this.imageKey, this.width, this.aspectRatio, this.fit = BoxFit.contain});
 
   final String? imageKey;
   final int? width;

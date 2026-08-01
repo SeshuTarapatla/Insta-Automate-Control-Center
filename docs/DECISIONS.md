@@ -7,6 +7,58 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D41 · Three Live-screen UX requests, checked per-flow rather than assumed universal
+
+**Your framing mattered here** — all three requests were demonstrated against Scrape (easiest flow
+to trigger for testing) but explicitly asked to be applied "wherever relevant," not copy-pasted onto
+every surface regardless of fit. Checked each of the other four surfaces before touching anything:
+
+**1. "Large latest card" should track in-progress, not merely most-recent.** Confirmed this pattern
+(a big card for the newest item, small history below) only exists in `scrape_surface.dart` and
+`scan_surface.dart` — classify/follow/ingest render every item uniformly already, nothing to change
+there. `scan_surface.dart` already keys its big banner off `scan.started` specifically (decoupled
+from the completed-items filmstrip), so it was already correct. Only `scrape_surface.dart` kept the
+latest subject large even after it resolved to `scrape.done`/`scrape.skipped`. Fixed: large is now
+conditional on the latest subject still lacking a `done`/`skipped` event; the instant it resolves,
+the surface falls back to one uniform small-card list, newest first, no special casing.
+
+**2. Image cropping was two separate bugs, not one.** `AgentImage`'s default `fit: BoxFit.cover`
+crops to fill an assumed aspect ratio — fine when the ratio is exact, lossy when it's approximate.
+Checked all five real source images (ARCHITECTURE §1.1) against what each surface assumes: `scanned/`
+row crops (1080×198 exact) and `entities/<id>.jpg` (1080×2246 exact) match their surfaces exactly —
+`scrape_surface.dart`'s `done` card (`1080/2000`) is a *deliberate approximation* of a genuinely
+variable height (`profile_scrape` composites a screenshot crop plus a resized avatar, so real height
+drifts around ~2000 per profile) — no fixed constant will ever be exact there. `follow_surface.dart`
+was outright wrong, not approximate: `1080/2246` (the entity-page ratio) for an image that's actually
+`follow_queued/`'s scraped composite (~1080×2000, confirmed by reading `profile_follow`'s own `img`
+parameter in `tasks/ia.py`) — a real second bug, not the same one twice. Fixed both: `AgentImage`'s
+default is now `BoxFit.contain` (letterboxes instead of cropping — a no-op for the two exact-ratio
+surfaces, and correct instead of lossy for the two approximate/wrong ones), and
+`follow_surface.dart`'s aspect ratio corrected to `1080/2000` to match scrape's.
+
+**3. Live incremental counters, computed per-flow rather than one generic rule.** The previous design
+(D40) read only `flow.completed`'s aggregate, so "Counters this run" stayed empty until the whole run
+finished — exactly the "wait for the end" the request was about. There is no single generic
+"count something" rule that fits every flow, because each flow's per-item events carry different
+shapes: `entity-scan`'s `scan.item` already carries the pipeline's own running `added`/`scanned`
+tally per event (just read the latest one, no client-side counting needed); `entity-classify`/
+`entity-follow` have no built-in running tally, but their per-item events carry a `verdict`, so a
+live count-by-verdict client-side is exactly right (`PRIVATE`/`PUBLIC`, `FEMALE`/`MALE`, or the six
+follow verdicts); `entity-scrape` has no `verdict` field, so `processed`/`scraped` are derived by
+counting `scrape.done`/`scrape.skipped` occurrences directly; `entity-ingest` similarly counts
+`entity.added` occurrences. New `_liveCounters(flow, events)` in `run_summary.dart` dispatches on
+`flow` rather than guessing generically, incrementing live as each new per-item event streams in via
+WS — no more waiting for `flow.completed` at all for this panel (that event kind is no longer read
+here; its counters were always redundant with what client-side tallying now produces sooner).
+
+**Verified:** `flutter analyze` clean, `flutter test` 25/25 (23 prior + 2 new — an in-progress-card
+large-layout case for scrape, since the only prior `ScrapeSurface` test's fixture happened to always
+resolve its latest subject and so no longer exercised the large-card path at all once this fix
+landed; and a follow-verdict-tally case for `RunSummary`, since the prior "many counters" test read
+`flow.completed` directly and would have silently tested nothing — an empty "No counters yet." —
+under the new per-flow logic. Both gaps were caught by rereading what each test's fixture would
+actually now exercise, not just by "tests still pass"). Not yet verified against a live run.
+
 ### D40 · Two Live-screen bugs found by real data, once real data finally existed
 
 **Found the moment D39's rebuild made the visualization surface show anything at all** — the Live

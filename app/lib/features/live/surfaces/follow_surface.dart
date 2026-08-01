@@ -63,7 +63,10 @@ class _FollowCard extends StatelessWidget {
           children: [
             SizedBox(
               width: 90,
-              child: AgentImage(imageKey: (result ?? attempt)?.imageKey, width: 180, aspectRatio: 1080 / 2246),
+              // follow_queued/<root>/<user>.jpg is the same scraped composite
+              // entity-scrape produces (1080×~2000, not the 1080×2246 entity
+              // page) — profile_follow's own `img` parameter is that file.
+              child: AgentImage(imageKey: (result ?? attempt)?.imageKey, width: 180, aspectRatio: 1080 / 2000),
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -126,17 +126,40 @@ void main() {
   });
 
   testWidgets('RunSummary lays out without overflow: many counters and a long run id', (tester) async {
+    // entity-scan is the one flow whose live counters pass an event's own
+    // counters map straight through (the pipeline already tallies added/
+    // scanned per item) rather than being derived by counting matching
+    // events client-side — the cheapest way to stress an implausibly large
+    // counter value without synthesizing a huge event list to match it.
     final state = LiveState(
-      flow: 'entity-scrape',
+      flow: 'entity-scan',
       runId: 'a' * 64,
       logs: const [],
       events: [
         _event(
-          kind: 'flow.completed',
-          counters: {'processed': 1234567, 'scraped': 89, 'skipped_public': 12, 'skipped_no_posts': 3, 'skipped_fmin': 4, 'skipped_fmax': 5},
+          kind: 'scan.completed',
+          counters: {'added': 1234567, 'scanned': 9999999, 'skipped_public': 12, 'skipped_no_posts': 3, 'skipped_fmin': 4, 'skipped_fmax': 5},
         ),
       ],
     );
+    await _render(
+      tester,
+      const SizedBox(width: 320, height: 700, child: RunSummary()),
+      const Size(320, 700),
+      liveState: state,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('RunSummary lays out without overflow: live per-flow counters (follow verdict tally)', (tester) async {
+    // entity-follow's counters are derived by counting follow.result
+    // verdicts client-side (D40's follow-up) — a distinct code path from
+    // entity-scan's pass-through above, worth its own overflow check.
+    final events = [
+      for (final verdict in ['FOLLOWED', 'REQUESTED', 'FOLLOWING', 'FOLLOWED_BY', 'WANTS_TO_FOLLOW', 'FAILED'])
+        _event(kind: 'follow.result', subject: 'user', verdict: verdict, seq: verdict.hashCode),
+    ];
+    final state = LiveState(flow: 'entity-follow', runId: 'run-1', logs: const [], events: events);
     await _render(
       tester,
       const SizedBox(width: 320, height: 700, child: RunSummary()),
@@ -188,6 +211,24 @@ void main() {
       liveState: LiveState(flow: 'entity-scrape', runId: 'run-1', logs: const [], events: events),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ScrapeSurface lays out without overflow: subject still in progress stays large', (tester) async {
+    // The still-in-progress subject (no done/skipped yet) is the only one
+    // that should render at the large card's wider text style — everything
+    // resolved renders at the same small size as history, per D40's follow-up.
+    final events = [
+      _event(kind: 'scrape.done', subject: 'other_user', counters: {'posts': 12, 'followers': 3456789, 'following': 210}, seq: 1),
+      _event(kind: 'scrape.started', subject: longUsername, seq: 2),
+    ];
+    await _render(
+      tester,
+      SizedBox(width: 700, height: 700, child: ScrapeSurface(events: events)),
+      const Size(700, 700),
+      liveState: LiveState(flow: 'entity-scrape', runId: 'run-1', logs: const [], events: events),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('scraping…'), findsOneWidget);
   });
 
   testWidgets('FollowSurface lays out without overflow: every verdict tone', (tester) async {

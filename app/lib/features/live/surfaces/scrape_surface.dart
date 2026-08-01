@@ -29,14 +29,32 @@ class ScrapeSurface extends StatelessWidget {
       bySubject.putIfAbsent(event.subject ?? event.id, () => []).add(event);
     }
     final subjects = bySubject.keys.toList();
-    final latest = bySubject[subjects.last]!;
+    final latestEvents = bySubject[subjects.last]!;
+    // Large treatment is only for a subject still being worked on — the
+    // instant it resolves (done/skipped) it belongs in history like every
+    // other finished card, not pinned above it just for being most recent.
+    final latestInProgress = !latestEvents.any((e) => e.kind == 'scrape.done' || e.kind == 'scrape.skipped');
+
+    if (!latestInProgress) {
+      return ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: subjects.length,
+        itemBuilder: (context, index) {
+          final subject = subjects[subjects.length - 1 - index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false),
+          );
+        },
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: _ScrapeCard(events: latest, theme: theme, large: true),
+          child: _ScrapeCard(events: latestEvents, theme: theme, large: true),
         ),
         const Divider(height: 1),
         Expanded(
