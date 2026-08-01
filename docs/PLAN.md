@@ -887,8 +887,9 @@ same again over live REST). All nine prior suites unchanged. Verified against th
 funnel dialog, confirmed the numbers looked right and nothing overflowed; flagged the "followed"
 estimate as inaccurate for historic data, which is expected and by design (see above).
 
-Phase 5 is now feature-complete per this plan — CP 5.1 through CP 5.4 all done — awaiting your
-explicit acceptance the way Phases 0–3 got theirs.
+**Phase 5 accepted 2026-08-01** — CP 5.1 through CP 5.4 all done, the user accepted the phase
+outright right after this checkpoint, the same way Phase 2 was accepted without a separate final
+verification pass.
 
 ---
 

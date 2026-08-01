@@ -7,10 +7,10 @@ log + event aggregation, flow instrumentation, the Live screen, device view — 
 2026-08-01. The Live screen's visual polish pass flagged as open at the time happened later the same
 day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wrong against for the
 first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
-parity) — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3 (Library UI) and CP 5.4 (Entity view), all
-done** (CP 5.1/5.2 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — every checkpoint PLAN.md scoped for
-this phase, awaiting your explicit acceptance the way Phases 0–3 got theirs — see the dedicated
-paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
+parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3
+(Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
+agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. Phase 2 accepted
+2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -444,8 +444,9 @@ calls, riding `entity_follow`'s already-scheduled `db_backup()` → Telegram cha
 a cross-repo `Insta-Automate` change, and you judged "followed" a metric you may not use enough to
 justify it. The approximation ships as the permanent answer unless that changes.
 
-**Phase 5 is now open with CP 5.1–5.4 all done** — CP 5.4 was the last item PLAN.md scoped for this
-phase.
+**Phase 5 accepted 2026-08-01** — CP 5.4 was the last item PLAN.md scoped for this phase, and you
+accepted the phase outright straight after reviewing the "followed" approximation tradeoff above,
+the same way Phase 2 was accepted without a separate final verification pass.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
