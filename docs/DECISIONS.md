@@ -154,6 +154,18 @@ the same reason `ia_agent/images.py`'s test monkeypatches its own module's `IA_D
 `GET /api/events`. The limit-clamp fix was verified directly against the real Prefect server at its
 old failing size, then passing; `agent/tests/test_flowruns.py` (36/36) unaffected.
 
+**Corrected same session, before any UI consumed it:** every `emit()` call's `flow` field used
+`entity_scan`-style underscores at first, matching ARCHITECTURE §5's literal comment
+(`flow: str  # entity_scan | entity_classify | …`). But the scheduler heartbeat and flow-runs API —
+both already shipped and already read by the Flutter app (`flowOrder` in `scheduler_models.dart`) —
+use hyphenated names (`entity-scan`), an arbitrary string chosen in `Deployment("entity-scan")`
+independent of Prefect's own (underscored) flow-function name. Building the Live screen means
+joining `flow.events` against `flows.state`/`flow-runs` data by flow name, so two conventions for
+the same identifier would force string-translation at every join for no benefit. Re-hyphenated every
+`emit()` call (`tasks/ia.py`, `tasks/ollama.py`, all five flow bodies) to match the already-embedded
+convention instead — cheaper to fix now, before any downstream code depends on the wrong one, than
+to discover it while building CP 4.4.
+
 ---
 
 ## 2026-07-31 — Phase 3 implementation session (CP 3.5, Flows UI)
