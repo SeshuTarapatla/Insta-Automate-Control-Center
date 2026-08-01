@@ -5,6 +5,7 @@ import httpx
 
 BASE_URL = "http://localhost:4200/api"
 WORK_POOL = "insta-automate-pool"
+MAX_FILTER_LIMIT = 200  # both /flow_runs/filter and /logs/filter 422 above this
 
 
 async def health() -> bool:
@@ -68,7 +69,7 @@ async def flow_runs_filter(
     """Fallback active-run discovery (CP 4.1, ARCHITECTURE §5.2) for when the
     scheduler mirror has nothing — offline, or a heartbeat hasn't landed yet
     since a phase flipped to `running`."""
-    body: dict = {"sort": "START_TIME_DESC", "limit": limit}
+    body: dict = {"sort": "START_TIME_DESC", "limit": min(limit, MAX_FILTER_LIMIT)}
     flow_runs: dict = {}
     if deployment_ids:
         flow_runs["deployment_id"] = {"any_": deployment_ids}
@@ -82,18 +83,23 @@ async def flow_runs_filter(
         return response.json()
 
 
-async def run_logs(flow_run_id: str, after: str | None = None, limit: int = 500) -> list[dict]:
+async def run_logs(flow_run_id: str, after: str | None = None, limit: int = 200) -> list[dict]:
     """Every log row for one flow run, ascending by timestamp. `after` is the
     Prefect log `timestamp` (RFC3339) of the last row already consumed —
     `after_` is strict-greater-than, so the caller dedupes at the boundary by
     `id` rather than trusting no timestamp ever repeats (two rows in the same
-    tick can share a timestamp)."""
+    tick can share a timestamp). `limit` is clamped to what `/logs/filter`
+    actually accepts (`MAX_FILTER_LIMIT`) — a per-tick poll only wants the
+    last second's worth of rows anyway, so 200 is never a real constraint in
+    practice, but a caller-supplied limit above it would otherwise 422 the
+    entire tick (measured live: this default used to be 500)."""
     logs: dict = {"flow_run_id": {"any_": [flow_run_id]}}
     if after:
         logs["timestamp"] = {"after_": after}
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=5) as client:
         response = await client.post(
-            "/logs/filter", json={"logs": logs, "sort": "TIMESTAMP_ASC", "limit": limit}
+            "/logs/filter",
+            json={"logs": logs, "sort": "TIMESTAMP_ASC", "limit": min(limit, MAX_FILTER_LIMIT)},
         )
         response.raise_for_status()
         return response.json()

@@ -568,12 +568,61 @@ this checkpoint).
 **No UI yet** — CP 4.4 puts this on screen; CP 4.3 (cross-repo, `Insta-Automate`) is what starts
 calling `POST /api/events` for real.
 
-### CP 4.3 — Flow instrumentation 🟡
+### CP 4.3 — Flow instrumentation 🟡 ✅ done
 Add `emit()` next to the existing log lines at every point in the ARCHITECTURE §5.1 table —
 `tasks/ia.py` (`profile_entity_scan`, `post_entity_scan`, `profile_scrape`, `profile_follow`,
 `add_new_entity`), `tasks/ollama.py` (`remove_public`, `gender_classify`), and the five flow
 bodies for started/completed. **Always relativise paths to `IA_DIR`** — `profile_scrape` and
 `profile_follow` currently log absolute paths.
+
+**What landed** — every table row now has a real emit call: `entity.added` (`add_new_entity`),
+`scan.started`/`scan.item`/`scan.completed` (`profile_entity_scan` and `post_entity_scan`, the
+"which list and why" detail landing in `extra` since that decision only exists inside the task, not
+the `entity_scan` flow body), `scrape.started`/`scrape.skipped` (all four real skip reasons: `PUBLIC`,
+`NO_POSTS`, `f=<n> < FMIN=<n>`, `f=<n> > FMAX=<n>`) /`scrape.done` (with real parsed
+posts/followers/following counters) in `profile_scrape`, `follow.attempt`/`follow.result` (every
+terminal branch — `FOLLOWED`/`REQUESTED`/`FOLLOWING`/`FOLLOWED_BY`/`WANTS_TO_FOLLOW`/`FAILED`, the
+last with a `reason`) in `profile_follow`, and `classify.access`/`classify.gender` in
+`tasks/ollama.py`. The absolute-path bug the plan called out is fixed alongside its emit call:
+`profile_scrape`'s "Scrape exported to …" log line and both tasks' `image` fields are now
+`IA_DIR`-relative.
+
+**Beyond the table**, all five flow bodies gained a `flow.started`/`flow.completed` pair — a
+distinct kind namespace (not `scan.*`/`scrape.*`/etc., which stay task-level) so CP 4.4's run
+summary has an unambiguous whole-run boundary with real counters (`entity_scrape`/`entity_follow`:
+processed/scraped or followed; `entity_classify`: private/public/female/male/total + duration;
+`entity_scan`: a plain status flag; `entity_ingest`: messages processed), landing even on
+`entity_scan`'s early "already scanned" return so a started run is never left without a matching
+completed.
+
+**`tasks/ollama.py`'s `remove_public`/`gender_classify` are plain sync functions**, not
+`async def` like every other instrumented call site — `AgentClient.emit` can't be awaited there.
+The first attempt used `asyncio.get_running_loop().create_task(...)` to fire-and-forget from sync
+code, and it was wrong: both functions `unlink()`/`move()` the same image on the very next line,
+inside a tight loop that never yields back to the event loop until the whole function returns — a
+scheduled task would only run after every file in the batch was already gone, exactly the race the
+image cache exists to avoid. `controllers.agent.emit_sync` instead makes a genuinely blocking
+`httpx.post` call (new module-level function, not a method) — cheap next to the AI inference call
+each iteration already makes, and it guarantees the agent has read the bytes before the source file
+moves or disappears. See DECISIONS.md D32.
+
+**Also found and fixed, discovered only by live verification against the real Prefect server**: CP
+4.1's `run_logs()` defaulted to `limit=500`, but Prefect's `/logs/filter` (and `/flow_runs/filter`)
+422 above `limit=200` — invisible to CP 4.1's own test suite (fakes don't enforce Prefect's real
+constraints) and to the live `check_flowruns.py` run at the time (which happened to pass an explicit
+small `limit=`). Fixed in `agent/src/ia_agent/integrations/prefect.py` with a shared
+`MAX_FILTER_LIMIT = 200` clamp in both functions — this is an agent-side fix riding along in this
+session, not part of CP 4.3's own scope.
+
+**Verified:** import sanity-check on every changed pipeline module (no test suite exists in this
+repo, same precedent as CP 3.1/3.2); a live round trip — `AgentClient.emit` (async) and `emit_sync`
+(blocking sync) both pointed at a throwaway agent instance via monkeypatched `Config.get`/
+`IA_AGENT_TOKEN` — confirmed both actually reach `POST /api/events` and are readable back from
+`GET /api/events`. The limit-clamp fix was verified directly against the real Prefect server
+(`run_logs`/`flow_runs_filter` at their old failing size, then passing), and `agent/tests/
+test_flowruns.py` (36/36) still passes unchanged. Nothing deployed to the live pod yet — that's a
+rebuild the pipeline pod doesn't need until this branch is tested end-to-end, per D29's
+`GIT_BRANCH`-pointed rebuild technique.
 
 ### CP 4.4 — Live screen 🟢
 Three panes: log console (auto-follows the active run, level filter, task grouping, sticky

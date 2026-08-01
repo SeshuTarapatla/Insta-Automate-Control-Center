@@ -2,9 +2,9 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
-complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.2 done**
-(Live logs & flow-aware imagery; log + event aggregation). Phase 2 accepted 2026-07-31 — the user
-accepted it outright without a separate CP 2.6 verification pass. The
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.3 done**
+(Live logs & flow-aware imagery; log + event aggregation, flow instrumentation). Phase 2 accepted
+2026-07-31 — the user accepted it outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
@@ -86,6 +86,23 @@ image inline, and publishes on `flow.events`. New REST: `POST/GET /api/events[?s
 proportions/clamping, replay, and a live app exercising every endpoint plus a real WS delivery,
 all against a scratch directory, never the real `IA_DIR` or cache). All other suites unchanged.
 Nothing to test in the GUI yet, and no pipeline-side caller exists until CP 4.3.
+
+**CP 4.3 (Flow instrumentation) done, cross-repo, `Insta-Automate` on `feat/control-center`, 🟡.**
+Every ARCHITECTURE §5.1 table row now has a real `emit()` call: `entity.added`, `scan.started`/
+`scan.item`/`scan.completed`, `scrape.started`/`scrape.skipped` (all four real reasons)/
+`scrape.done` (real parsed posts/followers/following), `follow.attempt`/`follow.result` (all six
+verdicts), `classify.access`/`classify.gender` — plus a `flow.started`/`flow.completed` pair added to
+all five flow bodies beyond the table, giving CP 4.4's run summary an unambiguous whole-run boundary.
+The absolute-path bug the plan called out is fixed alongside its emit call in `profile_scrape`/
+`profile_follow`. `tasks/ollama.py`'s `remove_public`/`gender_classify` are plain sync functions, so
+they use a new `controllers.agent.emit_sync` — which had to become a genuinely blocking `httpx.post`
+after a first `create_task`-based version turned out to lose the exact image-deletion race the cache
+exists to win, since neither function ever yields back to the event loop until it returns (D32).
+**Also fixed, found only by live verification**: CP 4.1's `run_logs()`/`flow_runs_filter()` 422 above
+Prefect's real `limit=200` cap — invisible to fakes, silently broken in production (no crash, no
+tailed logs). Verified: import sanity-check on every changed pipeline module (no test suite there),
+plus a live round trip against a throwaway agent instance confirming both `emit()` and `emit_sync()`
+actually reach `POST /api/events`. Nothing deployed to the live pod yet.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

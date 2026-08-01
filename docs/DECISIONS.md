@@ -105,6 +105,57 @@ and a live app round-trip including a real WS delivery) — see PLAN.md CP 4.2 f
 
 ---
 
+## 2026-08-01 — Phase 4 implementation session (CP 4.3, flow instrumentation, `Insta-Automate`)
+
+### D32 · `emit_sync` blocks for real; a fire-and-forget `create_task` would have lost the image race it exists to win
+
+**Chosen:** `tasks/ollama.py`'s `remove_public`/`gender_classify` are the only two ARCHITECTURE §5.1
+call sites that are plain sync functions rather than `async def` — every other instrumented site
+(`tasks/ia.py`, all five flow bodies) can just `await AgentClient().emit(...)` inline. The first
+version of `controllers.agent.emit_sync` used `asyncio.get_running_loop().create_task(...)` to
+fire-and-forget from sync code without blocking it, on the reasoning that both functions are always
+called from inside an already-async flow body, so a running loop always exists to schedule onto.
+**That reasoning was correct and the design was still wrong**: `remove_public` calls
+`entity.unlink()` and `gender_classify` calls `move(entity, ...)` on the *very next line* after the
+classification, inside a `for` loop that never once yields back to the event loop until the whole
+function returns. A task scheduled with `create_task` doesn't get a turn to run until then either —
+so by the time any of those scheduled event-emission coroutines actually executed, every public
+profile in the batch had already been unlinked and every classified image already moved. This is
+exactly the race `images.cache()` (D31) exists to win, defeated by the very code meant to feed it.
+
+**Fixed: `emit_sync` makes a real, blocking `httpx.post(...)` call**, synchronously, before returning
+control to the caller — a module-level function, not an `AgentClient` method, since it needs no
+persistent connection (one request per call, immediately). This guarantees the agent has read the
+image bytes before `unlink()`/`move()` runs on the next line, at the cost of one blocking HTTP
+round-trip per classified image — negligible next to the AI inference call the same loop iteration
+already makes. Same failure-swallowing contract as `AgentClient.emit`: any exception (agent
+down, endpoint doesn't exist, network blip) is caught and discarded, never allowed to break a
+classify run.
+
+**Also found and fixed while verifying this against a real Prefect server**: CP 4.1's
+`ia_agent/integrations/prefect.py` `run_logs()` defaulted to `limit=500`, and `flow_runs_filter()`
+would silently accept any caller-supplied `limit` too — but Prefect's `/logs/filter` and
+`/flow_runs/filter` both 422 above `limit=200` (`"Invalid limit: must be less than or equal to
+200."`). CP 4.1's own test suite never caught this because its Prefect calls are monkeypatched
+fakes with no such constraint, and the live `check_flowruns.py` run at the time happened to pass an
+explicit small `limit=`. The failure mode was silent in production too: `FlowRunTailer._tick()`
+catches every exception per-tick and logs it, so a real active run's logs would simply never tail —
+no crash, no visible symptom beyond an empty log console. Fixed with a shared
+`MAX_FILTER_LIMIT = 200` clamped inside both functions, so every caller (present or future) is
+protected regardless of what limit it asks for.
+
+**Verified:** import sanity-check on every changed `Insta-Automate` module (no test suite exists in
+that repo — same precedent as CP 3.1/3.2, verified by direct call instead). A live round trip against
+a throwaway `ia-agent` instance: `AgentClient.emit` (async) and `emit_sync` (blocking) both pointed
+at it via monkeypatched `Config.get`/`controllers.agent.IA_AGENT_TOKEN` (the latter had to be patched
+on the *importing* module, not `insta_automate.vars` — a from-import binds its own copy of the name,
+the same reason `ia_agent/images.py`'s test monkeypatches its own module's `IA_DIR`, not
+`ia_agent.vars.IA_DIR`), both confirmed to land on `POST /api/events` and read back correctly from
+`GET /api/events`. The limit-clamp fix was verified directly against the real Prefect server at its
+old failing size, then passing; `agent/tests/test_flowruns.py` (36/36) unaffected.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (CP 3.5, Flows UI)
 
 ### D29 · `force_run` bypasses the rate gate and the switch, never the no-work gate; `pause`/`resume`/`reload_config` stay unwired
