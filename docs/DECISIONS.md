@@ -5,6 +5,20 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 5 implementation session (CP 5.3, Library UI)
+
+### D48 · Focus and selection are separate axes, keyboard and mouse both toggle rather than replace, and range-select anchors from whatever was last touched
+
+**Corrected from your live testing, not guessed up front.** The first version required Ctrl+click to add to a selection (plain click replaced it, matching a common "single-select-by-default" file-manager convention) and treated a plain arrow key the same way `selectOnly` treated a plain click — moving focus *and* collapsing the selection to just the new item. Both read as wrong once you tried the actual workflow: "clicking it should toggle the selection... why do I need to press ctrl," and "arrows move the focussed image and space should do the same thing toggle the selection" — arrow-then-space-then-arrow-then-space needs each Space to *add* to the batch, which `selectOnly` made impossible since the very next arrow press had already thrown away the previous pick.
+
+**Fixed by treating focus and selection as genuinely independent state**, not derived from each other: `LibrarySelectionNotifier.moveFocus()` (plain arrow — focus only, selection untouched) is now a distinct operation from `.toggle()` (plain click *or* Space — adds/removes the touched item from whatever's already selected, and becomes the new range anchor). `selectOnly()` is gone entirely; nothing in the UI ever collapses a selection down to one item anymore except `.clear()`. Shift+click/Shift+arrow (`.selectRange()`) were correct from the first version and untouched — they already extended from an anchor rather than replacing it, which is the same "add, don't replace" principle the fix applied everywhere else.
+
+**Ctrl is no longer read from the tile's tap handler at all** (`LibraryTile.onPrimaryTap` dropped its `ctrl` parameter) — a plain click's meaning no longer branches on a modifier, so there was nothing left for it to gate. See [[feedback-multiselect-toggle]] for the durable UX rule this establishes for any future multi-select surface in this app.
+
+**Verified:** `flutter analyze` clean, `flutter test` 32/32 throughout (both before and after the fix — the layout suite checks overflow, not selection semantics, so a dedicated interaction test wasn't warranted for a same-session correction verified live by you). Confirmed working via your own retest ("Thats better") before this checkpoint's docs were written up.
+
+---
+
 ## 2026-08-01 — Phase 5 implementation session (CP 5.2, Mutations)
 
 ### D47 · Apply/delete mirror the pipeline's own `send2trash`/`shutil.move` split, move targets are a machine-local mapping seeded with the real pipeline shape, and `config.env` writers now share one lock

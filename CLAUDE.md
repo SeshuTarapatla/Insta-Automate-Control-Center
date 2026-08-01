@@ -7,8 +7,8 @@ log + event aggregation, flow instrumentation, the Live screen, device view — 
 2026-08-01. The Live screen's visual polish pass flagged as open at the time happened later the same
 day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wrong against for the
 first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
-parity) is open, CP 5.1 (Library API) and CP 5.2 (Mutations) done,
-agent-only, 🟢** — see the dedicated paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
+parity) is open, CP 5.1 (Library API), CP 5.2 (Mutations) and CP 5.3 (Library UI) done** (CP 5.1/5.2
+agent-only 🟢, CP 5.3 user-verified 🟢) — see the dedicated paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -371,6 +371,40 @@ real pipeline data this session — those are real, only-partially-reversible ac
 actual curation backlog that nothing asked for; the scratch-tree test suites stand in for that,
 matching CP 4.2/4.3's own precedent of never mutating the real `IA_DIR` from a verification pass.
 Nothing to test in the GUI yet — CP 5.3 is what puts this on screen.
+
+**CP 5.3 (Library UI) done, user-verified, 🟢.** The Library nav destination (a placeholder since CP
+0.3) is now `app/lib/features/library/`: a `FolderRail` (the seven stage folders with live counts) +
+`EntityList` (search-filterable roots inside whichever non-flat folder is selected) + a
+`LibraryGrid`/`LibraryToolbar` pane, exercising every CP 5.1/5.2 endpoint for the first time. The
+grid uses `SliverGridDelegateWithFixedCrossAxisCount`, not `SliverGridDelegateWithMaxCrossAxisExtent`
+— deliberately, since keyboard navigation needs an exact column count to turn Up/Down into "move by
+one row." Pages of up to 200 load as the user scrolls (folders here run to thousands of files, per
+ARCHITECTURE §1.1); `ctrl+A` pages in whatever's left first, so "select all" really means all. New
+`core/instagram_url.dart` ports `Insta.url()`'s `reel-`/`post-`/account resolution rule — checked
+against both the pipeline's `controllers/instagram.py` and the mobile app's own `instagram_url.dart`
+before writing it, so all three agree — and `core/library_image.dart` is `agent_image.dart`'s sibling
+for path-addressed thumbnails, reusing `BoxFit.contain` per D41's letterboxing lesson. Apply/Delete
+both confirm with a dialog naming exactly what happens, matching `flow_switch_confirm.dart`'s
+established rule; a per-folder move-target picker sits next to Apply, backed by CP 5.2's
+`GET/PATCH /api/library/move-targets`.
+
+**Corrected from your live testing, same session (D48).** The first version needed Ctrl+click to add
+to a selection and let a plain arrow key collapse the selection down to just the newly-focused item
+— both wrong, per your own framing: a plain click or Space should always *toggle*, building a batch
+by clicking or arrow-then-spacing through several images one at a time, and a plain arrow should only
+move focus, never touch selection. Fixed by making focus and selection genuinely independent
+operations (`moveFocus()` vs `toggle()`) instead of one derived from the other — `selectOnly()` is
+gone entirely. Shift+click/Shift+arrow range-select was correct from the first version and untouched.
+Confirmed working on your retest ("Thats better"). See [[feedback-multiselect-toggle]] in memory for
+the durable rule this sets for any future multi-select surface in this app.
+
+**Verified:** `flutter analyze` clean, `flutter test` 32/32 (26 prior + 6 new in
+`library_layout_test.dart`, which caught a real `RenderFlex` overflow in the toolbar at the app's
+1024px floor before you ever saw it — the single action row was split into a breadcrumb row plus a
+`Wrap` for the button cluster, which degrades to more rows instead of overflowing at any width).
+Built and started for you per D19/rule 5 — you confirmed the corrected selection mechanics live;
+Apply/Delete against real data and a real-window resize check weren't separately confirmed back in
+this session.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

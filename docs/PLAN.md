@@ -810,11 +810,46 @@ it, matching CP 4.2/4.3's precedent of never mutating the real `IA_DIR` from a v
 
 **No UI yet** — CP 5.3 puts this on screen.
 
-### CP 5.3 — Library UI 🟢
+### CP 5.3 — Library UI 🟢 ✅ done, user-verified
 Virtualized grid, keyboard-driven multi-select (arrows, space, shift-range, ctrl-A), zoom
 levels, per-folder move targets mirroring the mobile app's mapping, double-tap to copy id,
 long-press/context-menu to open the Instagram URL (reuse the `reel-` / `post-` / account
 resolution rules).
+
+**What landed** — the Library nav destination (previously a placeholder): `app/lib/features/library/`
+is a `FolderRail` (the seven folders with live counts) + `EntityList` (search-filterable roots inside
+whichever non-flat folder is selected) + a `LibraryGrid`/`LibraryToolbar` pane. The grid uses
+`SliverGridDelegateWithFixedCrossAxisCount` with the count computed from the zoom level rather than
+`SliverGridDelegateWithMaxCrossAxisExtent` — deliberately, since keyboard navigation needs an exact
+column count to turn Up/Down into "move by one row," which the max-extent delegate doesn't expose.
+Pages of up to 200 load as the user scrolls (folders here run to thousands of files); `ctrl+A`
+first pages in whatever's left so "select all" really means all, not just what's been scrolled into
+view. New `core/instagram_url.dart` ports `Insta.url()`'s `reel-`/`post-`/account resolution rule
+(checked against both the pipeline's `controllers/instagram.py` and the mobile app's own
+`instagram_url.dart` before writing it, so all three agree) and `core/library_image.dart` is
+`agent_image.dart`'s sibling for path-addressed thumbnails (`GET /api/library/image/thumb?path=`),
+reusing `BoxFit.contain` per D41's letterboxing-over-cropping lesson. Apply/Delete both confirm with
+a dialog naming exactly what happens (moved/kept count, trashed count), matching
+`flow_switch_confirm.dart`'s established rule; a per-folder move-target picker sits next to Apply.
+
+**Corrected from your live testing, same session — see D48.** The first version needed Ctrl+click to
+add to a selection and let a plain arrow key collapse the selection to just the newly-focused item,
+both wrong: a plain click/Space should always toggle (building a batch by clicking, or arrow-then-
+spacing through several images), and a plain arrow should only move focus, never touch selection.
+Fixed by making focus and selection genuinely independent operations (`moveFocus()` vs `toggle()`)
+rather than one derived from the other. Confirmed working on your retest.
+
+**Verified:** `flutter analyze` clean, `flutter test` 32/32 (26 prior + 6 new in
+`library_layout_test.dart`, which caught a real `RenderFlex` overflow in the toolbar at the app's
+1024px floor before you ever saw it — fixed by splitting the single action row into a breadcrumb row
+plus a `Wrap` for the button cluster, which degrades to more rows instead of overflowing at any
+width). Built and started for you to test per D19/rule 5 — the GUI itself is yours, not mine, to
+drive.
+
+**Test (yours) — the selection mechanics, passed:** opened Library, selected an entity, and confirmed
+mouse click-to-toggle and keyboard arrow-then-space both build up a multi-image selection the way you
+expected, after the D48 fix above. Apply/Delete against real data, and a real-window resize check,
+weren't separately confirmed back to me in this session — worth a look next time you're in the app.
 
 ### CP 5.4 — Entity view 🟢
 One entity across every stage at once, with DB-backed yield: scanned → private → female →
