@@ -191,7 +191,7 @@ agent/
 | library | `GET /api/library/{folders\|entities\|images}` · `POST /api/library/{apply\|delete\|queue}` |
 | stats | `GET /api/stats/{daily\|funnel\|entities}` |
 | entities | `GET /api/entities` · `POST /api/entities` (adds via Telegram channel) |
-| notify | `POST /api/notify` → `{delivered, targets}` |
+| notify | `POST /api/notify` → `{delivered, targets}` · `GET /api/notify?since=&unread_only=` · `POST /api/notify/{id}/read` · `POST /api/notify/read-all` |
 | scheduler | `GET /api/scheduler` (full snapshot) · `POST /api/scheduler/heartbeat` → `{commands:[…]}` · `POST /api/scheduler/{flow}/command` |
 | ops | `POST /api/ops/{build\|deploy\|undeploy\|purge-runs\|db-backup\|db-restore}` |
 | pairing | `POST /api/pair/start` · `POST /api/pair/claim` · `GET /api/pair/devices` · `DELETE /api/pair/devices/{id}` |

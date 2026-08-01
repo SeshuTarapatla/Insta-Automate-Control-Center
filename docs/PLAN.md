@@ -895,9 +895,46 @@ verification pass.
 
 ## Phase 6 — Mobile pairing & notification rework · solves #8
 
-### CP 6.1 — Pairing + notification core 🟢
+### CP 6.1 — Pairing + notification core 🟢 ✅ done, agent-only
 `/api/pair/*`, device tokens, revocation, the `notifications` channel, and a persisted
 notification store with unread state and history.
+
+**Answered first, before writing code (D52):** Q6 stays desktop-only scrcpy, no `device.mirror`
+stream yet — the consumer (this phase) comes before the producer, same call CP 4.5 already made.
+Q7 — the future Add Entity action posts to the Telegram entity channel, not the DB (not built this
+checkpoint, just settled). Q8 — all four notification categories are in scope (limit-reached, new
+entities classified/scraped, scan-complete/unfollow-prompt, failures); `NOTIFY_POLICY` and
+per-tag mute (CP 6.2/6.3) are the actual filters, so every notification carries real `tags` now
+rather than adding them later.
+
+**What landed** — new `ia_agent/pairing.py`'s `PairingStore`: `start()` mints a 6-digit, 120s-TTL,
+single-use code plus the LAN-facing host/port for the QR payload (§7); `claim()` is the one
+endpoint left outside `auth.py`'s bearer check entirely, since the phone claiming a code has no
+token yet by construction; paired devices persist to `%LOCALAPPDATA%\ia-agent\pairing.json`
+(machine-local, D12's precedent), token never included in any listing. New
+`ia_agent/notifications.py`'s `NotificationStore` — unlike `events/store.py`'s memory-only ring
+(CP 4.2), history is written to disk on every mutation (D50), dedupe replaces a same-key entry
+only while unread (preserving `tl.bot.notify_transient`'s existing search-and-replace semantics,
+ARCHITECTURE §6), and a referenced image reuses CP 4.2's content-addressed `images.cache`
+unchanged. New REST: `POST /api/pair/{start|claim}` · `GET /api/pair/devices` ·
+`DELETE /api/pair/devices/{id}` · `POST /api/notify` (`{delivered, targets}`, `targets` = live WS
+subscriber count) · `GET /api/notify[?since=&unread_only=]` · `POST /api/notify/{id}/read` ·
+`POST /api/notify/read-all`. New WS channel `notifications`, and `auth.py`/`api/ws.py` now accept
+either the desktop token or any live device token everywhere — except `/api/pair/start`,
+`GET /api/pair/devices`, and `DELETE /api/pair/devices/{id}`, scoped desktop-only after a device
+token was caught being able to enumerate and revoke *other* paired phones in the first test run
+(D51).
+
+**Verified:** new `agent/tests/test_pairing.py` (29/29) and `agent/tests/test_notifications.py`
+(30/30) — see D50/D51/D52 for the full breakdown. All eleven prior suites unchanged (71/71, 49/49,
+65/65, 36/36, 35/35, 32/32, 26/26, 24/24, 20/20, 16/16, 14/14). Also verified against the real
+running agent (restarted to pick up the new code, all three supervised services confirmed on
+identical pids across it) — a real pairing round trip and a real notify round trip, both against
+the live `%LOCALAPPDATA%\ia-agent`.
+
+**No UI yet** — CP 6.3 (desktop pairing screen + notification center) is what puts this on screen;
+CP 6.2 (cross-repo `Insta-Automate` notifier facade) is what makes the pipeline actually call
+`POST /api/notify` for real, the same gap CP 4.1/4.2 had until CP 4.3 wired the pipeline side in.
 
 ### CP 6.2 — Notifier facade 🟡
 `controllers/notify.py`, `NOTIFY_POLICY`, and conversion of all seven call sites
@@ -978,18 +1015,21 @@ favour of the agent's (D14). The task runs a GUI-subsystem interpreter so nothin
 **Q5 — Force run.** Should *Run now* ever bypass the daily limits, or only the wait? Planned:
 *Run now* respects every gate, *Force run* bypasses with a confirmation dialog.
 
-**Q6 — Device mirror.** Native scrcpy window on the desktop (cheap, already works) with streamed
-frames only as an opt-in remote glance for the phone — or streamed frames everywhere? Streaming
-costs device CPU while a flow is driving the UI.
+**Q6 — Device mirror. ✅ RE-CONFIRMED 2026-08-02: desktop-only, still no phone-glance stream.**
+Asked again at the start of Phase 6 now that pairing gives a phone a real consumer — same answer
+as CP 4.5: build the consumer before the producer. See D52.
 
-**Q7 — Adding entities.** Should the app's *Add entity* post the URL to the Telegram entity
-channel (zero flow changes; the existing `NewMessage` handler fires ingest instantly), or write
-to the DB directly? Recommended: post to Telegram.
+**Q7 — Adding entities. ✅ ANSWERED 2026-08-02: post to Telegram, not the DB.** Zero pipeline
+changes needed — the existing `NewMessage` handler already fires ingest instantly on a channel
+post. Not yet implemented (no Add Entity action exists in the app yet); recorded so whichever
+checkpoint builds it doesn't re-litigate the choice. See D52.
 
-**Q8 — Notification taxonomy.** Which events deserve a phone notification versus a quiet feed
-entry? Current candidates: limit reached (scan/scrape/follow), new entities classified, new
-entities scraped, scan complete / unfollow prompt, device disconnected, flow failed, service
-down. And how long should history be kept?
+**Q8 — Notification taxonomy. ✅ ANSWERED 2026-08-02: all four candidate categories are in scope**
+— limit reached (scan/scrape/follow), new entities classified/scraped, scan complete/unfollow
+prompt, and failures (device disconnected, flow failed, service down). `NOTIFY_POLICY` and
+per-tag mute (CP 6.2/6.3) are the actual filters a user can narrow with later, not a smaller set
+baked in now. History is kept to `MAX_HISTORY=1000` entries (CP 6.1's `NotificationStore`),
+oldest dropped first. See D50, D52.
 
 **Q9 — Laptop locked / away.** Should the agent keep everything running when the machine is
 locked, and should the desktop app suppress the device mirror when it is not visible?

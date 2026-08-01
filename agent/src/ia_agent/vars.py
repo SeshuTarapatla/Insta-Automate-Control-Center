@@ -61,3 +61,16 @@ LIBRARY_SETTINGS_PATH = AGENT_DATA_DIR / "library.json"
 # agent reads the bytes the moment an event arrives rather than trusting the
 # path to still resolve later.
 IMAGE_CACHE_DIR = AGENT_DATA_DIR / "cache"
+
+# Paired phones (PLAN CP 6.1, ARCHITECTURE §7) — device id/name/token/last_seen.
+# Machine-local for the same D12 reason every other *.json settings file is:
+# which phones are paired is a property of this agent instance, not the
+# pipeline. Device tokens live here, never in config.env.
+PAIRING_DEVICES_PATH = AGENT_DATA_DIR / "pairing.json"
+
+# Persisted notification history (PLAN CP 6.1, ARCHITECTURE §6) — unlike
+# events/store.py's in-memory-only ring (a flow run's images are gone the
+# moment the next run starts, so nothing of value survives a restart
+# anyway), an unread "limit reached" or "scan complete" notification is
+# exactly the kind of state a restart must not silently drop.
+NOTIFICATIONS_PATH = AGENT_DATA_DIR / "notifications.json"

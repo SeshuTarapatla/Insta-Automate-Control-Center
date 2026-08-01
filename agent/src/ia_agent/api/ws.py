@@ -2,10 +2,12 @@ import asyncio
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from ia_agent.auth import is_authorized
 from ia_agent.events.bus import EventBus
+from ia_agent.pairing import PairingStore
 
 
-def create_ws_router(bus: EventBus, token: str) -> APIRouter:
+def create_ws_router(bus: EventBus, token: str, pairing_store: PairingStore) -> APIRouter:
     router = APIRouter()
 
     @router.websocket("/ws")
@@ -14,7 +16,7 @@ def create_ws_router(bus: EventBus, token: str) -> APIRouter:
         # so the bearer check has to happen here instead.
         auth_header = websocket.headers.get("authorization", "")
         credential = auth_header.removeprefix("Bearer ") if auth_header else websocket.query_params.get("token", "")
-        if credential != token:
+        if not is_authorized(credential, token, pairing_store):
             await websocket.close(code=4401)
             return
 

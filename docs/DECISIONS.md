@@ -5,6 +5,34 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 — Phase 6 implementation session (CP 6.1, Pairing + notification core)
+
+### D52 · Q6/Q7/Q8 answered before writing code — device mirror stays desktop-only, Add Entity posts to Telegram, and every candidate notification category ships
+
+**Q6 — device mirror stays desktop-only, the opt-in phone-glance stream is not built this phase.** CP 4.5 already made this call for the desktop side (D-numbered decision at the time, see PLAN CP 4.5); asked again now that mobile pairing gives a phone a real place to receive a stream, the answer was the same: build the consumer (this phase) before the producer (`device.mirror` broadcast plumbing), not the other way around.
+
+**Q7 — the desktop app's future Add Entity action posts to the Telegram entity channel, not the DB directly.** Zero pipeline changes needed: the existing `NewMessage` handler already fires ingest instantly on a channel post. Matches PLAN's own recommendation. Not implemented this checkpoint (CP 6.1 is pairing/notifications only) — recorded now so whichever checkpoint builds it doesn't re-litigate the choice.
+
+**Q8 — all four candidate notification categories are in scope: limit-reached, new entities classified/scraped, scan-complete/unfollow-prompt, and failures (device disconnected, flow failed, service down).** No category was cut. This doesn't mean every one pushes to a phone unconditionally forever — `NOTIFY_POLICY` and per-tag mute (CP 6.2/6.3) are the actual on/off switches — but the notification *store* built this checkpoint needed to know up front that `tags` is a real, load-bearing field on every entry, not an afterthought, since muting by tag only works if the right tags were being attached from day one.
+
+### D51 · Device tokens are trusted everywhere a desktop token is, except managing pairing itself
+
+**`auth.py`'s bearer check now accepts two token classes with no per-endpoint distinction by default** — the desktop token (file-based, same-machine trust) or any current, non-revoked device token (`PairingStore.authenticate`). Building both into one `is_authorized()` helper, shared by the HTTP middleware and the `/ws` handshake (which `BaseHTTPMiddleware` never wraps — same reason the desktop token needed its own WS-side check from CP 0.2 onward), keeps the two paths from drifting.
+
+**Caught by the pairing test's own first run, not designed in up front: a device token could list and revoke *other* paired phones, and mint new pairing codes.** `/api/pair/start`, `GET /api/pair/devices`, and `DELETE /api/pair/devices/{id}` are desktop-console actions — a phone has no legitimate reason to enumerate or kick off siblings it didn't pair. Fixed with a route-level `_require_desktop()` check in `api/pair.py` that compares the request's credential against the desktop token specifically, layered on top of (not instead of) the outer middleware's already-broader check. `/api/pair/claim` stays reachable with **no** bearer at all — the phone claiming a code has none yet by construction (§7) — everything else a phone will actually need (CP 6.4: config, notifications, live flow view) is left open to both token classes rather than building a scoping system for endpoints that don't exist yet.
+
+### D50 · Notification history is a persisted store, not an in-memory ring like flow events
+
+**`events/store.py`'s `EventStore` is memory-only by design — a flow run's per-item images are worthless the moment the next run starts, so a restart losing them costs nothing.** A notification is the opposite kind of state: "FOLLOW limit reached" sitting unread is exactly what a restart must not silently discard. `notifications.py`'s `NotificationStore` writes its full history to `%LOCALAPPDATA%\ia-agent\notifications.json` on every mutation (add, mark-read), capped at `MAX_HISTORY=1000` so indefinite uptime can't grow the file without bound — same atomic temp-file-then-replace pattern every other `*.json` settings file in this agent already uses (D12's precedent).
+
+**Dedupe replaces a prior notification with the same key only while it's still unread; once read, a repeat is a new occurrence.** This preserves `Insta-Automate`'s existing `tl.bot.notify_transient` search-and-replace semantics (ARCHITECTURE §6) rather than inventing new ones: "SCRAPE limit reached (180/300)" then "(250/300)" is one evolving fact worth collapsing to its latest value, but once you've acknowledged it, a fresh limit-reached notification tomorrow is a distinct event, not an edit.
+
+**`delivered`/`targets` in `POST /api/notify`'s response is the live WS subscriber count at publish time, not per-channel subscription tracking.** `events/bus.py`'s `EventBus` broadcasts every channel to every connected socket today (its own docstring already flags per-client filtering as future work, "once there is more than one channel competing for bandwidth") — so "how many subscribers got this" is honestly answered by "how many sockets are connected," and a `subscriber_count()` method was added to the bus rather than building real per-channel accounting for a distinction that doesn't exist anywhere yet.
+
+**Verified:** new `agent/tests/test_pairing.py` (29/29 — code TTL/single-use, device-token auth working on an ordinary bearer-protected route, the pairing-management scoping fix above, persistence across a fresh `PairingStore`, a real WS connection authenticated with a device token instead of the desktop token) and `agent/tests/test_notifications.py` (30/30 — defaults, image caching reusing CP 4.2's `images.cache` unchanged, dedupe-while-unread, `since=`/`unread_only=` filtering, mark-read/mark-all-read, persistence across a fresh `NotificationStore`, a live `notifications` WS delivery). All eleven prior suites unchanged (71/71, 49/49, 65/65, 36/36, 35/35, 32/32, 26/26, 24/24, 20/20, 16/16, 14/14). Also verified against the real running agent — restarted to pick up the new code (same step every checkpoint since CP 4.4 has needed; all three supervised services confirmed on identical pids across it) — a real pairing round trip (start → claim with no bearer → device token authenticating → revoke) and a real notify round trip (post → list → mark read) against the live `%LOCALAPPDATA%\ia-agent`, leaving one read, tagged `test` notification in the now-real `notifications.json` as the only trace.
+
+---
+
 ## 2026-08-01 — Phase 5 implementation session (CP 5.4, Entity view)
 
 ### D49 · "Followed" stays a folder-count estimate — no Postgres ledger, deliberately, after weighing where the exact fix belongs

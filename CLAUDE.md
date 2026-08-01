@@ -9,7 +9,9 @@ day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wro
 first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
 parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3
 (Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
-agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. Phase 2 accepted
+agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
+pairing & notification rework) is open, CP 6.1 (Pairing + notification core) done, agent-only,
+🟢** — see the dedicated paragraph below. Phase 2 accepted
 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
@@ -447,6 +449,50 @@ justify it. The approximation ships as the permanent answer unless that changes.
 **Phase 5 accepted 2026-08-01** — CP 5.4 was the last item PLAN.md scoped for this phase, and you
 accepted the phase outright straight after reviewing the "followed" approximation tradeoff above,
 the same way Phase 2 was accepted without a separate final verification pass.
+
+**Phase 6 (Mobile pairing & notification rework) is open, CP 6.1 (Pairing + notification core)
+done, agent-only, 🟢.** Before writing code, Q6/Q7/Q8 were answered (D52): the device mirror stays
+desktop-only (no `device.mirror` stream this phase — the consumer, mobile pairing, comes before
+the producer, same call CP 4.5 already made for the desktop side); the future Add Entity action
+will post to the Telegram entity channel, not the DB, since the existing `NewMessage` handler
+already fires ingest instantly on a channel post; and all four candidate notification categories
+(limit-reached, new entities classified/scraped, scan-complete/unfollow-prompt, failures) are in
+scope, with `NOTIFY_POLICY` and per-tag mute (CP 6.2/6.3) as the actual filters rather than a
+smaller taxonomy baked in now. New `ia_agent/pairing.py`'s `PairingStore`: `start()` mints a
+6-digit, 120s-TTL, single-use code plus the LAN host/port for the QR payload; `claim()` is the one
+endpoint left outside `auth.py`'s bearer check entirely (the phone has no token yet by
+construction); devices persist to `%LOCALAPPDATA%\ia-agent\pairing.json` (D12's machine-local
+precedent), never listing the token itself. New `ia_agent/notifications.py`'s `NotificationStore`
+persists its full history to disk on every mutation — deliberately unlike `events/store.py`'s
+memory-only ring (CP 4.2), since an unread "FOLLOW limit reached" is exactly the state a restart
+must not drop (D50) — and dedupe replaces a same-key entry only while it's unread, preserving
+`tl.bot.notify_transient`'s existing search-and-replace semantics (ARCHITECTURE §6). New REST:
+`POST /api/pair/{start|claim}` · `GET /api/pair/devices` · `DELETE /api/pair/devices/{id}` ·
+`POST /api/notify` (`{delivered, targets}`, `targets` = live WS subscriber count, the closest
+answer the bus's broadcast-to-everyone model can give until per-channel subscription tracking
+exists) · `GET /api/notify[?since=&unread_only=]` · `POST /api/notify/{id}/read` ·
+`POST /api/notify/read-all`. New WS channel `notifications`. `auth.py`/`api/ws.py` now accept
+either the desktop token or any live device token everywhere.
+
+**Found by the pairing test's own first run, not designed in up front (D51):** a device token
+could list and revoke *other* paired phones and mint new pairing codes — real overreach for a
+phone that has no business touching siblings it didn't pair. Fixed with a route-level
+desktop-only check on `/api/pair/start`, `GET /api/pair/devices`, and
+`DELETE /api/pair/devices/{id}` specifically, layered on top of the broader middleware check
+rather than replacing it.
+
+**Verified:** new `agent/tests/test_pairing.py` (29/29) and `agent/tests/test_notifications.py`
+(30/30) — code TTL/single-use/persistence, a device token authenticating like a real bearer token
+except where scoped out, dedupe-while-unread, `since=`/`unread_only=` filtering, mark-read
+semantics, and a real WS delivery on each new channel. All eleven prior suites unchanged (71/71,
+49/49, 65/65, 36/36, 35/35, 32/32, 26/26, 24/24, 20/20, 16/16, 14/14). Also verified against the
+real running agent — restarted to pick up the new code (same step every checkpoint since CP 4.4
+has needed; all three supervised services confirmed on identical pids across it) — a real pairing
+round trip (start → claim with no bearer → device token working → revoke) and a real notify round
+trip (post → list → mark read), leaving one read, `test`-tagged notification in the now-real
+`notifications.json` as the only trace. **No UI yet** — CP 6.3 is what puts this on screen; CP 6.2
+(cross-repo `Insta-Automate` notifier facade) is what makes the pipeline actually call
+`POST /api/notify` for real.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
