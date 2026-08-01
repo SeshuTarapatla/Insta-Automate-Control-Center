@@ -29,6 +29,8 @@ from PIL import Image
 
 import ia_agent.images as images
 import ia_agent.library.folders as folders
+import ia_agent.library.ops as ops
+import ia_agent.library.settings as library_settings
 from ia_agent.library.counts import LibraryCounts
 from ia_agent.library.folders import LibraryFolder
 
@@ -57,6 +59,7 @@ folders.FOLDERS = {
     "scraped": LibraryFolder("scraped", FAKE_IA_DIR / "scraped", flat=False),
     "follow_queued": LibraryFolder("follow_queued", FAKE_IA_DIR / "follow_queued", flat=False),
 }
+library_settings.LIBRARY_SETTINGS_PATH = SCRATCH / "library.json"
 
 
 def make_jpg(rel_path: str, size=(40, 20), color=(200, 30, 30)) -> Path:
@@ -141,12 +144,108 @@ def counts_checks() -> None:
     check("flat folder raises ValueError", raised_flat)
 
 
+# ------------------------------------------------------------------ settings.py
+
+def settings_checks() -> None:
+    print("\n9. default move targets encode the two real human-review steps, identity elsewhere")
+    defaults = library_settings.load()
+    check("gender_valid -> scrape_queued by default", defaults["gender_valid"] == "scrape_queued", str(defaults))
+    check("scraped -> follow_queued by default", defaults["scraped"] == "follow_queued")
+    check("scanned defaults to itself", defaults["scanned"] == "scanned")
+    check("entities defaults to itself", defaults["entities"] == "entities")
+
+    print("\n10. set_move_target persists and move_target() picks it up; other folders unaffected")
+    library_settings.set_move_target("scanned", "gender_invalid")
+    check("move_target reflects the new mapping", library_settings.move_target("scanned") == "gender_invalid")
+    check("unrelated folder keeps its default", library_settings.move_target("scraped") == "follow_queued")
+    library_settings.set_move_target("scanned", "scanned")  # restore identity for ops_checks() below
+    check("restored to identity", library_settings.move_target("scanned") == "scanned")
+
+    print("\n11. set_move_target rejects unknown folder names on either side")
+    raised_source = raised_target = False
+    try:
+        library_settings.set_move_target("nope", "scanned")
+    except KeyError:
+        raised_source = True
+    try:
+        library_settings.set_move_target("scanned", "nope")
+    except KeyError:
+        raised_target = True
+    check("unknown source folder raises", raised_source)
+    check("unknown target folder raises", raised_target)
+
+
+# ------------------------------------------------------------------------ ops.py
+
+def ops_checks() -> None:
+    print("\n12. apply(): identity-mapped folder keeps the selection in place, trashes the rest")
+    make_jpg("scanned/erin/keep.jpg")
+    make_jpg("scanned/erin/toss.jpg")
+    result = ops.apply("scanned", "erin", ["keep.jpg"])
+    check("kept file is still there", (FAKE_IA_DIR / "scanned/erin/keep.jpg").exists())
+    check("unselected file is gone", not (FAKE_IA_DIR / "scanned/erin/toss.jpg").exists())
+    check(
+        "report shape",
+        result["moved"] == ["keep.jpg"] and result["trashed"] == ["toss.jpg"] and result["target"] == "scanned",
+        str(result),
+    )
+
+    print("\n13. apply(): a real promotion moves the selected file, preserving <root>/<name>")
+    make_jpg("gender_valid/frank/a.jpg")
+    make_jpg("gender_valid/frank/b.jpg")
+    result2 = ops.apply("gender_valid", "frank", ["a.jpg"])
+    check("a.jpg landed at scrape_queued/frank/a.jpg", (FAKE_IA_DIR / "scrape_queued/frank/a.jpg").exists())
+    check("a.jpg is gone from gender_valid", not (FAKE_IA_DIR / "gender_valid/frank/a.jpg").exists())
+    check(
+        "b.jpg (unselected) was trashed, not promoted",
+        not (FAKE_IA_DIR / "gender_valid/frank/b.jpg").exists()
+        and not (FAKE_IA_DIR / "scrape_queued/frank/b.jpg").exists(),
+    )
+    check("report names the real target", result2["target"] == "scrape_queued", str(result2))
+
+    print("\n14. apply() rejects a selected filename that isn't actually present, before moving anything")
+    make_jpg("scanned/erin/keep.jpg")  # re-add so a false-positive move would be observable
+    raised = False
+    try:
+        ops.apply("scanned", "erin", ["ghost.jpg"])
+    except ops.LibraryOpError:
+        raised = True
+    check("unknown selection raises LibraryOpError", raised)
+    check("nothing in the directory moved as a side effect", (FAKE_IA_DIR / "scanned/erin/keep.jpg").exists())
+
+    print("\n15. delete() trashes an explicit set of IA_DIR-relative paths regardless of folder/entity")
+    make_jpg("scrape_queued/frank/c.jpg")
+    result3 = ops.delete(["scrape_queued/frank/a.jpg", "scrape_queued/frank/c.jpg"])
+    check(
+        "both reported deleted",
+        set(result3["deleted"]) == {"scrape_queued/frank/a.jpg", "scrape_queued/frank/c.jpg"},
+        str(result3),
+    )
+    check(
+        "both gone from disk",
+        not (FAKE_IA_DIR / "scrape_queued/frank/a.jpg").exists()
+        and not (FAKE_IA_DIR / "scrape_queued/frank/c.jpg").exists(),
+    )
+
+    print("\n16. delete() reports paths outside the library folders as errors, never raises")
+    result4 = ops.delete(["../outside.jpg", "config.env", "scrape_queued/frank/does-not-exist.jpg"])
+    check(
+        "all three reported as errors, nothing deleted",
+        len(result4["errors"]) == 3 and result4["deleted"] == [],
+        str(result4),
+    )
+
+
 folders_checks()
 counts_checks()
+settings_checks()
+ops_checks()
 
-# At this point scrape_queued/dave has exactly 2 files (pic1.jpg, pic2.jpg)
-# and alice has been fully drained — the live app's own seed() below will
-# scan this exact, now-stable state.
+# scanned/erin now holds exactly keep.jpg; gender_valid/frank is fully drained;
+# scrape_queued/frank holds exactly b.jpg (trashed) minus a.jpg/c.jpg (deleted
+# above) — i.e. empty; scrape_queued/dave (from counts_checks) is unaffected
+# at 2 files. The live app's own seed() below scans this exact, now-stable
+# state.
 
 
 # ------------------------------------------------------------------ live app
@@ -173,53 +272,53 @@ async def live_checks() -> None:
             except httpx.HTTPError:
                 await asyncio.sleep(0.2)
 
-        print("\n9. GET /api/library/folders lists all seven, seeded from the scratch tree")
+        print("\n17. GET /api/library/folders lists all seven, seeded from the scratch tree")
         folder_list = (await client.get("/api/library/folders")).json()
         names = {f["name"] for f in folder_list}
         check("all seven folders present", names == set(folders.FOLDERS), str(names))
         by_name = {f["name"]: f for f in folder_list}
         check("scrape_queued total matches disk (dave=2)", by_name["scrape_queued"]["total"] == 2, str(by_name["scrape_queued"]))
 
-        print("\n10. GET /api/library/entities?folder= drills into one folder")
+        print("\n18. GET /api/library/entities?folder= drills into one folder")
         entity_list = (await client.get("/api/library/entities?folder=scrape_queued")).json()
         check("dave listed with count 2", entity_list == [{"root": "dave", "count": 2}], str(entity_list))
 
-        print("\n10b. GET /api/library/entities?folder=entities (flat) is a 400")
+        print("\n18b. GET /api/library/entities?folder=entities (flat) is a 400")
         flat_entities = await client.get("/api/library/entities?folder=entities")
         check("flat folder rejected with 400", flat_entities.status_code == 400)
 
-        print("\n11. GET /api/library/images lists real filenames with offset/limit")
+        print("\n19. GET /api/library/images lists real filenames with offset/limit")
         images_page = (await client.get("/api/library/images?folder=scrape_queued&entity=dave&limit=1")).json()
         check("total is 2, one returned", images_page["total"] == 2 and len(images_page["images"]) == 1, str(images_page))
         second_page = (await client.get("/api/library/images?folder=scrape_queued&entity=dave&offset=1&limit=1")).json()
         check("offset=1 returns the other file", second_page["images"][0]["name"] != images_page["images"][0]["name"])
 
-        print("\n11b. GET /api/library/images on a nonexistent entity returns an empty list, not an error")
+        print("\n19b. GET /api/library/images on a nonexistent entity returns an empty list, not an error")
         empty_page = (await client.get("/api/library/images?folder=scrape_queued&entity=nobody")).json()
         check("empty, no 500", empty_page == {"total": 0, "offset": 0, "images": []}, str(empty_page))
 
-        print("\n12. GET /api/library/image serves the real bytes")
+        print("\n20. GET /api/library/image serves the real bytes")
         rel_path = images_page["images"][0]["path"]
         image_response = await client.get(f"/api/library/image?path={rel_path}")
         check("200 jpeg", image_response.status_code == 200 and image_response.headers["content-type"] == "image/jpeg")
         check("byte-identical to source", image_response.content == (FAKE_IA_DIR / rel_path).read_bytes())
 
-        print("\n13. GET /api/library/image/thumb serves a resized image")
+        print("\n21. GET /api/library/image/thumb serves a resized image")
         thumb_response = await client.get(f"/api/library/image/thumb?path={rel_path}&w=20")
         with Image.open(__import__("io").BytesIO(thumb_response.content)) as thumb_img:
             check("thumbnail width is 20", thumb_img.width == 20, str(thumb_img.size))
 
-        print("\n14. path traversal is rejected with 400, not served")
+        print("\n22. path traversal is rejected with 400, not served")
         traversal = await client.get("/api/library/image?path=../../config.env")
         check("traversal outside a library folder is a 400", traversal.status_code == 400, str(traversal.status_code))
         top_level = await client.get("/api/library/image?path=config.env")
         check("a real top-level file that isn't in a library folder is also a 400", top_level.status_code == 400)
 
-        print("\n15. GET /api/library/image on a missing file is a 404")
+        print("\n23. GET /api/library/image on a missing file is a 404")
         missing = await client.get("/api/library/image?path=scrape_queued/dave/does-not-exist.jpg")
         check("missing file 404s", missing.status_code == 404)
 
-        print("\n16. library.changes reaches a WS subscriber when a real file is added")
+        print("\n24. library.changes reaches a WS subscriber when a real file is added")
         async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws?token={token}") as ws:
             make_jpg("scanned/frank/newpic.jpg")
             frame = None
@@ -238,6 +337,58 @@ async def live_checks() -> None:
             if frame:
                 match = next(c for c in frame["data"]["changes"] if c["folder"] == "scanned" and c["root"] == "frank")
                 check("the pushed count reflects the new file", match["count"] == 1, str(match))
+
+        print("\n25. GET /api/library/move-targets reports the settings.py defaults")
+        targets = (await client.get("/api/library/move-targets")).json()
+        check(
+            "gender_valid/scraped show the real pipeline promotions, scanned is identity",
+            targets["gender_valid"] == "scrape_queued" and targets["scraped"] == "follow_queued" and targets["scanned"] == "scanned",
+            str(targets),
+        )
+
+        print("\n26. PATCH /api/library/move-targets/{folder} changes one mapping, GET reflects it")
+        patched = await client.patch("/api/library/move-targets/scanned", json={"target": "gender_invalid"})
+        check("200 with the new mapping", patched.status_code == 200 and patched.json()["scanned"] == "gender_invalid")
+        refetched = (await client.get("/api/library/move-targets")).json()
+        check("persisted across a fresh GET", refetched["scanned"] == "gender_invalid", str(refetched))
+        restore = await client.patch("/api/library/move-targets/scanned", json={"target": "scanned"})
+        check("restored to identity for later checks", restore.json()["scanned"] == "scanned")
+
+        print("\n26b. PATCH /api/library/move-targets/{folder} 404s on an unknown folder on either side")
+        bad_source = await client.patch("/api/library/move-targets/nope", json={"target": "scanned"})
+        bad_target = await client.patch("/api/library/move-targets/scanned", json={"target": "nope"})
+        check("unknown source folder is a 404", bad_source.status_code == 404)
+        check("unknown target folder is a 404", bad_target.status_code == 404)
+
+        print("\n27. POST /api/library/apply promotes the selected file and trashes the rest, over REST")
+        make_jpg("gender_valid/grace/x.jpg")
+        make_jpg("gender_valid/grace/y.jpg")
+        applied = await client.post(
+            "/api/library/apply", json={"folder": "gender_valid", "entity": "grace", "selected": ["x.jpg"]}
+        )
+        check("200 with the real target", applied.status_code == 200 and applied.json()["target"] == "scrape_queued", applied.text)
+        check("x.jpg promoted to scrape_queued/grace", (FAKE_IA_DIR / "scrape_queued/grace/x.jpg").exists())
+        check(
+            "y.jpg trashed, not promoted",
+            not (FAKE_IA_DIR / "gender_valid/grace/y.jpg").exists() and not (FAKE_IA_DIR / "scrape_queued/grace/y.jpg").exists(),
+        )
+
+        print("\n27b. POST /api/library/apply with a selection that isn't present is a 400, over REST")
+        rejected = await client.post(
+            "/api/library/apply", json={"folder": "gender_valid", "entity": "grace", "selected": ["ghost.jpg"]}
+        )
+        check("400, not 500", rejected.status_code == 400, str(rejected.status_code))
+
+        print("\n28. POST /api/library/delete trashes an explicit path list, over REST")
+        make_jpg("scrape_queued/grace/z.jpg")
+        deleted_resp = await client.post("/api/library/delete", json={"paths": ["scrape_queued/grace/z.jpg"]})
+        deleted_body = deleted_resp.json()
+        check(
+            "reports the deletion, no errors",
+            deleted_body == {"deleted": ["scrape_queued/grace/z.jpg"], "errors": []},
+            str(deleted_body),
+        )
+        check("gone from disk", not (FAKE_IA_DIR / "scrape_queued/grace/z.jpg").exists())
 
 
 async def main() -> int:

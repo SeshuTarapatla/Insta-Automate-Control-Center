@@ -1,9 +1,16 @@
+import asyncio
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from ia_agent.config.schema import SCHEMA, ConfigType, SWITCH_KEYS
+
+# Shared by every router that reads-modifies-writes config.env (config.py's
+# PATCH, queue.py's add/remove/reorder) so two concurrent writers can't race
+# each other's read-modify-write and drop one's change — a per-module lock
+# would only serialize writers within that one module.
+WRITE_LOCK = asyncio.Lock()
 
 
 @dataclass

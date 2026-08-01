@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -8,10 +6,6 @@ from ia_agent.config.schema import SCHEMA, ConfigType, SWITCH_KEYS
 from ia_agent.vars import CONFIG_PATH
 
 router = APIRouter(prefix="/api")
-
-# Serializes PATCH requests so two concurrent edits can't clobber each other via a
-# stale read-modify-write of the same file.
-_write_lock = asyncio.Lock()
 
 
 class ConfigPatch(BaseModel):
@@ -51,7 +45,7 @@ async def get_config() -> dict:
 
 @router.patch("/config")
 async def patch_config(patch: ConfigPatch) -> dict:
-    async with _write_lock:
+    async with env_file.WRITE_LOCK:
         data = env_file.load(CONFIG_PATH)
         if data is None:
             raise HTTPException(status_code=404, detail="config.env not found")

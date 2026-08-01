@@ -50,6 +50,12 @@ SERVICE_LOG_DIR = AGENT_DATA_DIR / "logs"
 # Per-service self-heal / autostart switches. Machine-local, never synced (D12).
 SERVICE_SETTINGS_PATH = AGENT_DATA_DIR / "services.json"
 
+# Per-folder Library "apply" move targets (PLAN CP 5.2) — which stage folder a
+# review approval promotes into. Machine-local for the same D12 reason: which
+# folder curation moves files into is a desktop-app concern, not something the
+# pipeline reads.
+LIBRARY_SETTINGS_PATH = AGENT_DATA_DIR / "library.json"
+
 # Content-addressed flow-event image cache (CP 4.2) — entity_classify and
 # entity_follow delete their source image right after logging it, so the
 # agent reads the bytes the moment an event arrives rather than trusting the

@@ -7,12 +7,13 @@ import sys
 import time
 
 from ia_agent import images
-from ia_agent.library import folders
+from ia_agent.library import folders, settings
 from ia_agent.library.counts import LibraryCounts
 
 
 def main() -> int:
     print(f"IA_DIR: {folders.IA_DIR}")
+    print(f"move targets: {settings.load()}\n")
 
     start = time.monotonic()
     counts = LibraryCounts()

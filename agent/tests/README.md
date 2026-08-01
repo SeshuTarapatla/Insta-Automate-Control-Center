@@ -14,6 +14,8 @@ uv run --project agent python agent/tests/test_startup.py        # 20 checks, lo
 uv run --project agent python agent/tests/test_flowruns.py       # 36 checks, flow-run log tailer (CP 4.1)
 uv run --project agent python agent/tests/test_events.py         # 35 checks, flow-event + image cache (CP 4.2)
 uv run --project agent python agent/tests/test_device.py         # 16 checks, device/scrcpy control (CP 4.5)
+uv run --project agent python agent/tests/test_library.py        # 65 checks, folders/counts/watcher/REST + apply/delete/move-targets (CP 5.1-5.2)
+uv run --project agent python agent/tests/test_queue.py          # 14 checks, ENTITY_QUEUE add/remove/reorder (CP 5.2)
 uv run --project agent python agent/tests/check_roots.py         # read-only, live machine
 uv run --project agent python agent/tests/check_services.py      # runs the real self-tests
 uv run --project agent python agent/tests/check_deps.py [-v]     # runs the real dependency panel

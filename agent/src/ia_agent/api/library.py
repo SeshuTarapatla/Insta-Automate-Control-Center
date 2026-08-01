@@ -3,14 +3,29 @@ import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from ia_agent import images
-from ia_agent.library import folders
+from ia_agent.library import folders, ops, settings
 from ia_agent.library.counts import LibraryCounts
 
 MIN_WIDTH = 16
 MAX_WIDTH = 2000
 MAX_LIMIT = 500
+
+
+class ApplyRequest(BaseModel):
+    folder: str
+    entity: str | None = None
+    selected: list[str]
+
+
+class DeleteRequest(BaseModel):
+    paths: list[str]
+
+
+class MoveTargetRequest(BaseModel):
+    target: str
 
 
 def _folder_or_404(name: str) -> folders.LibraryFolder:
@@ -91,5 +106,27 @@ def create_library_router(counts: LibraryCounts) -> APIRouter:
         if thumb is None:
             raise HTTPException(status_code=404, detail=f"not found: {path}")
         return FileResponse(thumb, media_type="image/jpeg")
+
+    @router.get("/move-targets")
+    async def get_move_targets() -> dict:
+        return settings.load()
+
+    @router.patch("/move-targets/{folder}")
+    async def set_move_target(folder: str, body: MoveTargetRequest) -> dict:
+        try:
+            return await asyncio.to_thread(settings.set_move_target, folder, body.target)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error))
+
+    @router.post("/apply")
+    async def apply_library(body: ApplyRequest) -> dict:
+        try:
+            return await asyncio.to_thread(ops.apply, body.folder, body.entity, body.selected)
+        except ops.LibraryOpError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+    @router.post("/delete")
+    async def delete_library(body: DeleteRequest) -> dict:
+        return await asyncio.to_thread(ops.delete, body.paths)
 
     return router

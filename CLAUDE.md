@@ -7,8 +7,8 @@ log + event aggregation, flow instrumentation, the Live screen, device view — 
 2026-08-01. The Live screen's visual polish pass flagged as open at the time happened later the same
 day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wrong against for the
 first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
-parity) is open, CP 5.1 (Library API) done,
-agent-only, 🟢** — see the dedicated paragraph below. Phase 2 accepted 2026-07-31 — the user accepted it
+parity) is open, CP 5.1 (Library API) and CP 5.2 (Mutations) done,
+agent-only, 🟢** — see the dedicated paragraphs below. Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -326,7 +326,51 @@ the real `IA_DIR`. All eight prior suites unchanged (71/71, 32/32, 49/49, 26/26,
 back in ~8s per D21, and the three supervised services stayed `adopted` with uptime intact across
 the restart) — then every new endpoint hit against the real `IA_DIR`'s real 7,655 files, plus a live
 WS connection confirming the channel is reachable. Nothing to test in the GUI yet — CP 5.3 is what
-puts this on screen; CP 5.2 (mutations) is next.
+puts this on screen.
+
+**CP 5.2 (Mutations) done, agent-only, 🟢.** New `ia_agent/library/ops.py` — `apply(folder, entity,
+selected)` promotes the selected filenames into that folder's configured move target and
+`send2trash`s everything else currently in that `(folder, entity)` directory (read fresh from disk
+at call time, not trusted from the caller — the same race CP 4.2's image cache exists to dodge
+elsewhere); `delete(paths)` trashes an explicit list of `IA_DIR`-relative paths regardless of
+folder/entity. Both mirror the pipeline's own `insta_automate.utils.move`/`rm_empty_subdirs` — real
+promotions use `shutil.move`, everything discarded goes through `send2trash` — checked against
+`ia_manager` (the mobile app) first and deliberately **not** matched to it: the mobile app
+hard-deletes the unselected half with no recovery. New `ia_agent/library/settings.py` persists the
+per-folder move-target mapping machine-local (`%LOCALAPPDATA%\ia-agent\library.json`, same D12
+reasoning as service self-heal/autostart), seeded with the two real ARCHITECTURE §1.1 promotions
+(`gender_valid → scrape_queued`, `scraped → follow_queued`) rather than the mobile app's
+identity-everywhere default — every other folder still defaults to itself, where "apply" is just
+"keep the selection, discard the rest," a real action with no promotion. New REST: `GET/PATCH
+/api/library/move-targets[/{folder}]`, `POST /api/library/apply`, `POST /api/library/delete`, and on
+`api/queue.py` — `POST /api/queue/add` (rejects a missing `entities/<id>.jpg`, mirroring
+`Queue.add()`), `POST /api/queue/remove` (mirrors `Queue.remove()`'s `check=True`: refuses while the
+entity still has jpegs pending in either stage directory unless `force: true`), `POST
+/api/queue/reorder` (rejects anything that isn't exactly a permutation of the currently queued
+names). `config.env`'s write lock moved from `api/config.py`'s own `asyncio.Lock()` into a shared
+`config/env_file.py::WRITE_LOCK`, since CP 5.2 is the first time two different routers
+(`api/config.py`'s `PATCH`, `api/queue.py`'s new mutations) read-modify-write the same file — a
+per-module lock would only have serialized writers within one module. See D47 for the full
+reasoning on all four decisions above.
+
+**Verified:** `agent/tests/test_library.py` grew from CP 5.1's 32 checks to 65 (settings
+defaults/persistence/validation; `apply()`/`delete()` at the unit level against a scratch tree —
+identity-mapped cull, a real cross-folder promotion preserving `<root>/<name>` exactly, rejecting an
+absent selection before touching any file, an explicit-path delete, rejecting paths outside the
+seven folders — then the same coverage again over the live REST surface). New
+`agent/tests/test_queue.py` (14/14, no prior coverage existed for `queue.py` at all) covers
+`GET /api/queue` plus add/remove/reorder end to end, including the pending-jpeg refusal and forced
+override, a rejected path-shaped entity name, and confirming `config.env`'s comments and unrelated
+keys survive every mutation untouched. All eight prior suites unchanged (71/71, 32/32, 26/26, 49/49,
+24/24, 20/20, 36/36, 35/35, 16/16). Also verified against the real running agent — restarted to pick
+up the new code (same step every checkpoint since CP 4.4 has needed; the three supervised services
+stayed up with uptime intact across it) — `GET /api/library/move-targets` and `GET /api/queue` hit
+against the real `IA_DIR`/`config.env` (7,007 real `scrape_queued` files across 110 entities).
+**Deliberately not exercised live:** `apply`/`delete`/`add`/`remove` were never called against the
+real pipeline data this session — those are real, only-partially-reversible actions on the user's
+actual curation backlog that nothing asked for; the scratch-tree test suites stand in for that,
+matching CP 4.2/4.3's own precedent of never mutating the real `IA_DIR` from a verification pass.
+Nothing to test in the GUI yet — CP 5.3 is what puts this on screen.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

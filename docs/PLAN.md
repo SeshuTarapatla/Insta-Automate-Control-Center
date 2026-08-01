@@ -781,10 +781,34 @@ plus a live WS connection confirming the channel is reachable.
 
 **No UI yet** — CP 5.3 puts this on screen; CP 5.2 (mutations) is next.
 
-### CP 5.2 — Mutations 🟢
+### CP 5.2 — Mutations 🟢 ✅ done
 `apply` (move selected to the folder's configured target, delete the rest), `delete`, and queue
 add/remove/reorder. Use `send2trash` so semantics match the Python side and mistakes are
 recoverable. Every mutation is confirmed and reported.
+
+**What landed** — new `ia_agent/library/ops.py` (`apply`/`delete`) and `ia_agent/library/settings.py`
+(per-folder move-target mapping, persisted machine-local at `%LOCALAPPDATA%\ia-agent\library.json`,
+seeded with the two real pipeline promotions — `gender_valid → scrape_queued`,
+`scraped → follow_queued` — identity for every other folder). New REST: `GET/PATCH
+/api/library/move-targets[/{folder}]`, `POST /api/library/apply`, `POST /api/library/delete`, and
+on `api/queue.py`: `POST /api/queue/{add|remove|reorder}`. See D47 for the three real design
+decisions (send2trash/shutil.move split mirrors the pipeline's own `utils.py`, not the mobile app's
+hard-delete; move targets default to the known pipeline shape rather than the mobile app's blank
+slate; `config.env`'s write lock moved into `env_file.py` itself so `/api/config` and the new
+`/api/queue` mutations can't race each other).
+
+**Verified:** `agent/tests/test_library.py` (65/65, up from CP 5.1's 32) and new
+`agent/tests/test_queue.py` (14/14) — unit-level against a scratch tree plus the same coverage again
+over live REST, covering the identity-mapped cull, a real cross-folder promotion preserving
+`<root>/<name>`, the queue's `check=True` pending-jpeg refusal and forced override, and confirming
+`config.env`'s comments/unrelated keys survive every mutation. All eight prior suites unchanged.
+Also verified read-only against the real running agent (restarted to pick up the new code; all three
+supervised services stayed up across it) — `GET /api/library/move-targets` and `GET /api/queue` hit
+against the real `IA_DIR`. No `apply`/`delete`/`add`/`remove` call was made against the real
+pipeline data this session — that stays untested live until CP 5.3 puts a confirmable UI in front of
+it, matching CP 4.2/4.3's precedent of never mutating the real `IA_DIR` from a verification pass.
+
+**No UI yet** — CP 5.3 puts this on screen.
 
 ### CP 5.3 — Library UI 🟢
 Virtualized grid, keyboard-driven multi-select (arrows, space, shift-range, ctrl-A), zoom
