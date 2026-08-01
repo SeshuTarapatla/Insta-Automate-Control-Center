@@ -89,8 +89,60 @@ class _ScrapeCard extends StatelessWidget {
     final skipped = events.where((e) => e.kind == 'scrape.skipped').isNotEmpty ? events.firstWhere((e) => e.kind == 'scrape.skipped') : null;
     final started = events.where((e) => e.kind == 'scrape.started').isNotEmpty ? events.firstWhere((e) => e.kind == 'scrape.started') : null;
     final subject = (done ?? skipped ?? started)?.subject ?? '?';
-    final imageWidth = large ? 200 : 100;
+    final root = rootFromImage((done ?? skipped ?? started)?.image);
+    final inProgress = done == null && skipped == null;
 
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('@$subject', style: large ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium),
+        if (root != null)
+          Text('root: $root', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        if (done != null) ...[
+          OutcomeBadge(label: 'SCRAPED', tone: BadgeTone.good),
+          const SizedBox(height: 6),
+          Text(
+            'posts ${done.counters['posts']} · followers ${done.counters['followers']} · '
+            'following ${done.counters['following']}',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ] else if (skipped != null) ...[
+          OutcomeBadge(label: 'SKIPPED', tone: BadgeTone.bad),
+          const SizedBox(height: 6),
+          Text(skipped.reason ?? '', style: theme.textTheme.bodySmall),
+        ] else
+          Text('scraping…', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+      ],
+    );
+
+    // Still in progress means the only image on hand is the queued row crop
+    // (scrape_queued/<root>/<user>.jpg, 1080×198 — the same wide strip shape
+    // scan/classify's row crops are, not the tall scraped composite) — laid
+    // out as a strip on top rather than squeezed into the portrait-oriented
+    // Row every resolved card uses, which assumes a tall image.
+    if (large && inProgress) {
+      return Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
+              const SizedBox(height: 10),
+              details,
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Everything else is resolved: `done` has a real scraped composite
+    // (portrait, ~1080×2000); `skipped` never gets one, so it still only
+    // ever has the queued row crop — shown at its own real (wide) shape
+    // rather than squeezed into the composite's, same reasoning as above.
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -101,38 +153,13 @@ class _ScrapeCard extends StatelessWidget {
             SizedBox(
               width: large ? 140.0 : 90.0,
               child: AgentImage(
-                imageKey: (done ?? started)?.imageKey,
-                width: imageWidth,
-                aspectRatio: done != null ? 1080 / 2000 : 1080 / 2246,
+                imageKey: (done ?? skipped ?? started)?.imageKey,
+                width: large ? 200 : 100,
+                aspectRatio: done != null ? 1080 / 2000 : 1080 / 198,
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('@$subject', style: large ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium),
-                  const SizedBox(height: 6),
-                  if (done != null) ...[
-                    OutcomeBadge(label: 'SCRAPED', tone: BadgeTone.good),
-                    const SizedBox(height: 6),
-                    Text(
-                      'posts ${done.counters['posts']} · followers ${done.counters['followers']} · '
-                      'following ${done.counters['following']}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ] else if (skipped != null) ...[
-                    OutcomeBadge(label: 'SKIPPED', tone: BadgeTone.bad),
-                    const SizedBox(height: 6),
-                    Text(skipped.reason ?? '', style: theme.textTheme.bodySmall),
-                  ] else
-                    Text(
-                      'scraping…',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                ],
-              ),
-            ),
+            Expanded(child: details),
           ],
         ),
       ),

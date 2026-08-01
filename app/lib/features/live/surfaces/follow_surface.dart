@@ -54,6 +54,7 @@ class _FollowCard extends StatelessWidget {
         ? events.firstWhere((e) => e.kind == 'follow.attempt')
         : null;
     final subject = (result ?? attempt)?.subject ?? '?';
+    final root = rootFromImage((result ?? attempt)?.image);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -74,6 +75,11 @@ class _FollowCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('@$subject', style: theme.textTheme.bodyMedium),
+                  if (root != null)
+                    Text(
+                      'root: $root',
+                      style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
                   if (result != null && result.reason != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),

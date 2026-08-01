@@ -38,6 +38,18 @@ BadgeTone toneFor(String? verdict) => switch (verdict) {
   _ => BadgeTone.neutral,
 };
 
+/// The source entity a scrape/follow candidate was found under —
+/// `scrape_queued/<root>/<user>.jpg` and `follow_queued/<root>/<user>.jpg`
+/// both carry it as their parent directory, and every event on that image
+/// (`scrape.started`/`.skipped`/`.done`, `follow.attempt`/`.result`) reports
+/// that same relative path in its `image` field, so this works regardless of
+/// which specific event is on hand. `null` for anything not shaped that way.
+String? rootFromImage(String? image) {
+  if (image == null) return null;
+  final parts = image.split('/');
+  return parts.length >= 3 ? parts[parts.length - 2] : null;
+}
+
 /// A blank-state message, styled like every other empty pane in this app
 /// (D17) — say why nothing is showing instead of an empty box.
 class SurfaceEmpty extends StatelessWidget {

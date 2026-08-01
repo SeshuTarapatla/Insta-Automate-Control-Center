@@ -27,6 +27,7 @@ FlowEvent _event({
   String? entity,
   String? verdict,
   String? reason,
+  String? image,
   Map<String, dynamic> counters = const {},
   Map<String, dynamic> extra = const {},
   int seq = 1,
@@ -39,7 +40,7 @@ FlowEvent _event({
   kind: kind,
   entity: entity,
   subject: subject,
-  image: null,
+  image: image,
   imageKey: null,
   verdict: verdict,
   reason: reason,
@@ -217,9 +218,18 @@ void main() {
     // The still-in-progress subject (no done/skipped yet) is the only one
     // that should render at the large card's wider text style — everything
     // resolved renders at the same small size as history, per D40's follow-up.
+    // Its image is a real (wide, 1080x198) row crop, not the composite the
+    // resolved cards below it use — and a long root name to check "root: "
+    // doesn't overflow the strip layout above the text.
     final events = [
-      _event(kind: 'scrape.done', subject: 'other_user', counters: {'posts': 12, 'followers': 3456789, 'following': 210}, seq: 1),
-      _event(kind: 'scrape.started', subject: longUsername, seq: 2),
+      _event(
+        kind: 'scrape.done',
+        subject: 'other_user',
+        image: 'scrape_queued/some_root/other_user.jpg',
+        counters: {'posts': 12, 'followers': 3456789, 'following': 210},
+        seq: 1,
+      ),
+      _event(kind: 'scrape.started', subject: longUsername, image: 'scrape_queued/$longUsername/$longUsername.jpg', seq: 2),
     ];
     await _render(
       tester,
@@ -234,7 +244,14 @@ void main() {
   testWidgets('FollowSurface lays out without overflow: every verdict tone', (tester) async {
     final events = [
       for (final verdict in ['FOLLOWED', 'REQUESTED', 'FOLLOWING', 'FOLLOWED_BY', 'WANTS_TO_FOLLOW', 'FAILED'])
-        _event(kind: 'follow.result', subject: longUsername, verdict: verdict, reason: longReason, seq: verdict.hashCode),
+        _event(
+          kind: 'follow.result',
+          subject: longUsername,
+          verdict: verdict,
+          reason: longReason,
+          image: 'follow_queued/$longUsername/$longUsername.jpg',
+          seq: verdict.hashCode,
+        ),
     ];
     await _render(
       tester,

@@ -7,6 +7,37 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D42 · The in-progress scrape card's own image ratio was still wrong, and roots are worth naming
+
+**Found immediately by you testing D41's fix**: the still-in-progress card looked right structurally
+(large, correctly scoped) but its image was a tall blank box — because it was still assuming the
+scraped composite's portrait shape (`1080/2246`, actually the *entity-page* ratio, not even the
+composite's own `1080/2000`) for an image that, while still in progress, is only ever the queued row
+crop (`scrape_queued/<root>/<user>.jpg`) — the same wide `1080×198` shape `scanned/`/`gender_valid/`
+already are. **Fixed properly this time by rethinking the layout, not just the number:** a wide strip
+image doesn't belong squeezed into the portrait Row every resolved card uses, so the in-progress large
+card now lays out as a strip on top with the details below, instead of forcing a wide image into a
+narrow portrait box. Checked the small/resolved cards too while in there: `scrape.skipped` never gets
+a composite either — it was *also* silently assuming the composite ratio for a row-crop image, fixed
+to use `1080/198` for skipped specifically (only `scrape.done`, which genuinely has a composite,
+keeps `1080/2000`).
+
+**Added "root: <entity>" to both scrape and follow cards** — the source entity a candidate was found
+under, i.e. the parent directory in `scrape_queued/<root>/<user>.jpg` / `follow_queued/<root>/<user>.jpg`.
+New `rootFromImage()` in `surface_common.dart` (shared, since both flows have the identical
+`<root>/<user>.jpg` shape) parses it from whichever event's `image` field is on hand — every event on
+a given card carries the same relative path regardless of kind, so which one doesn't matter. Scoped
+to scrape/follow only, not scan/classify/ingest — scan's own event already exposes the root directly
+as `entity` (it's scanning that root's followers/following, not looking it up from a path), and
+classify/ingest's row-crop images don't share this same `<root>/<user>.jpg` two-level structure in a
+way that would read the same.
+
+**Verified:** `flutter analyze` clean, `flutter test` 25/25 (no new test count — extended the existing
+in-progress-card and follow-verdict fixtures with real `image` paths rather than adding new tests,
+since the existing ones were the right places to exercise a long root name for overflow; the shared
+`_event()` test helper gained an `image` parameter it didn't have before to make this possible). Not
+yet re-verified against a live run.
+
 ### D41 · Three Live-screen UX requests, checked per-flow rather than assumed universal
 
 **Your framing mattered here** — all three requests were demonstrated against Scrape (easiest flow

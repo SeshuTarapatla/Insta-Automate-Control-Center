@@ -196,6 +196,17 @@ waiting for `flow.completed`. `flutter analyze` clean, `flutter test` 25/25 — 
 noticing existing fixtures no longer exercised the changed code paths (a real coverage gap, not just
 "tests still pass"). Not yet verified against a live run.
 
+**Addendum, 2026-08-01 (D42): the in-progress scrape card's image was still wrong after D41.** It was
+still assuming the composite's portrait shape for an image that, while in progress, is only ever the
+queued row crop (`1080×198`, same shape as `scanned/`) — fixed by laying the in-progress large card
+out as a strip (image on top, details below) instead of forcing a wide image into the portrait Row
+every resolved card uses. `scrape.skipped` had the identical bug (never gets a composite either),
+fixed the same way. Also added "root: `<entity>`" to both scrape and follow cards — the source entity
+a candidate was found under, parsed client-side from the shared `<root>/<user>.jpg` path shape both
+flows' images have (new `rootFromImage()` in `surface_common.dart`); not applied to scan/classify/
+ingest, whose event/image shapes don't share that same structure. `flutter analyze` clean, `flutter
+test` 25/25. Not yet re-verified against a live run.
+
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked
