@@ -107,6 +107,14 @@ tailed logs). Verified: import sanity-check on every changed pipeline module (no
 plus a live round trip against a throwaway agent instance confirming both `emit()` and `emit_sync()`
 actually reach `POST /api/events`. Nothing deployed to the live pod yet.
 
+**Addendum, 2026-08-01 (CP 5.1 session): it stayed undeployed for two more sessions by accident.**
+The Live screen's visualization surfaces were still blank on every real scrape run you tried after
+CP 4.4/4.5 — turned out `feat/control-center` in `Insta-Automate` was never pushed to `origin`
+(3 commits behind, `22a706d` — this checkpoint's own commit — among them), and Prefect's deployments
+`git_clone` from the GitHub remote, not local disk, so the worker pod had been executing pre-CP-4.3
+code the whole time with no instrumentation in it at all. Pushed now (`git push origin
+feat/control-center`); no pod restart needed since the worker re-clones on every flow run. See D36.
+
 **CP 4.4 (Live screen) done and user-verified, 🟢.** `app/lib/features/live/`: a flow-selector row
 above three panes — `LogConsole` (level filter, task-change dividers, sticky expandable error strip,
 scroll-aware auto-follow), the per-flow visualization surface (scan filmstrip, classify verdict

@@ -7,6 +7,38 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D36 · `feat/control-center` in `Insta-Automate` was never pushed — the Live screen's
+visualization surfaces were blank for two sessions because of it, not because of anything missing
+
+**The bug:** you reported the Live screen's middle pane ("visualization surface") reading "No scrape
+activity yet for this run" on every real scrape you'd tried since CP 4.4 landed. CLAUDE.md already
+predicted this for CP 4.4's own test session ("CP 4.3's `emit()` calls aren't deployed to the live
+pod yet"), so the first hypothesis was that nothing had changed. It had — the scheduler pod's
+deployments already had `GIT_BRANCH=feat/control-center` set and Prefect's own `git_clone` pull step
+confirmed every deployment (`entity-scan`, `entity-classify`, `entity-scrape`, `entity-follow`,
+`entity-ingest`) was configured to clone that branch. The actual cause: that pull step clones from
+**`https://github.com/SeshuTarapatla/Insta-Automate.git`** (the GitHub remote), not the local
+`D:\Coding\Insta-Automate` working copy — and local `feat/control-center` was 3 commits ahead of
+`origin/feat/control-center`, including `22a706d` (CP 4.3's own flow-instrumentation commit). So
+every real flow run since CP 4.3 was written had been executing whatever code predates it, cloned
+fresh from GitHub on each run, with zero `emit()` calls anywhere in it — not a partial rollout, a
+complete no-op.
+
+**Fixed:** `git push origin feat/control-center` from `D:\Coding\Insta-Automate` (confirmed with the
+user first — still a feature branch, not `main`, consistent with the repo's own "other repos are
+feature-branch only, never merged" rule, but pushing to a shared remote is still a step worth a
+yes/no). No pod restart or redeploy needed — the worker's `git_clone` step runs fresh on every flow
+run, so the very next scrape/scan/classify/follow picks up the real code.
+
+**How to apply — the general lesson:** when a cross-repo checkpoint's own session notes say
+"verified via a live round trip against a throwaway agent instance" or "nothing deployed to the live
+pod yet," that means exactly what it says — a later session must not assume a prior session's
+"looks deployed" (an env var present, a deployment's `pull_steps` pointing the right direction) is
+the same as "the code the remote clones is actually current." When something that should be visible
+in the live app stays stubbornly blank across multiple real runs, check what the *actual remote git
+state* is before re-checking the agent/app code — a local-only commit is invisible to anything that
+clones over HTTPS.
+
 ### D35 · Recompute-on-touch counts, folder-scoped recursive watching, path-keyed lazy thumbnails
 
 **Cached counts invalidate by recomputing the touched pair, not by tracking deltas.**
