@@ -125,6 +125,23 @@ scheduler's own `IA_AGENT_TOKEN`/`GIT_BRANCH` are manual `kubectl set env` patch
 committed helm chart — CP 7.1 is where they're planned to move into real helm values; until then a
 worker redeploy for any other reason will need this patch reapplied.
 
+**Also found: the worker pod's `create-work-pool` init container deletes and recreates the whole
+work pool on every pod start (D38)**, not idempotently — the D37 restart triggered it, orphaning all
+six deployments (`work_pool_name: None`, stuck `Late` runs, worker online but nothing to hand it).
+Fixed with `ia prefect deploy` (re-registers them against the current pool); the init container
+itself is unfixed and will repeat this on any future worker restart for any reason.
+
+**D36 was incomplete — corrected as D39.** Even with the branch pushed and deployments healthy, still
+zero per-item events. Turned out `git_clone` only refreshes the flow's own top-level file; everything
+it imports (`tasks/`, `controllers/`, `models/` — exactly where CP 4.3's `emit()` calls live) stays
+frozen at whatever was `pip install`ed into the worker's Docker image at build time. Confirmed by
+`kubectl exec`-ing in and inspecting the actually-loaded `profile_scrape` source directly — genuinely
+pre-CP-4.3, no `emit()` calls at all, despite the branch being current. Fixed for real this time with
+`ia build` (13s, pins the exact pushed commit) + `kubectl rollout restart` on the worker (confirmed
+with you first — the biggest action of the session) + `ia prefect deploy` again for D38. Re-verified
+post-rebuild: the new pod's installed `profile_scrape` now has all 6 `emit()` calls. Not yet
+confirmed against one more real device-driven scrape run.
+
 **CP 4.4 (Live screen) done and user-verified, 🟢.** `app/lib/features/live/`: a flow-selector row
 above three panes — `LogConsole` (level filter, task-change dividers, sticky expandable error strip,
 scroll-aware auto-follow), the per-flow visualization surface (scan filmstrip, classify verdict

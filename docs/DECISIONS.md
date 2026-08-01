@@ -7,6 +7,59 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D39 · **D36 was incomplete.** Correction: git-based deployment only refreshes the flow's own
+top-level file — everything it imports (`tasks/`, `controllers/`, `models/`) stays frozen at
+whatever was baked into the worker's Docker image, and needed a real rebuild all along
+
+**Found after D38's fix still didn't produce any per-item events** — `flow.started`/`flow.completed`
+fired (proving connectivity, auth, and event storage all worked, per D37/D38), but every per-item
+`scrape.started`/`scrape.skipped`/`scrape.done` call inside `profile_scrape` — which CP 4.3 genuinely
+added, confirmed present in the pushed source — never arrived. Diagnosed by `kubectl exec`-ing into
+the worker pod and directly inspecting what Python actually had loaded:
+`inspect.getsource(insta_automate.tasks.ia.profile_scrape)` showed a **version with zero `emit()`
+calls at all** — pre-CP-4.3 — and `inspect.getsource(AgentClient.emit)` showed the version *before*
+`f494553`'s `flow_run_id` injection. Both came from `/usr/local/lib/python3.12/site-packages/
+insta_automate/`, i.e. **whatever was `pip install`ed into the image at build time**, not the branch
+the deployment's `git_clone` step pulls.
+
+**The actual mechanism, now understood precisely:** Prefect's `flow.from_source(GitRepository(...))`
+does clone the branch fresh on every flow run, and it does load the flow's own entrypoint file
+(`entity_scrape.py` etc.) directly from that clone via its file path — so code written *directly in
+the flow body* genuinely does refresh with every push (this is why `flow.started`/`flow.completed`,
+called inline in the flow body, worked immediately after D36). But that file's own `from
+insta_automate.tasks.ia import profile_scrape` and `from insta_automate.controllers.agent import
+AgentClient` are ordinary absolute imports, resolved through normal Python import machinery against
+whatever's already on `sys.path` — which is the image's site-packages install, since nothing in the
+`git_clone` pull step (just a bare clone, no `pip install -e`, no `sys.path` manipulation) makes the
+cloned copy of `tasks/`/`controllers/`/`models/` take precedence. **A `git push` alone is therefore
+only sufficient for changes made directly in a flow's own top-level file** — everything CP 4.3
+actually touches (`tasks/ia.py`, `tasks/ollama.py`, `controllers/agent.py`) needed an image rebuild
+all along, which is exactly what D29's original technique already did for CP 3.5 — this session just
+hadn't re-learned that lesson before D36.
+
+**Fixed:** `ia build` (from `D:\Coding\Insta-Automate`, on `feat/control-center`, clean tree) — 13s,
+`uv pip install git+...@feat/control-center` inside the Dockerfile pins the exact pushed commit
+(`f4945537...`, confirmed in the build log) — then `kubectl rollout restart deployment/
+insta-automate-worker` (confirmed with you first, given the scope: a real image build + redeploy,
+bigger than anything else this session) to pick up the freshly retagged local image
+(`imagePullPolicy: IfNotPresent`, same tag `insta-automate:3.6.27-python3.12`, so Rancher Desktop's
+shared image store is enough — no registry push needed). D38's `create-work-pool` breakage recurred
+on this restart too (expected now — every worker restart does this) and was fixed the same way,
+`ia prefect deploy` again. **Verified the fix landed**, not just assumed: `kubectl exec`'d into the
+new pod and re-ran the same `inspect.getsource` check — `profile_scrape` now shows 6 `emit()` calls
+including `scrape.started`/`scrape.done`, `AgentClient.emit()` now injects `flow_run_id`. Have not
+yet re-verified against one more real, device-driven scrape run — that needs you to trigger it.
+
+**How to apply, going forward:** for any future `Insta-Automate` change to land on the live worker,
+check *where* the change is. A flow's own top-level file (the `@flow`-decorated function's own body)
+refreshes on push alone. Anything it imports from `tasks/`, `controllers/`, or `models/` needs
+`ia build` + a worker rollout — always, no exceptions, regardless of how "just a small pipeline
+change" it feels like. This also means: don't trust "the deployment's `pull_steps` point at the
+right branch" or "the branch is pushed" as proof that live behavior changed — the only real proof is
+introspecting what's actually loaded in the running pod (`inspect.getsource`, as done here) or
+observing the actual downstream effect (an event landing), the same discipline D36/D37 already
+established, just needed one more layer of "don't stop until you've verified the real signal."
+
 ### D38 · The worker pod's `create-work-pool` init container is destructive, not idempotent —
 restarting the worker pod for any reason orphans every deployment
 
