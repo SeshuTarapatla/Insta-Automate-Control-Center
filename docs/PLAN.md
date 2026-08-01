@@ -677,7 +677,7 @@ lines — not a new occurrence (it's fired every heartbeat since CP 3.4), just n
 D30's pod-log merge exists. Fixed at the source: wrote the coded default into the real `config.env`,
 since `IA_AGENT_URL` is deliberately outside the app's config schema (D26).
 
-### CP 4.5 — Device view 🟢 ✅ done, awaiting your test
+### CP 4.5 — Device view 🟢 ✅ done, user-verified
 Primary: control the native scrcpy window through wsl-bridge, positioned with
 `my_modules.win32.snap_window`. Secondary (opt-in, low fps): `adb exec-out screencap` frames
 streamed over `device.mirror` so the phone can watch too. See Q6.
@@ -729,11 +729,10 @@ started, stopped, or moved) and confirmed `find_window_by_pid` locates its real 
 rule as `test_wsl_bridge()`). `flutter analyze` clean, `flutter test` 23/23 (unchanged — no new
 layout-risk widgets introduced beyond what the existing suite already exercises via `RunSummary`).
 
-**Test (yours):** open the Live screen's Device pane. If nothing is mirroring, Start mirror should
-throw a real scrcpy window onto your desktop, positioned near the top-left, and the pane should flip
-to "Stop mirror" with a note that the window is separate from the app. Stop mirror should close it.
-If something's already mirroring when you open the pane, it should show that state immediately
-without touching the existing window.
+**Test (yours) — passed:** the Device pane showed an already-mirroring device immediately, without
+touching the existing window, and Stop/Start mirror both worked from the pane. Accepted as done for
+now — you noted you're not fully certain about the overall visual polish yet, which stays open for a
+later pass rather than blocking this checkpoint.
 
 ---
 

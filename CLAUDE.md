@@ -2,9 +2,10 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
-complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.5 done,
-CP 4.5 awaiting your test** (Live logs & flow-aware imagery; log + event aggregation, flow
-instrumentation, the Live screen, device view). Phase 2 accepted 2026-07-31 — the user accepted it
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 complete** (CP 4.1–4.5:
+log + event aggregation, flow instrumentation, the Live screen, device view — user-verified
+2026-08-01, accepted as done for now with an open note that the Live screen's visual polish may want
+another pass later). Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -133,7 +134,7 @@ D30's pod-log merge is what surfaced it. Fixed by writing the coded default stra
 `config.env`, since that key is deliberately outside the app's config schema (D26). Verified:
 `flutter analyze` clean, `flutter test` 23/23.
 
-**CP 4.5 (Device view) done, awaiting your test, 🟢.** Two design forks were checked before writing
+**CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked
 "no changes expected" — **chosen: find the window by PID instead** (wsl-bridge's `/scrcpy/start`
