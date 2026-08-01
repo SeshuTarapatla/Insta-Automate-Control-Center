@@ -7,6 +7,75 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D46 · Device control compacted into the header, its model shown instead of the raw serial —
+and the scheduler-line border removed for looking inconsistent rather than useful
+
+**Three more small, real corrections from your live testing, landing together as the session's
+close-out.** All Live-screen polish, none touching the agent's actual data surfaces (D36–D39) or
+the event/counter logic (D40/D41) — those stay as they were.
+
+**Device control moved out of `RunSummary`'s body into a compact `DeviceBar` in the header row**,
+sharing the space next to the flow-selector chips rather than a bordered card competing with the log
+console for room. Simplified at the same time, per your ask: dropped the status icon, the explanatory
+sentence, and the card styling — just a phone icon, a name, and a `Start`/`Stop` button. `RunSummary`
+reverts to the single column it had before D45's two-block `Wrap` (that redesign existed specifically
+to give Device somewhere to sit beside the details+counters block; once Device left entirely, the
+extra structure was no longer doing anything and a plain `Column` is simpler).
+
+**The name shown is now the device model, not the raw 15-digit serial** — "I2201" reads at a glance,
+the serial doesn't. New agent-side `_device_model()` (`ia_agent/api/device.py`) reuses the exact
+`adbutils` lookup `services/selftest.py`'s own adb functional test already established
+(`AdbClient(...).device(serial=...).prop.model`), best-effort — `None` on any failure (adb down,
+device not attached), in which case the bar falls back to the serial rather than showing nothing.
+**Caught by you, not assumed working:** the first version genuinely worked but the running agent
+hadn't been restarted to pick up the new `/api/device` field yet — same "the code changed, the
+process didn't" pattern this whole project keeps hitting — confirmed via `curl` against the live
+endpoint both before (`model` key entirely absent) and after (`"model":"I2201"`) the restart, with
+the three supervised services confirmed still `adopted` with uptime intact across it.
+
+**The left border on scheduler-merged log lines (D30) is gone.** It marked which lines came from the
+scheduler pod's own trigger/gate log (merged into the flow's ring) versus the flow's own execution
+log — a real distinction, but you read the resulting ragged left edge as inconsistency rather than
+signal. Kept one subtler cue instead of dropping the distinction entirely: those lines still render
+in a dimmer text color, which doesn't disturb the shared left edge every line now has.
+
+**Verified:** `flutter analyze` clean, `flutter test` 26/26 (25 prior + one new `DeviceBar` case — a
+long model name in the header's own, tighter row, since some real phones report far more than
+"Pixel 7"). Agent-side `test_device.py` 16/16, `/api/device`'s new field confirmed live against the
+real device. Session closes here — Phase 5 is CP 5.1 done, CP 5.2 (mutations) next.
+
+### D45 · Live screen layout, corrected twice more from your own testing: images fixed and tight,
+not logs — and the direction was backwards on the first attempt
+
+**Round one (backwards):** first read your "give images breathing room" as "images should grow" —
+built D43 with the visualization surface `Expanded` and the log/summary column fixed. **Corrected
+immediately** once you clarified: you'd said breathing room was for *logs*, and images — which
+already wrap to fill whatever width they get (D44) — don't need to keep growing. Swapped which side
+is fixed: log console (in an `Expanded` left column) now gets whatever the window has left; the
+visualization surface is the fixed side. Picked the fixed width carefully rather than guessing large:
+the app enforces a 1024×700 minimum window (`main.dart`), and an 820px image column (fitting two
+D44 cards) would have squeezed the log column to ~204px at that floor — chose 600px instead, leaving
+~424px for logs at the true minimum (matching what was already proven safe pre-D43), generous well
+beyond that.
+
+**Round two (still not tight enough):** even at 600px, D44's `Wrap` only fit one 380px scrape card
+with real slack beside it — visible, still "wasted," per your next screenshot. Tightened to exactly
+420px: one `_ScrapeCard` (380) plus the surface's own 16px padding on each side plus a scrollbar
+allowance, no rounder number left over. Flagged in code as tuned to scrape specifically (the only
+flow tested this session) — follow's own cards are wider (420, D44) and wouldn't fit this tightly;
+revisit once that flow gets a real test, per your own stated plan.
+
+**`RunSummary` was also reorganized in this round** (superseded later, same session, by D46 once
+Device left `RunSummary` entirely) — worth recording because it's what caught a real bug: capping
+the details+counters block to 320px to sit beside a Device block made the "many counters" stress
+test overflow a 700px test height by 10px, since the same six chips now wrapped into more rows in
+less width than they'd had before. Widened to 380px, confirmed clean — a genuine, would-have-shipped
+overflow in an edge case (many counters after a long run id) that only surfaced by rerunning tests
+after a width change, not by inspection.
+
+**Verified, each round:** `flutter analyze` clean, `flutter test` 25/25 both times, before D46
+superseded the `RunSummary` half of this entry.
+
 ### D44 · D43 widened the pane, but the cards inside it didn't use the width — `Wrap` instead of `ListView`
 
 **Found immediately by you testing D43's fix**: the visualization surface really was wider, but

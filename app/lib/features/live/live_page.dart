@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
+import 'device_bar.dart';
 import 'live_controller.dart';
 import 'log_console.dart';
 import 'run_summary.dart';
@@ -14,12 +15,15 @@ import 'surfaces/scrape_surface.dart';
 
 /// The showpiece screen (CP 4.4): a log console that follows whichever run is
 /// selected, a flow-specific visualization surface, and a run summary with
-/// counters. Two columns, not three (D42's follow-up) — the visualization
-/// surface is the whole point of this screen and images need real room, so
-/// it gets everything to the right of a fixed-width left column; the summary
-/// (a handful of rows plus the device pane) sizes to its own content at the
-/// top of that column rather than stretching to fill it and leaving the rest
-/// blank, and the log console takes whatever height is left below it.
+/// counters. Two columns (D42/D44's follow-up) — the visualization surface is
+/// a *fixed*-width right column, since its cards already wrap to use
+/// whatever width they're given (D44) rather than needing to keep growing;
+/// the extra room instead goes to the log console, which genuinely benefits
+/// from more width per line. The left column stretches to fill the rest:
+/// the summary (a handful of rows plus counters) sizes to its own content at
+/// the top rather than stretching to fill it and leaving the rest blank, and
+/// the log console takes whatever height is left below it. Device control
+/// lives in the header row instead, as a compact `DeviceBar` (D46).
 class LivePage extends ConsumerStatefulWidget {
   const LivePage({super.key});
 
@@ -64,18 +68,29 @@ class _LivePageState extends ConsumerState<LivePage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Wrap(
-            spacing: 8,
+          child: Row(
             children: [
-              for (final flow in flowOrder)
-                ChoiceChip(
-                  label: Text(flowTitle[flow] ?? flow),
-                  selected: selectedFlow == flow,
-                  onSelected: (_) {
-                    _autoSelected = true;
-                    ref.read(selectedFlowProvider.notifier).select(flow);
-                  },
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final flow in flowOrder)
+                      ChoiceChip(
+                        label: Text(flowTitle[flow] ?? flow),
+                        selected: selectedFlow == flow,
+                        onSelected: (_) {
+                          _autoSelected = true;
+                          ref.read(selectedFlowProvider.notifier).select(flow);
+                        },
+                      ),
+                  ],
                 ),
+              ),
+              // Device control lives here, not in RunSummary's body (D46) —
+              // this row already has the height to spare next to the flow
+              // chips, and it frees the whole left column below for the log
+              // console instead of competing with it for space.
+              const DeviceBar(),
             ],
           ),
         ),
@@ -84,8 +99,7 @@ class _LivePageState extends ConsumerState<LivePage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                width: 420,
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -96,7 +110,20 @@ class _LivePageState extends ConsumerState<LivePage> {
                   ],
                 ),
               ),
-              Expanded(
+              // Fixed, not Expanded, and tightly sized rather than round —
+              // the visualization surface's cards already wrap to fill
+              // whatever width they're given (D44), so any width beyond what
+              // a card actually needs just becomes more of the same wasted
+              // space D44 was fixing, not more information. 420 is scrape's
+              // own card (D44's 380px `_ScrapeCard`) plus the surface's 16px
+              // padding on each side plus a few px for the scrollbar gutter
+              // — exactly one column, no leftover. Deliberately tuned to
+              // scrape, the only flow tested so far (D45) — classify's cards
+              // are narrower (fit fine) and follow's are wider (420, D44),
+              // so this may need revisiting once follow/classify get a real
+              // test; nothing here assumes scrape's number is universal.
+              SizedBox(
+                width: 420,
                 child: Card(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   child: const _VisualizationSurface(),

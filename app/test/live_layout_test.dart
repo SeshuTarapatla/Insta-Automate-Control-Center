@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ia_control_center/core/device_models.dart';
 import 'package:ia_control_center/core/flow_event_models.dart';
 import 'package:ia_control_center/core/flowrun_models.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
+import 'package:ia_control_center/features/live/device_bar.dart';
 import 'package:ia_control_center/features/live/live_controller.dart';
 import 'package:ia_control_center/features/live/log_console.dart';
 import 'package:ia_control_center/features/live/run_summary.dart';
@@ -63,6 +65,14 @@ class _FakeLiveController extends LiveController {
 
   @override
   Future<LiveState> build() async => _state;
+}
+
+class _FakeDeviceController extends DeviceController {
+  _FakeDeviceController(this._status);
+  final DeviceStatus _status;
+
+  @override
+  Future<DeviceStatus> build() async => _status;
 }
 
 Future<void> _render(WidgetTester tester, Widget child, Size size, {required LiveState liveState}) async {
@@ -295,6 +305,50 @@ void main() {
       const Size(700, 700),
       liveState: LiveState(flow: 'entity-ingest', runId: 'run-1', logs: const [], events: events),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('DeviceBar lays out without overflow: a long model name, sharing the header row with flow chips', (
+    tester,
+  ) async {
+    // Lives in the header now (D46), sharing a row with the flow-selector
+    // chips rather than a bordered card of its own — narrower effective
+    // width than anywhere else in this file, and the one place a long
+    // device model name (not every phone reports something as short as
+    // "Pixel 7") could realistically overflow.
+    tester.view.physicalSize = const Size(700, 200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceControllerProvider.overrideWith(
+            () => _FakeDeviceController(
+              const DeviceStatus(
+                serial: '159555486700071',
+                model: 'Some Implausibly Long Manufacturer Device Model Name Pro Max Ultra',
+                bridgeReachable: true,
+                mirroring: true,
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+          home: const Scaffold(
+            body: Row(
+              children: [
+                Expanded(child: Wrap(spacing: 8, children: [ChoiceChip(label: Text('Scrape'), selected: true)])),
+                DeviceBar(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
     expect(tester.takeException(), isNull);
   });
 }

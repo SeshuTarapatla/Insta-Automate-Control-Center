@@ -28,8 +28,10 @@ def create_device_router() -> APIRouter:
                 mirroring = await wsl_bridge.scrcpy_status()
             except Exception:
                 mirroring = False
+        model = await asyncio.to_thread(_device_model) if ANDROID_SERIAL else None
         return {
             "serial": ANDROID_SERIAL or None,
+            "model": model,
             "bridge_reachable": bridge_reachable,
             "mirroring": mirroring,
         }
@@ -66,3 +68,19 @@ def create_device_router() -> APIRouter:
         return {"status": "stopped"}
 
     return router
+
+
+def _device_model() -> str | None:
+    """Best-effort, same reasoning as `services/selftest.py`'s own
+    `device.prop.model` read for the adb functional test — a compact model
+    name (e.g. "Pixel 7") reads far better in the header's device bar than
+    the serial's 15 raw digits. `None` on any failure (adb server down,
+    device not attached, property unreadable) rather than raising, since a
+    missing model just means the device bar falls back to the serial."""
+    try:
+        import adbutils
+
+        client = adbutils.AdbClient(host="127.0.0.1", port=5037)
+        return client.device(serial=ANDROID_SERIAL).prop.model or None
+    except Exception:
+        return None

@@ -4,8 +4,10 @@ Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
 complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 complete** (CP 4.1–4.5:
 log + event aggregation, flow instrumentation, the Live screen, device view — user-verified
-2026-08-01, accepted as done for now with an open note that the Live screen's visual polish may want
-another pass later). **Phase 5 (Library & curation parity) is open, CP 5.1 (Library API) done,
+2026-08-01. The Live screen's visual polish pass flagged as open at the time happened later the same
+day, once CP 5.1's live pipeline fixes (D36–D39) gave it real data to look wrong against for the
+first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase 5 (Library & curation
+parity) is open, CP 5.1 (Library API) done,
 agent-only, 🟢** — see the dedicated paragraph below. Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
@@ -232,6 +234,37 @@ applied verbatim, since the `ListView(reverse: true)` trick that gave it that be
 no `Wrap` equivalent. `ScanSurface`'s filmstrip and `IngestSurface`'s grid already didn't have this
 problem, so left untouched. `flutter analyze` clean, `flutter test` 25/25. Not yet verified against a
 live run at the actual (much wider) production width.
+
+**Addendum (D45): the fixed/dynamic direction was backwards on the first attempt, corrected from
+your feedback, then tightened again.** First read "give images breathing room" as "images should
+grow" and built the log/summary column fixed with images `Expanded` — backwards; you'd meant
+breathing room for *logs*, since images already wrap to fill whatever width they get (D44). Swapped
+which side is fixed. Picked the fixed image width carefully rather than guessing: the app enforces a
+1024×700 minimum window (`main.dart`), and a width fitting two D44 cards (820px) would've squeezed
+the log column to ~204px at that floor, so chose 600px instead — then tightened further to exactly
+420px (one scrape card + padding + scrollbar allowance, no leftover) once even 600px still showed
+visible slack in your next screenshot. Flagged as scrape-specific in code, since follow's cards
+(420px) wouldn't fit this tightly — revisit once that flow gets tested. Also reorganized
+`RunSummary` into two capped-width blocks in this round (later superseded by D46) — caught a real
+bug doing it: capping the details block to 320px made the "many counters" stress test overflow a
+700px test height by 10px (the same six chips wrapped into more rows in less width), fixed by
+widening to 380px. `flutter analyze` clean, `flutter test` 25/25 each round.
+
+**Addendum (D46), session close-out: three more corrections, Device control compacted into the
+header.** Moved out of `RunSummary`'s body into a compact `DeviceBar` sharing the header row with
+the flow chips — dropped the status icon, explanatory sentence, and card styling per your ask, kept
+just a phone icon, a name, and a `Start`/`Stop` button. `RunSummary` reverts to a plain single column
+now that D45's two-block `Wrap` (built specifically to give Device somewhere to sit) has nothing left
+to pair with. The name shown is now the device model ("I2201"), not the 15-digit serial — new
+`_device_model()` in `ia_agent/api/device.py` reuses `services/selftest.py`'s own `adbutils` lookup,
+best-effort, falling back to the serial on any failure. Caught by you, not assumed: the running agent
+initially still showed the serial because it hadn't been restarted to pick up the new `/api/device`
+field — confirmed via `curl` both before (field absent) and after (`"model":"I2201"`) restarting it,
+services still `adopted` with uptime intact. Also removed the left border D30 put on scheduler-merged
+log lines — a real distinction (scheduler trigger/gate log vs. the flow's own execution log) that
+read as inconsistent alignment rather than useful signal; kept a dimmer text color as a subtler cue
+instead of dropping the distinction outright. `flutter analyze` clean, `flutter test` 26/26 (one new
+`DeviceBar` case — a long model name in the header's own tighter row). Session closes here.
 
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a

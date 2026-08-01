@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/flow_event_models.dart';
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
-import 'device_pane.dart';
 import 'live_controller.dart';
 
 String? _todayLine(FlowState state) {
@@ -21,8 +20,9 @@ String? _todayLine(FlowState state) {
   };
 }
 
-/// Counters for the run currently shown, plus the day's running totals and
-/// the device pane (CP 4.5's `DevicePane`).
+/// Counters for the run currently shown, plus the day's running totals.
+/// Device control moved to a compact `DeviceBar` in the Live screen's header
+/// (D46) — it no longer competes with the log console for space here.
 class RunSummary extends ConsumerWidget {
   const RunSummary({super.key});
 
@@ -59,10 +59,6 @@ class RunSummary extends ConsumerWidget {
           Text('Counters this run', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
           _EventCounters(flow: flow),
-          const SizedBox(height: 20),
-          Text('Device', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          const DevicePane(),
         ],
       ),
     );

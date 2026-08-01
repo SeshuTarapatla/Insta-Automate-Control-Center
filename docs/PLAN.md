@@ -677,6 +677,17 @@ lines — not a new occurrence (it's fired every heartbeat since CP 3.4), just n
 D30's pod-log merge exists. Fixed at the source: wrote the coded default into the real `config.env`,
 since `IA_AGENT_URL` is deliberately outside the app's config schema (D26).
 
+**Visual polish pass, 2026-08-01 (deferred at the time, closed out during the CP 5.1 session):**
+once CP 5.1's live-pipeline fixes (D36–D39) gave this screen real per-item events to look wrong
+against for the first time, several rounds of your live testing found and fixed real issues — the
+scrape card only staying large while genuinely in progress, image aspect-ratio bugs (two of them,
+not the same one twice), a "root: entity" label, the outer layout (two columns, log console
+`Expanded` and fixed-width sized to its own content), `RunSummary`'s counters computed live per-flow
+instead of waiting for the run to finish, device control compacted into the header and showing the
+device model instead of its serial, and the scheduler-log left border removed for reading as
+inconsistent rather than useful. Full history in D40–D46 (`DECISIONS.md`) and the matching addenda
+in `CLAUDE.md`. `flutter analyze` clean, `flutter test` 26/26 throughout.
+
 ### CP 4.5 — Device view 🟢 ✅ done, user-verified
 Primary: control the native scrcpy window through wsl-bridge, positioned with
 `my_modules.win32.snap_window`. Secondary (opt-in, low fps): `adb exec-out screencap` frames

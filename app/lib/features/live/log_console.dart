@@ -173,10 +173,12 @@ class _LogLine extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: scheduler ? const EdgeInsets.only(left: 8) : EdgeInsets.zero,
-      decoration: scheduler
-          ? BoxDecoration(border: Border(left: BorderSide(color: scheme.outlineVariant, width: 2)))
-          : null,
+      // Scheduler-merged lines (D30 — the scheduler pod's own trigger/gate
+      // log, interleaved into the flow's ring) used to get a left border and
+      // indent to mark them apart from the flow's own lines, which read as
+      // inconsistent alignment rather than a useful distinction. The dimmer
+      // text color below is enough of a source cue without disrupting the
+      // left edge every line otherwise shares.
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
