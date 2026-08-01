@@ -1,0 +1,117 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/agent_client.dart';
+import '../../core/agent_ws.dart';
+import '../../core/flow_event_models.dart';
+import '../../core/flowrun_models.dart';
+import '../../core/scheduler_models.dart';
+import '../flows/flows_controller.dart';
+
+/// Which flow's activity the Live screen shows. Defaults to the pipeline's
+/// first flow; `LivePage` auto-selects whichever flow is `running` the first
+/// time real scheduler data arrives ("auto-follows the active run"), and a
+/// manual tab click is authoritative after that.
+class SelectedFlowNotifier extends Notifier<String> {
+  @override
+  String build() => flowOrder.first;
+
+  void select(String flow) => state = flow;
+}
+
+final selectedFlowProvider = NotifierProvider<SelectedFlowNotifier, String>(SelectedFlowNotifier.new);
+
+class LiveState {
+  const LiveState({required this.flow, required this.runId, required this.logs, required this.events});
+
+  final String flow;
+  final String? runId;
+  final List<FlowRunLogEntry> logs;
+  final List<FlowEvent> events;
+
+  LiveState copyWith({List<FlowRunLogEntry>? logs, List<FlowEvent>? events}) =>
+      LiveState(flow: flow, runId: runId, logs: logs ?? this.logs, events: events ?? this.events);
+}
+
+/// Logs and events for whichever flow is selected, scoped to that flow's
+/// current (or most recent) run. Replayed once over REST, then kept current
+/// by the matching WS channels — the same replay-then-subscribe shape every
+/// other channel in this app uses (D18).
+class LiveController extends AsyncNotifier<LiveState> {
+  String? _runId;
+
+  @override
+  Future<LiveState> build() async {
+    final flow = ref.watch(selectedFlowProvider);
+
+    ref.listen<AsyncValue<AgentEvent>>(agentEventsProvider, (previous, next) {
+      next.whenData(_handleWsEvent);
+    });
+    ref.listen<AsyncValue<SchedulerSnapshot>>(flowsControllerProvider, (previous, next) {
+      next.whenData(_handleSnapshot);
+    });
+
+    final snapshot = ref.read(flowsControllerProvider).value;
+    final runId = snapshot?.flows[flow]?.lastRun?.id;
+    _runId = runId;
+
+    final logs = runId == null ? const <FlowRunLogEntry>[] : await _fetchLogs(runId);
+    final events = await _fetchEvents(flow, runId);
+    return LiveState(flow: flow, runId: runId, logs: logs, events: events);
+  }
+
+  Future<List<FlowRunLogEntry>> _fetchLogs(String runId) async {
+    final dio = ref.read(agentClientProvider);
+    final response = await dio.get('/api/flow-runs/$runId/logs');
+    return FlowRunLogsReplay.fromJson(response.data as Map<String, dynamic>).entries;
+  }
+
+  Future<List<FlowEvent>> _fetchEvents(String flow, String? runId) async {
+    final dio = ref.read(agentClientProvider);
+    final response = await dio.get('/api/events');
+    final all = [
+      for (final entry in response.data as List) FlowEvent.fromJson(entry as Map<String, dynamic>),
+    ];
+    return all
+        .where((event) => event.flow == flow && (runId == null || event.flowRunId == null || event.flowRunId == runId))
+        .toList();
+  }
+
+  void _handleSnapshot(SchedulerSnapshot snapshot) {
+    final current = state.value;
+    if (current == null) return;
+    final newRunId = snapshot.flows[current.flow]?.lastRun?.id;
+    if (newRunId == _runId) return;
+    _runId = newRunId;
+    _reload(current.flow, newRunId);
+  }
+
+  Future<void> _reload(String flow, String? runId) async {
+    final logs = runId == null ? const <FlowRunLogEntry>[] : await _fetchLogs(runId);
+    final events = await _fetchEvents(flow, runId);
+    state = AsyncValue.data(LiveState(flow: flow, runId: runId, logs: logs, events: events));
+  }
+
+  void _handleWsEvent(AgentEvent wsEvent) {
+    final current = state.value;
+    if (current == null) return;
+    switch (wsEvent.channel) {
+      case 'flowrun.logs':
+        final data = wsEvent.data as Map<String, dynamic>;
+        if (data['flow_run_id'] != current.runId) return;
+        state = AsyncValue.data(current.copyWith(logs: [...current.logs, FlowRunLogEntry.fromJson(data)]));
+      case 'flow.events':
+        final event = FlowEvent.fromJson(wsEvent.data as Map<String, dynamic>);
+        if (event.flow != current.flow) return;
+        if (current.runId != null && event.flowRunId != null && event.flowRunId != current.runId) return;
+        state = AsyncValue.data(current.copyWith(events: [...current.events, event]));
+    }
+  }
+
+  Future<void> refresh() async {
+    final current = state.value;
+    if (current == null) return;
+    await _reload(current.flow, current.runId);
+  }
+}
+
+final liveControllerProvider = AsyncNotifierProvider<LiveController, LiveState>(LiveController.new);

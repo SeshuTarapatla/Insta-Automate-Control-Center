@@ -9,21 +9,6 @@ import '../../core/scheduler_models.dart';
 import '../settings/config_controller.dart';
 import 'flows_controller.dart';
 
-const _flowTitle = {
-  'entity-ingest': 'Ingest',
-  'entity-scan': 'Scan',
-  'entity-classify': 'Classify',
-  'entity-scrape': 'Scrape',
-  'entity-follow': 'Follow',
-};
-
-const _phaseLabel = {
-  'idle': 'Idle',
-  'running': 'Running',
-  'waiting': 'Waiting',
-  'day_paused': 'Paused for the day',
-};
-
 /// Prefect's own UI already has the real logs for a run; CP 4.1's in-app log
 /// viewer doesn't exist yet, so "jump to its logs" opens this instead.
 String _prefectRunUrl(String runId) => 'http://localhost:4200/flow-runs/flow-run/$runId';
@@ -67,7 +52,7 @@ class FlowCard extends ConsumerWidget {
   Future<void> _runNow(BuildContext context, WidgetRef ref) async {
     await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'skip_wait');
     if (context.mounted) {
-      AppSnackBar.show(context, '${_flowTitle[state.flow]}: ${_runNowLabel()} sent');
+      AppSnackBar.show(context, '${flowTitle[state.flow]}: ${_runNowLabel()} sent');
     }
   }
 
@@ -81,10 +66,10 @@ class FlowCard extends ConsumerWidget {
   Future<void> _forceRun(BuildContext context, WidgetRef ref) async {
     final content = switch (state.gate) {
       FlowGate(ok: true) =>
-        'Triggers ${_flowTitle[state.flow]} immediately, ignoring its normal schedule, '
+        'Triggers ${flowTitle[state.flow]} immediately, ignoring its normal schedule, '
             'switch, and daily limits.',
       FlowGate(reason: 'no_work') when _hardNoWorkFlows.contains(state.flow) =>
-        'Nothing is currently queued for ${_flowTitle[state.flow]} — Force run bypasses timing '
+        'Nothing is currently queued for ${flowTitle[state.flow]} — Force run bypasses timing '
             'and limits, but there\'s no queued entity to act on, so this will complete without '
             'doing anything.',
       FlowGate(:final detail, :final reason) =>
@@ -93,7 +78,7 @@ class FlowCard extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Force run ${_flowTitle[state.flow]}?'),
+        title: Text('Force run ${flowTitle[state.flow]}?'),
         content: Text(content),
         actions: [
           TextButton(
@@ -110,7 +95,7 @@ class FlowCard extends ConsumerWidget {
     if (confirmed != true) return;
     await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'force_run');
     if (context.mounted) {
-      AppSnackBar.show(context, '${_flowTitle[state.flow]}: force run queued');
+      AppSnackBar.show(context, '${flowTitle[state.flow]}: force run queued');
     }
   }
 
@@ -148,14 +133,14 @@ class FlowCard extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _flowTitle[state.flow] ?? state.flow,
+                          flowTitle[state.flow] ?? state.flow,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium,
                         ),
                         Text(
                           state.switchOn
-                              ? (_phaseLabel[state.phase] ?? state.phase)
+                              ? (phaseLabel[state.phase] ?? state.phase)
                               : 'skipped: switch OFF',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

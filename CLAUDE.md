@@ -2,9 +2,10 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
-complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.3 done**
-(Live logs & flow-aware imagery; log + event aggregation, flow instrumentation). Phase 2 accepted
-2026-07-31 — the user accepted it outright without a separate CP 2.6 verification pass. The
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.4 done,
+CP 4.4 awaiting your test** (Live logs & flow-aware imagery; log + event aggregation, flow
+instrumentation, the Live screen). Phase 2 accepted 2026-07-31 — the user accepted it outright
+without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
@@ -103,6 +104,33 @@ Prefect's real `limit=200` cap — invisible to fakes, silently broken in produc
 tailed logs). Verified: import sanity-check on every changed pipeline module (no test suite there),
 plus a live round trip against a throwaway agent instance confirming both `emit()` and `emit_sync()`
 actually reach `POST /api/events`. Nothing deployed to the live pod yet.
+
+**CP 4.4 (Live screen) done and user-verified, 🟢.** `app/lib/features/live/`: a flow-selector row
+above three panes — `LogConsole` (level filter, task-change dividers, sticky expandable error strip,
+scroll-aware auto-follow), the per-flow visualization surface (scan filmstrip, classify verdict
+stream with img/s, scrape/follow before→after cards, ingest hero grid), and `RunSummary` (phase/
+today/last-run + this-run counters + a CP-4.5-pending device placeholder). `LiveController` replays
+`/api/flow-runs/{id}/logs` and `/api/events` once, then stays current via `flowrun.logs`/
+`flow.events`, resetting on a new `last_run.id` rather than every heartbeat tick. New
+`core/agent_image.dart` fetches `/api/images/{key}[/thumb]` through `dio` for its auth header.
+`flowTitle`/`phaseLabel` moved from `flow_card.dart` into shared `scheduler_models.dart`. **Found by
+the new `live_layout_test.dart`, not `flutter analyze`** (same overflow-is-paint-time class as D19):
+`AgentImage`'s placeholder overflowed at the classify surface's 1080:198 row-crop aspect ratio sized
+to ~18px tall — fixed with `FittedBox(scaleDown)`.
+
+**Tested live against a real scrape run.** The long-lived `ia-agent.exe` process had to be restarted
+mid-test — it predated this whole session and had none of CP 4.1/4.2's routes, producing 404s that
+looked like app bugs but were really "the code changed, the running process didn't." The log console
+worked immediately after that (Prefect's own execution log, no pipeline dependency); the
+visualization surfaces stayed empty as expected (need CP 4.3's `emit()` calls deployed to the live
+pod, which hasn't happened). **Corrected after your feedback:** the log line rendering was hard to
+read (monospace, 1px line spacing, level as inline color) — rebuilt as timestamp + a colored level
+pill + message in the normal body font at 1.4 line height, deliberately far short of Prefect's own
+log view's chrome. Also found and fixed: a `IA_AGENT_URL not found` warning flooding the merged
+scheduler-pod log lines — not new (fires every heartbeat since CP 3.4), just newly visible because
+D30's pod-log merge is what surfaced it. Fixed by writing the coded default straight into the real
+`config.env`, since that key is deliberately outside the app's config schema (D26). Verified:
+`flutter analyze` clean, `flutter test` 23/23.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

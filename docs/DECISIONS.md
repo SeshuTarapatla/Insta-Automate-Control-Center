@@ -5,6 +5,67 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 4 implementation session (CP 4.4, Live screen)
+
+### D33 · The Live screen resets on a new run id, not on every heartbeat tick; a shared flow-name lookup instead of a duplicate one
+
+**Chosen:** `LiveController` watches `selectedFlowProvider` (rebuilds `build()` on a flow switch)
+but only `ref.listen`s `flowsControllerProvider` — a heartbeat arrives roughly every 2s and would
+otherwise force a full `logs`/`events` refetch on nearly every tick for no reason, since almost none
+of those change anything relevant. The listener compares `flows[currentFlow]?.lastRun?.id` against
+what was last seen and only re-fetches when that id actually changes (a new run started), mirroring
+`FlowsController`'s existing "listen for the interesting change, don't rebuild on every emission"
+shape rather than inventing a new one.
+
+**`flowTitle`/`phaseLabel` moved from `flow_card.dart` (private) into `scheduler_models.dart`
+(shared)** rather than copied — the Live screen's `RunSummary` needs the exact same flow-name and
+phase display strings `FlowCard` already has, and a second copy would drift the moment either one's
+labels changed. `flow_card.dart` updated to use the shared versions; `flutter test` (23/23,
+including the pre-existing `flows_layout_test.dart`) confirms the refactor didn't change `FlowCard`'s
+behavior.
+
+**`AgentImage` fetches through `dio`, not `Image.network`** — the images endpoint is bearer-token
+gated (same auth as every other agent call), and `Image.network` has no way to attach one. A
+`FutureProvider.family<Uint8List, (String key, int? width)>` does the fetch and lets Riverpod's own
+caching avoid re-requesting a key already seen at a given width, rather than building a bespoke
+image cache.
+
+**Found only by the new `live_layout_test.dart`, not `flutter analyze`** (D19's overflow-is-
+paint-time lesson, again): `AgentImage`'s "image unavailable" placeholder (icon + label) overflowed
+when shown at the classify surface's 1080:198 row-crop aspect ratio sized to a card thumbnail —
+~18px tall, nowhere near enough for icon + spacing + text at their natural size. Every other surface
+happened to use taller aspect ratios and never triggered it, which is exactly why a real widget test
+matters here rather than eyeballing one or two surfaces. Fixed with `FittedBox(fit:
+BoxFit.scaleDown)` around the placeholder's `Column`. Seven new test cases target the same
+"unbounded-length real string in a fixed-width pane" shape `flows_layout_test.dart` established: a
+60-character username, a 40-character no-space digit run standing in for a pathological detail
+string, and six counters shown at once.
+
+**Verified:** `flutter analyze` clean, `flutter test` 23/23 (16 prior unchanged + 7 new). No flow
+ran live during this session, so the log console (works today — CP 4.1's tailer reads Prefect's own
+execution log, no pipeline-side dependency) and the visualization surfaces (need CP 4.3's `emit()`
+calls actually deployed to the live pod, which hasn't happened) are both left for a real end-to-end
+check once something runs.
+
+**Corrected after your live test, same session: `_LogLine`'s original rendering was hard to read.**
+The first version packed level + message into one `RichText` span with 1px of vertical padding
+between lines, everything in monospace, the level shown as inline colored text rather than a
+badge — dense in a way that read fine to me reviewing the code but not in the running app with a
+real 62-line scrape log. You compared it against Prefect's own log view as the "too far the other
+way" reference point — not asking for that level of chrome (no task-run sidebar links), just real
+readability. Rebuilt as a row: a fixed-width timestamp, a colored level *pill* (background tint +
+bold text, not inline color), and the message in the theme's normal body font at 1.4 line height —
+monospace dropped entirely, since these are prose log lines, not aligned tabular data. Scheduler-
+sourced lines (D30) keep a visual distinction but as a muted left border accent instead of italics,
+which was adding strain rather than clarity. Also surfaced during this same live test: the
+scheduler pod's `IA_AGENT_URL not found in config.env` warning, visible for the first time only
+because D30's merge exists now — not a new occurrence (it's fired on every heartbeat since CP 3.4/
+D28), just newly observable. Fixed at the source by writing the coded default
+(`http://172.19.16.1:8787`) into the real `config.env` directly, since `IA_AGENT_URL` is
+deliberately excluded from the app's config schema (D26) and has no UI path to set it.
+
+---
+
 ## 2026-08-01 — Phase 4 implementation session (CP 4.1, log aggregation)
 
 ### D30 · Flow-run log tailing: heartbeat-first discovery, per-run rings, scheduler-pod lines merged by append order

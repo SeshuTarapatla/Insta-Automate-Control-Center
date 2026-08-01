@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/flows/flows_page.dart';
+import '../features/live/live_page.dart';
 import '../features/placeholder_page.dart';
 import '../features/services/services_page.dart';
 import '../features/settings/settings_page.dart';
@@ -8,6 +9,7 @@ import 'connection_banner.dart';
 import 'title_bar.dart';
 
 const _flowsIndex = 1;
+const _liveIndex = 2;
 const _servicesIndex = 3;
 const _settingsIndex = 6;
 
@@ -68,6 +70,7 @@ class _AppShellState extends State<AppShell> {
                   // back replays from the server instead of holding state here.
                   child: switch (_selected) {
                     _flowsIndex => const FlowsPage(),
+                    _liveIndex => const LivePage(),
                     _servicesIndex => const ServicesPage(),
                     _settingsIndex => const SettingsPage(),
                     _ => PlaceholderPage(title: _destinations[_selected].label),

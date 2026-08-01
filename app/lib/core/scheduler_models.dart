@@ -99,3 +99,20 @@ const flowOrder = ['entity-ingest', 'entity-scan', 'entity-classify', 'entity-sc
 
 /// `entity-scan` -> `ENTITY_SCAN`, the config.env switch key for a flow name.
 String flowSwitchKey(String flow) => flow.toUpperCase().replaceAll('-', '_');
+
+/// Shared with the Live screen (CP 4.4) — one lookup table, not one per
+/// feature, since both mean the same thing by "flow" and "phase".
+const flowTitle = {
+  'entity-ingest': 'Ingest',
+  'entity-scan': 'Scan',
+  'entity-classify': 'Classify',
+  'entity-scrape': 'Scrape',
+  'entity-follow': 'Follow',
+};
+
+const phaseLabel = {
+  'idle': 'Idle',
+  'running': 'Running',
+  'waiting': 'Waiting',
+  'day_paused': 'Paused for the day',
+};

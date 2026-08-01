@@ -624,7 +624,7 @@ test_flowruns.py` (36/36) still passes unchanged. Nothing deployed to the live p
 rebuild the pipeline pod doesn't need until this branch is tested end-to-end, per D29's
 `GIT_BRANCH`-pointed rebuild technique.
 
-### CP 4.4 — Live screen 🟢
+### CP 4.4 — Live screen 🟢 ✅ done, user-verified
 Three panes: log console (auto-follows the active run, level filter, task grouping, sticky
 errors) · flow-specific visualization surface (per-kind layouts for the three aspect ratios) ·
 run summary with counters and the device pane.
@@ -632,6 +632,50 @@ run summary with counters and the device pane.
 Per-flow surfaces: scan → live-growing strip filmstrip with `added/scanned`; classify → verdict
 card stream with running img/s; scrape → before→after morph plus reason chips carrying real
 numbers; follow → profile report with outcome; ingest → hero page cards.
+
+**What landed** — `app/lib/features/live/`: a flow-selector row (`ChoiceChip`s, auto-selects
+whichever flow is `running` the first time real scheduler data arrives, a manual tap overrides it
+after that) above three panes — `LogConsole` (level filter chips, task-change dividers, a sticky
+expandable error strip, and auto-follow that respects manual scroll-up), the per-flow
+`_VisualizationSurface` switch, and `RunSummary` (phase/today/last-run from the existing scheduler
+snapshot, this-run counters summed from event payloads, and a device-pane placeholder explaining
+CP 4.5 isn't built yet — D17's "say why, don't show blank" rule applied again). `LiveController`
+replays `GET /api/flow-runs/{id}/logs` and `GET /api/events` once per selected flow, then stays
+current via the `flowrun.logs`/`flow.events` WS channels, resetting when the flow's `last_run.id`
+changes (a new run started) rather than on every heartbeat tick. New `core/flowrun_models.dart`,
+`core/flow_event_models.dart`, and `core/agent_image.dart` (fetches `/api/images/{key}[/thumb?w=]`
+through `dio` for the auth header a bare `Image.network` can't attach, cached per Riverpod's own
+family semantics). `flowTitle`/`phaseLabel` moved from `flow_card.dart` (private) to
+`scheduler_models.dart` (shared) rather than duplicated for the Live screen's own use of the same
+mapping.
+
+**Found by the new `live_layout_test.dart`, not `flutter analyze`** (same class of bug as D19/CP
+2.4 and CP 3.5's countdown/button fixes — overflow is paint-time): `AgentImage`'s placeholder
+(icon + label, shown whenever `imageKey` is null) overflowed at the classify surface's row-crop
+aspect ratio (1080:198) sized to a card thumbnail — ~18px tall, not enough for icon + spacing +
+text. Wrapped in `FittedBox(fit: BoxFit.scaleDown)` so it shrinks to fit instead. 7 new test cases
+targeting exactly the "unbounded-length real string in a fixed-width pane" shape `flows_layout_test`
+established (a 60-character username, a 40-character digit run with no spaces, six counters at
+once), across the log console, run summary and all five surfaces.
+
+**Verified:** `flutter analyze` clean, `flutter test` 23/23 (16 prior + 7 new). Tested live against a
+real scrape run in progress. The agent serving the app had to be restarted mid-test — it was still
+running pre-session code with none of CP 4.1/4.2's routes, hence an initial round of 404s that
+looked like app bugs but weren't (the three-repo split means a code change here needs the actual
+long-lived `ia-agent.exe` process restarted to take effect, not just a rebuild). The log console
+worked immediately once that was fixed, exactly as expected — it reads CP 4.1's tailer, which is
+Prefect's own execution log, no pipeline-side dependency. The visualization surfaces stayed empty as
+predicted (CP 4.3's `emit()` calls aren't deployed to the live pod yet).
+
+**Corrected after your live feedback, same session:** the log line rendering was hard to read — you
+compared it to Prefect's own log view as the "too far the other way" reference (not asking for that
+much chrome, just real readability). Rebuilt `_LogLine` as timestamp + a colored level pill +
+message in the theme's normal body font at 1.4 line height, monospace dropped entirely since these
+are prose lines, not tabular data (D33 addendum has the full before/after). Also surfaced by the
+same live test: a `IA_AGENT_URL not found in config.env` warning flooding the scheduler-pod log
+lines — not a new occurrence (it's fired every heartbeat since CP 3.4), just newly visible now that
+D30's pod-log merge exists. Fixed at the source: wrote the coded default into the real `config.env`,
+since `IA_AGENT_URL` is deliberately outside the app's config schema (D26).
 
 ### CP 4.5 — Device view 🟢
 Primary: control the native scrcpy window through wsl-bridge, positioned with
