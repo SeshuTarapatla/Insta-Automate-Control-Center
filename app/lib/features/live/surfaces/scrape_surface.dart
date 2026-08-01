@@ -36,17 +36,7 @@ class ScrapeSurface extends StatelessWidget {
     final latestInProgress = !latestEvents.any((e) => e.kind == 'scrape.done' || e.kind == 'scrape.skipped');
 
     if (!latestInProgress) {
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: subjects.length,
-        itemBuilder: (context, index) {
-          final subject = subjects[subjects.length - 1 - index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false),
-          );
-        },
-      );
+      return _HistoryWrap(subjects: subjects.reversed, bySubject: bySubject, theme: theme);
     }
 
     return Column(
@@ -58,20 +48,41 @@ class ScrapeSurface extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: subjects.length - 1,
-            itemBuilder: (context, index) {
-              // Newest-first, skipping the subject already shown above.
-              final subject = subjects[subjects.length - 2 - index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false),
-              );
-            },
-          ),
+          // Newest-first, skipping the subject already shown large above.
+          child: _HistoryWrap(subjects: subjects.reversed.skip(1), bySubject: bySubject, theme: theme),
         ),
       ],
+    );
+  }
+}
+
+/// The resolved-card history, wrapped left-to-right at a capped width per
+/// card rather than one full-bleed row each — a single-column `ListView` of
+/// `Row`-shaped cards left most of a wide pane empty to the right of every
+/// card's actual content once the visualization surface got the extra room
+/// D43 gave it. `SizedBox`-capping each card and `Wrap`ping them fills that
+/// space with more cards instead, without needing to redesign the card
+/// itself away from the image-left/text-right shape that already works well
+/// at a fixed width.
+class _HistoryWrap extends StatelessWidget {
+  const _HistoryWrap({required this.subjects, required this.bySubject, required this.theme});
+
+  final Iterable<String> subjects;
+  final Map<String, List<FlowEvent>> bySubject;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final subject in subjects)
+            SizedBox(width: 380, child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false)),
+        ],
+      ),
     );
   }
 }

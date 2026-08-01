@@ -7,6 +7,42 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D44 · D43 widened the pane, but the cards inside it didn't use the width — `Wrap` instead of `ListView`
+
+**Found immediately by you testing D43's fix**: the visualization surface really was wider, but
+scrape/follow/classify's card lists are all a single-column `ListView` of `Row`-shaped cards (image
+left, text right) — each card stretches to the *list's* full width but its own content doesn't, so
+the extra room D43 freed just became more empty space to the right of every card, not more visible
+information. Every scrape run so far had been tested at the *old*, narrower pane width, so this was
+never visible until now.
+
+**Fixed by capping each card's width and `Wrap`ping them, not by redesigning the cards.** A
+`SizedBox`-capped `_ScrapeCard`/`_FollowCard`/classify card inside a `Wrap` fills a wide pane with
+*more cards side by side* instead of one stretched-and-underfilled card per row — same visual design
+each card already had (proven to work at that width by D41/D42's own testing), just packed more
+densely. New `_HistoryWrap` in `scrape_surface.dart` (shared between the "all resolved" and the
+in-progress branch's history list, both of which needed it); the same pattern inlined directly in
+`follow_surface.dart` (420px cards, wider than scrape's 380 — its outcome badge can read
+`WANTS_TO_FOLLOW`) and `classify_surface.dart` (320px, since its cards are simpler).
+
+**`ClassifySurface` needed one more change than the other two: it became a `StatefulWidget`.**
+`ScrapeSurface`/`FollowSurface` show resolved history that a person browses at their own pace, so a
+plain `Wrap` in a `SingleChildScrollView` is enough. Classify streams fast enough to show its own
+img/s rate, and the previous `ListView(reverse: true)` got auto-follow-the-newest for free from that
+trick alone — a `Wrap` has no equivalent, so it needed the exact `ScrollController` + "did the count
+change → animate to `maxScrollExtent`" pattern `scan_surface.dart` already established, applied here
+verbatim rather than invented fresh.
+
+**Checked, not applied everywhere:** `ScanSurface`'s own filmstrip is already a horizontally-scrolling
+`ListView` of fixed-width items — structurally the same fix already, nothing to change. `IngestSurface`
+already uses a `GridView` for the identical reason. Only the three single-column `Row`-card lists had
+the gap.
+
+**Verified:** `flutter analyze` clean, `flutter test` 25/25 (existing fixtures, unchanged — `Wrap` is
+a standard widget with no custom sizing logic to add new overflow risk, and the existing 700px-wide
+overflow tests still validate the worst case, a single card per row). Not yet verified against a live
+run / real window at the actual (much wider) production width.
+
 ### D43 · Live screen: two columns, not three — summary sizes to content instead of stretching
 
 **The layout itself was the last complaint**, once the data and per-flow visuals were actually

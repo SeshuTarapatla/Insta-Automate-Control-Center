@@ -220,6 +220,19 @@ by rewriting both `RunSummary` tests to the real constraint shape rather than tr
 `height: 700` box was equivalent. `flutter analyze` clean, `flutter test` 25/25. Not yet verified
 against a live run / real window.
 
+**Addendum, 2026-08-01 (D44): the wider pane didn't help, since the cards inside it didn't use the
+width.** Scrape/follow/classify's card lists are all a single-column `ListView` of `Row`-shaped cards
+— each card stretched to the list's full width but its own content didn't, so D43's extra room just
+became more empty space, not more visible information. Fixed by capping each card's width and
+`Wrap`ping them instead of redesigning the cards — same proven visual design, packed denser. New
+`_HistoryWrap` in `scrape_surface.dart`; the same pattern inlined in `follow_surface.dart` (420px
+cards) and `classify_surface.dart` (320px). Classify needed one more change: it became a
+`StatefulWidget` with `scan_surface.dart`'s own `ScrollController` auto-follow-the-newest pattern
+applied verbatim, since the `ListView(reverse: true)` trick that gave it that behavior for free has
+no `Wrap` equivalent. `ScanSurface`'s filmstrip and `IngestSurface`'s grid already didn't have this
+problem, so left untouched. `flutter analyze` clean, `flutter test` 25/25. Not yet verified against a
+live run at the actual (much wider) production width.
+
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked
