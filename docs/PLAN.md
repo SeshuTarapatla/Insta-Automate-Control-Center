@@ -455,24 +455,47 @@ until a follow-up wires `Prefect.serve()` to send real heartbeats (D27's "How to
 **Closed same session:** `Prefect.serve()` now runs `heartbeat_loop()`, a 2s loop posting every
 flow's real state block. See D28.
 
-### CP 3.5 — Flows UI 🟢
+### CP 3.5 — Flows UI 🟢 ✅ done, user-verified
 Five flow cards: countdown ring to `next_trigger_at`, the gate reason in plain language, today's
-counters against the limit, the switch, **Run now** (respects gates) and **Force run** (bypasses,
-with confirmation), last run state + duration + a jump to its logs.
+counters against the limit, the switch, **Run now/Skip wait** (respects gates) and **Force run**
+(bypasses, with confirmation), last run state + duration + a jump to Prefect's own UI for its logs.
 
 **Prerequisite gap from CP 3.4 (D27) — closed (D28):** `Prefect.serve()` now runs a
 `heartbeat_loop()` that posts every flow's real state block every ~2s, so `/api/scheduler` has real
-data for this screen to render against. What's still missing before this CP can be more than
-read-only: **command handling.** `wait_until` (D25) has no hook to check for queued commands, so
-`run_now`/`force_run`/`skip_wait`/`pause`/`resume`/`reload_config` are accepted and queued by the
-agent but never acted on — `heartbeat_loop()` only logs a warning if any arrive. Wiring that
-interrupt is part of this CP's own scope (the Run now / Force run / Skip wait buttons need
-somewhere to land).
+data for this screen to render against. **Command handling** (the actual scope of this CP):
+`wait_until` (D25) now wakes on `skip_wait`/`run_now`/`reload_config`/a pending `force_run`;
+`force_run` bypasses the rate gate (day-limit/backpressure) and the `ENTITY_*` switch per flow, but
+never a no-work gate — see DECISIONS D29 for the full table and every correction it took to get
+there. `pause`/`resume` stay accepted by the agent's REST layer but unwired — no button asks for
+them.
 
-**Test:** while `entity_follow` is waiting, change `FOLLOW_WAIT` 1200 → 120 — the countdown
-re-targets within one TICK. Press *Skip wait* → it fires immediately. Turn the switch off → the
-card reads "skipped: switch OFF". Fill `follow_queued` past the threshold → the scrape card
-explains `scraped+follow_queued = 180 ≥ FOLLOW×3 = 180`.
+**What landed beyond the original scope, all from live testing (D29 has the full history):** the
+Settings > Limits tab gained a "Timings" group exposing all eleven trigger-timing keys (nothing had
+before — `FOLLOW_WAIT` etc. were only editable by hand-editing `config.env`); `SCRAPE_BACKPRESSURE_
+FACTOR` renamed to `SCRAPE_RESERVE_FACTOR`; the "triggering" phase renamed to "running" (it was live
+for a flow run's entire duration, not a momentary state); a countdown-ring jitter bug (`wait_until`
+was recomputing `next_trigger_at` with near-but-not-exact-same-instant precision every tick,
+resetting the ring to full every ~5s) and a Force Run responsiveness bug (queued but never checked
+while a flow was mid-wait — invisible on Scrape's short waits, completely broken on Follow's long
+one) fixed together in `wait_until`; Force Run made unconditionally enabled (manual trigger = ignore
+everything, always) instead of only enabling when something was blocking; optimistic "command
+sent…" UI feedback so a worker-pickup delay can't invite a double-click; and a maximized-mode title
+bar rendering glitch (Windows redrawing native caption chrome under the custom buttons) worked
+around by faking maximize via `setBounds` to the real Win32 work area instead of calling
+`windowManager.maximize()`.
+
+**Verified without any live Telegram/DB/device/Instagram call** at every step (flow switches stayed
+live throughout) via an isolated harness exercising `wait_until`/`_consume`/`_pending`/force-bypass
+logic directly against a `Prefect.__new__` instance. The actual pipeline behavior (heartbeats, gate
+details, Force Run's live effects) was verified against the real running pod, temporarily pointed at
+`feat/control-center` via a new `GIT_BRANCH` env var and rebuilt image (D29) — reverts to normal the
+moment this branch merges to `main`.
+
+**Test (run by you, live, several rounds):** countdown re-targets within one TICK on a `FOLLOW_WAIT`
+edit; Skip wait fires immediately; switch off reads "skipped: switch OFF"; the scrape card explains
+`scraped+follow_queued = 180 ≥ FOLLOW×3 = 180`; Force Run actually runs regardless of switch/limits
+on every flow; rings animate smoothly without resetting; Force Run gives instant feedback instead of
+a multi-second gap.
 
 ---
 

@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import '../../core/config_models.dart';
 import 'limit_card.dart';
 
-const _groupOrder = ['scan', 'scrape', 'follow'];
-const _groupTitles = {'scan': 'Scan', 'scrape': 'Scrape', 'follow': 'Follow'};
+const _groupOrder = ['scan', 'scrape', 'follow', 'timing'];
+const _groupTitles = {
+  'scan': 'Scan',
+  'scrape': 'Scrape',
+  'follow': 'Follow',
+  'timing': 'Timings (seconds) — how long each trigger waits',
+};
 
 class LimitsTab extends StatelessWidget {
   const LimitsTab({super.key, required this.config});

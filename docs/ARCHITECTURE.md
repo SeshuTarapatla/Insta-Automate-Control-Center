@@ -249,7 +249,7 @@ DAY_CHANGE_POLL=60
 TICK=5                        # granularity of interruptible sleeps / countdown resolution
 
 # Gates
-SCRAPE_BACKPRESSURE_FACTOR=3  # pause scrape while scraped+follow_queued >= FOLLOW × factor
+SCRAPE_RESERVE_FACTOR=3       # pause scrape while scraped+follow_queued >= FOLLOW × factor
 SCAN_LIST=auto                # auto | followers | following
 
 # Control-center wiring

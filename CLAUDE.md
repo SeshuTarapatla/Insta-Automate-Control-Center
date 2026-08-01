@@ -27,10 +27,30 @@ every ~2s — each trigger loop sets its own `gate` (backpressure/day_limit/no_w
 detail string ARCHITECTURE §4.3 illustrates) right before whichever wait follows it, and
 `wait_until` only ever updates `phase`/`next_trigger_at`, never touching `gate`, so the reason
 survives the whole wait. Verified cross-process (a real `AgentClient` from the `Insta-Automate`
-venv against a throwaway agent instance — two genuinely separate Python environments). **What's
-still open:** command handling — the agent queues `run_now`/`skip_wait`/etc but nothing acts on
-them; `heartbeat_loop()` only logs a warning if any arrive. That's CP 3.5's job. Next up: CP 3.5 —
-the Flows UI.
+venv against a throwaway agent instance — two genuinely separate Python environments).
+**Phase 3, CP 3.5 (Flows UI) is done and accepted, after several rounds of your live testing and
+fixes (all in D29).** `heartbeat_loop()` actually queues the commands it receives now, and
+`wait_until` wakes on `skip_wait`/`run_now`/`reload_config`/a pending `force_run` — the last one was
+a real bug: it was only ever checked at the top of each trigger loop, so pressing Force Run while a
+flow was mid-wait (fine on Scrape's short waits, silently broken on Follow's 20-minute one) queued
+the command with nothing consuming it. `force_run` bypasses the rate gate (day-limit/backpressure)
+*and* the `ENTITY_*` switch — corrected mid-session from "never the switch" once you pointed out
+manual and scheduled triggers are two different things — but never a no-work gate, since force can't
+invent a queued entity or file that doesn't exist. It's unconditionally enabled now too, not just
+when something's blocking. `pause`/`resume`/`reload_config` stay accepted by the agent's REST layer
+but unwired — no button asks for them. The Flows screen (`app/lib/features/flows/`) is five cards:
+a smoothly-animating countdown ring (an earlier version reset to full every ~5s from deadline
+jitter, fixed alongside the Force Run bug above), gate reason, today's counters, the switch, Run
+now/Skip wait, Force run (confirmed, with optimistic "command sent…" feedback so a worker-pickup
+delay can't invite a double-click), and a "View logs" link out to Prefect's own UI (CP 4.1's in-app
+viewer doesn't exist yet). Also landed: a Settings > Limits "Timings" group exposing all eleven
+trigger-timing keys (previously only hand-editable in `config.env`), `SCRAPE_BACKPRESSURE_FACTOR`
+renamed to `SCRAPE_RESERVE_FACTOR`, the "triggering" phase renamed to "running" (it described a
+flow's entire run, not a momentary state), and a worked-around maximized-mode title bar rendering
+glitch (D29 — unverified by Claude directly, reasoned from your screenshots, since driving the app
+is your job per rule 5). Verified without any live Telegram/DB/device call throughout — see D29 for
+the full history, including the live pipeline verification technique (`GIT_BRANCH` env var pointing
+a rebuilt image's flow deployments at `feat/control-center` for testing, reverts once merged).
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

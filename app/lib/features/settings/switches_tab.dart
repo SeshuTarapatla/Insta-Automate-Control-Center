@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/config_models.dart';
+import '../../core/flow_switch_confirm.dart';
 import 'config_controller.dart';
 
 /// The order the pipeline actually runs in, so the switches read as a pipeline
@@ -16,45 +17,13 @@ const _flowOrder = [
   'ENTITY_FOLLOW',
 ];
 
-/// What stops if you turn each one off — shown in the confirmation dialog,
-/// because "are you sure?" without a consequence is not a real confirmation.
-const _disableConsequence = {
-  'ENTITY_INGEST': 'New profiles, posts and reels posted to the Telegram channel will stop being '
-      'picked up. Nothing already queued is affected.',
-  'ENTITY_SCAN': 'No new usernames will be harvested from queued entities, so the classify and '
-      'scrape stages will eventually run dry.',
-  'ENTITY_CLASSIFY': 'Scanned row crops will pile up unclassified, and nothing new will reach '
-      'gender_valid for you to promote.',
-  'ENTITY_SCRAPE': 'Profiles already promoted to scrape_queued will sit there unscraped.',
-  'ENTITY_FOLLOW': 'Profiles already promoted to follow_queued will sit there unfollowed.',
-};
-
 class SwitchesTab extends ConsumerWidget {
   const SwitchesTab({super.key, required this.config});
 
   final ConfigResponse config;
 
   Future<void> _toggle(BuildContext context, WidgetRef ref, String key, bool value) async {
-    if (!value) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Turn off $key?'),
-          content: Text(_disableConsequence[key] ?? 'This flow will stop being triggered.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Turn off'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-    }
+    if (!await confirmFlowSwitch(context, key, value)) return;
 
     try {
       await ref.read(configControllerProvider.notifier).applySwitch(key, value);

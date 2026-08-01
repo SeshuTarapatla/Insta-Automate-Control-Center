@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/connection_state.dart';
+import '../core/window_work_area.dart';
 
 class TitleBar extends ConsumerWidget {
   const TitleBar({super.key});
@@ -72,8 +73,69 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _WindowButtons extends StatelessWidget {
+/// Maximize is faked via `setBounds` to the monitor's real work area instead
+/// of `windowManager.maximize()`. The native Win32 maximize state visibly
+/// glitches this app's custom title bar buttons — Windows redraws its own
+/// caption chrome underneath/over the custom-drawn icons only in that state
+/// (screenshot-confirmed: doubled icons, maximized only, restored is clean).
+/// Staying in "restored" but sized to the work area sidesteps it entirely.
+/// Known gap: OS-level maximize gestures that bypass this button (Win+Up,
+/// dragging to the top edge, the taskbar's own right-click menu) still call
+/// real maximize and can still glitch — there's no way to intercept those
+/// from Dart without native platform-channel work.
+class _WindowButtons extends StatefulWidget {
   const _WindowButtons();
+
+  @override
+  State<_WindowButtons> createState() => _WindowButtonsState();
+}
+
+class _WindowButtonsState extends State<_WindowButtons> with WindowListener {
+  bool _maximized = false;
+  Rect? _restoredBounds;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() => setState(() => _maximized = true);
+
+  @override
+  void onWindowUnmaximize() => setState(() => _maximized = false);
+
+  Future<void> _toggle() async {
+    if (_maximized) {
+      if (await windowManager.isMaximized()) {
+        await windowManager.unmaximize();
+      } else if (_restoredBounds != null) {
+        await windowManager.setBounds(_restoredBounds);
+      }
+      setState(() => _maximized = false);
+      return;
+    }
+
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    final workArea = currentMonitorWorkArea(devicePixelRatio);
+    if (workArea == null) {
+      // Native lookup failed — real maximize is a worse-looking fallback
+      // but a working one.
+      await windowManager.maximize();
+      return;
+    }
+
+    _restoredBounds = await windowManager.getBounds();
+    await windowManager.setBounds(workArea);
+    setState(() => _maximized = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,14 +143,8 @@ class _WindowButtons extends StatelessWidget {
       children: [
         _WindowButton(icon: Icons.remove, onPressed: windowManager.minimize),
         _WindowButton(
-          icon: Icons.crop_square,
-          onPressed: () async {
-            if (await windowManager.isMaximized()) {
-              await windowManager.unmaximize();
-            } else {
-              await windowManager.maximize();
-            }
-          },
+          icon: _maximized ? Icons.filter_none : Icons.crop_square,
+          onPressed: _toggle,
         ),
         _WindowButton(icon: Icons.close, onPressed: windowManager.close),
       ],

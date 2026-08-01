@@ -5,6 +5,228 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-07-31 — Phase 3 implementation session (CP 3.5, Flows UI)
+
+### D29 · `force_run` bypasses the rate gate and the switch, never the no-work gate; `pause`/`resume`/`reload_config` stay unwired
+
+**Chosen:** `Prefect` gained `self._commands: dict[str, list[str]]`, `_consume`/`_pending`
+(pop-once vs. peek), and `_trigger_gate(force)` (`controllers/prefect.py`). `heartbeat_loop`
+(D28) now actually queues the commands it receives instead of just logging them. `wait_until`
+(D25) treats `skip_wait`/`run_now`/`reload_config` identically — all three just mean "wake this
+wait now instead of at the deadline" — consuming whichever arrives and returning its name instead
+of `"elapsed"`. `force_run` is handled per gate site instead: one `force =
+self._consume(flow, "force_run")` per loop iteration, reused everywhere that iteration's gate is
+checked (`and not force` on a day-limit check, `or force` on a no-work/backpressure check).
+`wait_day_change` gained a **peek** (`_pending`, not `_consume`) so a `force_run` arriving while
+already inside a day-pause unsticks it without the command being silently consumed before the
+outer loop's trigger branch ever sees it.
+
+**The bypass rule: force skips *rate* gates and the switch, never a *no-work* gate.** A day-limit or
+backpressure gate is pure rate-limiting — bypassing it is exactly what "force" should mean. A
+no-work gate (nothing queued) is a hard constraint — `entity-scan` needs a real queued `Entity` to
+supply the `url` parameter, `entity-follow` needs real files in `follow_queued/`, so force can't
+manufacture either and those checks are untouched. `entity-ingest`/`entity-classify` have no such
+parameter requirement (they just re-check their own directory/Telegram state at run time), so their
+no-work gates *are* force-bypassable — a forced trigger with nothing new just completes
+immediately, which is harmless.
+
+**Corrected after your first live test: force also bypasses the switch.** The original version of
+this decision left the `ENTITY_*` switch untouched by any command, reasoning that force overrides a
+rate limit, not an explicit "don't run this." You tested it and disagreed — "the toggles are only
+for auto runs, force run should always run irrespective of toggle" — so `Deployment.trigger()` gained
+a `force: bool = False` parameter; `if not self.switch() and not force: return` replaces the old
+unconditional switch check, and every trigger-loop call site now passes its own `force` through
+(`entity_ingest_trigger` needed a `force` parameter threaded in too, since it's called from both the
+timer loop and the live Telegram handler — only the timer loop's forced calls pass `True`). A
+switched-off flow now really does run when forced, logging that it's doing so.
+
+**`pause`/`resume`/`reload_config` are validated at the agent's REST layer (`KNOWN_COMMANDS`, CP
+3.4) but deliberately not wired into the pipeline.** Nothing in the Flows UI has a button for them —
+the CP 3.5 plan text and manual test only call for Run now / Force run / Skip wait — so wiring
+pause/resume handling now would be dead code with no caller. Whoever adds a Pause button later
+wires it the same way `force_run` is wired here: peek/consume against `self._commands`.
+
+**"Run now" and "Skip wait" are one interrupt, not two buttons.** The plan bullets say "Run now"
+and "Force run"; the manual test says "press Skip wait." Reconciled by making the Flows card's
+first button send `skip_wait` and relabel itself — "Run now" when idle, "Skip wait" when
+`phase == "waiting"` — since `wait_until` treats both commands identically anyway.
+
+**Verified without any live Telegram/DB/device/Instagram call** (flow switches are live —
+firing a real flow during a test was not acceptable): `Prefect.__new__(Prefect)` skips `__init__`
+entirely (no `IaTelegram`/`IaSession`/`AgentClient` construction), then `_consume`/`_pending`/
+`_trigger_gate`/`wait_until`/`wait_day_change` are exercised directly with short-circuited `Config`
+overrides — mirrors CP 3.2's own verification technique for `wait_until`. All pass: normal elapse is
+unchanged when no command is queued, `skip_wait`/`run_now`/`reload_config` each wake `wait_until`
+early and are consumed exactly once, `wait_day_change` returns on a pending `force_run` without
+consuming it, and the per-flow force-bypass boolean conditions match the table above.
+
+**Flutter side** (`app/lib/features/flows/`, `core/scheduler_models.dart`): `FlowsController`
+mirrors `ServicesController`'s shape but replaces the whole snapshot on every `flows.state` event
+rather than patching by name, since the channel already publishes the full picture (D27). The
+countdown ring's proportional fill needs a "started at" the state block doesn't carry (only the
+deadline) — tracked client-side, reset whenever `next_trigger_at` changes, which is what makes a
+mid-wait `FOLLOW_WAIT` edit or a `skip_wait` re-target the ring immediately rather than jumping.
+"Jump to its logs" opens `http://localhost:4200/flow-runs/flow-run/<id>` in the browser via a new
+`FileOpener.openUrl` (same `ShellExecute` call already used for files) — CP 4.1's in-app log viewer
+doesn't exist yet, and Prefect's own UI already has the real logs for that run. The switch-disable
+confirmation dialog (`_disableConsequence` + the dialog itself) moved out of `switches_tab.dart`
+into `core/flow_switch_confirm.dart` so the Settings tab and the Flows card share one copy instead
+of forking the consequence text.
+
+**Found by `flutter test`, not `flutter analyze`** (same class of bug as D19/CP 2.4 — overflow is
+paint-time): `FlowCard`'s `Card` needed `margin: EdgeInsets.zero` (Material's default 4 px margin
+was invisible in the mental model of the card's fixed 360 px width) and the Run now/Force run
+button pair needed to become a `Wrap` instead of a bare `Row` — two `OutlinedButton`s at their
+natural width came within a couple of pixels of the card's content width, which is exactly the kind
+of thing a fixed-width card doesn't get a second chance to reflow out of. `test/flows_layout_test.dart`
+(4 cases, one fixed viewport since — unlike the Services detail pane — this card's width doesn't
+depend on window size at all) pins both fixes.
+
+**Also found in your first live test: Force Run fired the deployment, but `entity-follow` itself
+still refused to follow anyone and sent its own "limit reached" notification.** `force_run`
+(this decision, above) only ever bypassed the *trigger loop's* gate — the flow body it triggers,
+`flows/entity_follow.py`, independently re-checks `Follow.fetch(session).limit_reached` and breaks
+its own loop immediately if the cap is already hit, which it still was (force doesn't touch the DB
+counts, only whether the trigger loop calls `run_deployment` at all). Same shape in
+`flows/entity_scrape.py`. Both flows gained a `force: bool = False` parameter; the loop conditions
+became `(limit_reached and not force)` / `(force or not limit_reached)`, and the day-cap Telegram
+notification is now skipped (logged instead) when `force` is set — the whole point of forcing was to
+override that constraint, so re-notifying about it is noise, not signal. `entity-scan` needed no
+equivalent fix — it only checks `limit_reached` *after* processing its one entity, purely to decide
+whether to notify, so it was never gated by the flow body at all. `entity-ingest`/`entity-classify`
+have no daily cap. `controllers/prefect.py`'s `entity_scrape_trigger`/`entity_follow_trigger` now
+pass `parameters={"force": force}` alongside the existing `force=force` (switch bypass) — two
+different mechanisms at two different layers (control-plane trigger vs. flow-body execution), both
+needed.
+
+**Discovered while fixing that: flow *bodies* deploy from the git remote's default branch, not
+whatever's baked into the image.** `IaFlows.deploy_all()` uses Prefect's `GitRepository(url=GIT_URL)`
+storage — the worker clones flow source fresh from git **at run time**, on every flow run, entirely
+independent of what `ia build` baked into the image from the checked-out branch. `controllers/
+prefect.py` (the trigger loop) is part of the *installed package*, so it picked up `feat/
+control-center` correctly when the image was rebuilt from that checkout — but `flows/entity_follow.py`
+never would have, no matter how many times the image was rebuilt, because `GitRepository` with no
+`branch` clones the remote's default branch (`main`). This had never come up before this session
+because no earlier CP touched a `flows/*.py` file. Fixed with a new `GIT_BRANCH` env var
+(`vars.py`, empty by default = today's behavior unchanged) threaded into
+`GitRepository(url=GIT_URL, branch=GIT_BRANCH or None)` — set via `kubectl set env` on the live
+`insta-automate` deployment only for this testing session (same imperative, easily-reverted pattern
+as `IA_AGENT_TOKEN`), never baked into the image or committed as a standing override. Once the
+control center is accepted and `feat/control-center` merges to `main`, this stops mattering — the
+default branch *is* the deployed one again.
+
+**Also found in your first live test: nothing edits `FOLLOW_WAIT` (or any of the other ten trigger
+timings) anywhere in the app.** CP 3.1 added them all to `Config._DEFAULTS` on the pipeline side, but
+the agent's `config/schema.py` — the only thing `GET/PATCH /api/config` and the Settings > Limits tab
+actually know about — never got them, so they were readable only by hand-editing `config.env`. Fixed
+by adding a `ConfigGroup.TIMING` and all eleven timing keys plus `SCRAPE_RESERVE_FACTOR` to
+`SCHEMA`, and adding `'timing'` to `limits_tab.dart`'s `_groupOrder`. Nothing else needed to change —
+`PATCH /api/config`'s limits handling was already generic over any `ConfigType.INT` schema key (the
+four cross-checks reference specific keys by name and don't iterate the rest), and `LimitCard` is
+already generic over any `ConfigKeySchema`. The whole fix was two data additions, no new plumbing.
+
+**Second round of live-test feedback, same session:**
+
+- **`SCRAPE_BACKPRESSURE_FACTOR` renamed to `SCRAPE_RESERVE_FACTOR`.** Your framing — "if follow is
+  60/day, reserve is 180 (60×3); if scraped+follow_queued matches that we're good" — is a clearer
+  read of what the number means than "backpressure," so the config key, its `SCHEMA` help text, and
+  ARCHITECTURE §4.1 all changed. Nothing had persisted the old name to any live `config.env` yet
+  (still resolving to the coded default), so this was a pure rename, no migration.
+- **`LimitCard`'s header row could overflow** — exactly this key, whose new name is still 21
+  characters. The name `Text` had no width constraint before the fixed-width value field, so a long
+  enough key pushed the field outside the card (visible in your screenshot: the number box sitting
+  outside the card border). Now wrapped in `Expanded` + `Tooltip` + ellipsis, the same shape of fix
+  as the gate-detail text elsewhere — a card of fixed width can't get a second chance to reflow out
+  of an overflow, so anything of unbounded length inside one needs this treatment on sight, not just
+  where it's already been caught once.
+- **The "Triggering" phase label was live for the entire run, not just the moment of triggering.**
+  `Deployment.trigger()` calls `await self.log_status()` by default (`wait=True`), which blocks until
+  the flow run reaches a terminal state — so `_set_state(flow, phase="triggering", ...)`, set once
+  right before that call, was the only phase update for the run's *entire* duration (your Follow
+  example ran 116s). Renamed the phase value itself to `"running"` everywhere it's set — accurate for
+  what it actually describes for that whole span, not a relabel of a genuinely momentary state.
+- **Maximized-mode title bar showed doubled/ghosted window buttons.** Root cause: Windows redraws its
+  own caption chrome under/over this app's custom-drawn minimize/maximize/close icons only when the
+  window is in true OS-maximized state (a known interaction between `window_manager`'s hidden title
+  bar and Windows 11's non-client rendering — restored mode is unaffected, matching what you saw).
+  Fixed at the app level rather than patching the plugin: `_WindowButtons` (`shell/title_bar.dart`)
+  no longer calls `windowManager.maximize()`. It fakes it via `setBounds` to the monitor's real work
+  area, read directly from Win32 (`core/window_work_area.dart` — `GetMonitorInfo`'s `rcWork`, the same
+  "reach into Win32 when the Dart wrapper falls short" reasoning as `FileOpener`'s `ShellExecute`
+  calls, D5) so the window never actually enters the state that glitches. Tracks `_maximized` locally
+  and the restored bounds to reverse it; a `WindowListener` keeps that flag in sync if something
+  external changes the real maximize state. **Known gap:** OS-level maximize gestures that don't go
+  through this button — Win+Up, dragging to the screen's top edge, the taskbar's own right-click menu
+  — still invoke genuine Win32 maximize and can still glitch; intercepting those would need native
+  platform-channel work, out of scope here. Unverified by me — I can't hover/click the app myself
+  (rule 5) — this is reasoned from the screenshot and the "restored is clean, maximized isn't" split
+  you described, not confirmed against a running window.
+
+**Third round: Force Run's disabled state contradicted your actual mental model of it.** It was
+built disabled whenever `gate.ok == true`, on the reasoning that Skip Wait already covers "nothing's
+blocked, just wake the timer." Your framing corrected that: there are only two kinds of trigger —
+*scheduled*, which always respects every condition, and *manual*, which should run and complete its
+task regardless of anything, full stop. Force Run is the manual one, so it should never be
+conditionally unavailable. `FlowCard._forceRun` (`flow_card.dart`) is unconditionally enabled now; the
+confirmation dialog adapts its wording to whether there's actually a gate to bypass, a generic "runs
+immediately, ignoring schedule/switch/limits" when there isn't. One honest caveat stayed: for
+`entity-scan`/`entity-follow` specifically, a `no_work` gate means there's no queued entity or file to
+act on at all — force can bypass every *condition* but can't invent input that doesn't exist — so the
+dialog says so up front instead of the button silently doing nothing.
+
+**Fourth round: two real bugs, both in `wait_until`, both from the same root cause — force_run and
+the countdown ring only ever interacted with the gate, never with the wait itself.**
+
+1. **Force Run silently did nothing on Follow after repeated tries, but worked on Scrape.**
+   `force_run` was only ever consumed at the *top* of each trigger loop's outer `while`, never inside
+   `wait_until`'s own tick loop. Press it while a flow is mid-wait and the command sits queued,
+   unread, until that `wait_until` call returns on its own — for Scrape that's usually the 10s
+   `SCRAPE_BUFFER`, easy to miss; for Follow it's `FOLLOW_WAIT`, up to 1200s. Every attempt you made
+   landed during that long wait, so nothing visibly happened. `wait_until` now peeks (`_pending`, not
+   `_consume` — same reasoning as the `wait_day_change` peek above) for a queued `force_run` every
+   tick and wakes early, returning `"force_run"`; the trigger loop's own `_consume` still has to see
+   it afterward to actually bypass the gate. This was latent for every flow, not Follow-specific —
+   Ingest's 600s `INGEST_POLL_WAIT` had the same exposure, just less likely to be caught mid-wait in
+   testing so far.
+2. **Every countdown ring reset to a full circle every ~`TICK` seconds (default 5).** `wait_until`
+   recomputed `deadline = datetime.now() + timedelta(seconds=target - elapsed)` from scratch on every
+   tick. Mathematically that lands within a few milliseconds of the same instant each time — but
+   never *exactly* the same `DateTime`, and the Flutter side's countdown-ring baseline
+   (`FlowsController._deadlineObservedAt`) resets whenever `next_trigger_at` changes at all, by exact
+   equality. So a wait that hadn't actually been re-targeted still looked re-targeted every tick,
+   snapping the ring back to full. `deadline` is now a stable value held across ticks, only
+   recomputed when `Config.get(key)` actually changes — an untouched wait now broadcasts the
+   byte-identical instant every time, so nothing changes client-side until something real does.
+   CP 3.2's original "re-targets within one TICK" behavior for an actual edit is unaffected (verified
+   in isolation — see below), and this is also strictly better for `flows.state` traffic, since
+   `SchedulerMirror.broadcast_if_changed()` (D27) was re-broadcasting on that same tick-boundary
+   jitter for every waiting flow, every ~5s, whether anything real had changed or not.
+
+**Verified in isolation, same technique as every round before this** (`Prefect.__new__`, no
+Telegram/DB/device/Instagram calls): a pending `force_run` wakes `wait_until` early without consuming
+it; `next_trigger_at` stays identical across ticks when the target is unchanged; an edit mid-wait
+still re-targets the deadline correctly. One methodology note for whoever runs this script again:
+by this point `config.env` has real explicit values for `TICK`/`FOLLOW_WAIT`/etc (you'd exercised the
+new Timings tab), so overriding `Config._DEFAULTS["TICK"]` in the test no longer has any effect —
+the file value wins, same as production. The tests still pass correctly, just slower (real 5s
+ticks instead of the intended fake ones) — not a bug, just worth knowing next time.
+
+**Fifth round: optimistic UI feedback for command buttons.** Even with the bug-1 fix above, there's an
+unavoidable real gap between a command being queued and its effect being visible — the worker still
+has to pick up the run, and the card only updates on the next `flows.state` broadcast. Long enough
+that a second click was tempting. `flows_controller.dart` gained `PendingCommandNotifier`
+(`pendingCommandProvider`): `FlowsController.sendCommand` marks the flow pending *before* the POST
+resolves, capturing its current `phase`/`gate.reason` as a baseline. A flow clears as soon as a
+`flows.state` snapshot shows that baseline actually changed (real confirmation, not just "a broadcast
+happened" — the signature that gates a broadcast, D27, is global across all five flows, so an
+unrelated flow changing must not clear this one), or after a fixed 8s timeout regardless, checked by
+elapsed time rather than requiring another event, so it self-heals if the agent goes quiet mid-flight.
+`FlowCard` swaps the Run now/Skip wait/Force run buttons for a small spinner + "Command sent…" in that
+window — same footprint, no layout jump, and both buttons are unreachable for a second click since
+neither renders at all while pending.
+
+---
+
 ## 2026-07-31 — Phase 3 implementation session (closing the CP 3.4 gap, real heartbeats)
 
 ### D28 · `gate` is set once by the caller; `wait_until` only ever touches `phase`/`next_trigger_at`

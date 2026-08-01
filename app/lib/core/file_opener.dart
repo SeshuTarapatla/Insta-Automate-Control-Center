@@ -48,6 +48,10 @@ class FileOpener {
   static bool revealInExplorer(String path) =>
       _shellExecute(operation: 'open', file: 'explorer.exe', parameters: '/select,"$path"');
 
+  /// Opens [url] in the default browser — same `ShellExecute(open, …)` call
+  /// used for files, no new Win32 surface.
+  static bool openUrl(String url) => _shellExecute(operation: 'open', file: url);
+
   /// Finds VS Code via the `code` shim on PATH.
   ///
   /// The shim itself is `code.cmd`, which cannot be spawned without a console

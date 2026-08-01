@@ -13,6 +13,7 @@ class ConfigGroup(StrEnum):
     SCAN = "scan"
     SCRAPE = "scrape"
     FOLLOW = "follow"
+    TIMING = "timing"
 
 
 @dataclass(frozen=True)
@@ -96,5 +97,57 @@ SCHEMA: dict[str, ConfigKey] = {
     "FMAX": ConfigKey(
         "FMAX", ConfigGroup.FOLLOW, ConfigType.INT, 2000,
         "Maximum follower count for a follow candidate.", min=0,
+    ),
+    # Trigger timings (seconds) and gates — ARCHITECTURE §4.1. Mirrors
+    # insta_automate.models.meta.Config._DEFAULTS exactly, same as the nine
+    # limits above.
+    "TG_KEEPALIVE_WAIT": ConfigKey(
+        "TG_KEEPALIVE_WAIT", ConfigGroup.TIMING, ConfigType.INT, 1800,
+        "How often to ping Telegram to keep the session alive.", min=60,
+    ),
+    "INGEST_POLL_WAIT": ConfigKey(
+        "INGEST_POLL_WAIT", ConfigGroup.TIMING, ConfigType.INT, 600,
+        "Wait between entity-ingest polls of the Telegram channel.", min=0,
+    ),
+    "SCAN_POLL_WAIT": ConfigKey(
+        "SCAN_POLL_WAIT", ConfigGroup.TIMING, ConfigType.INT, 10,
+        "Wait between entity-scan checks for queued entities.", min=0,
+    ),
+    "SCAN_WAIT": ConfigKey(
+        "SCAN_WAIT", ConfigGroup.TIMING, ConfigType.INT, 0,
+        "Cooldown between scan runs. 0 = back-to-back (today's behaviour).", min=0,
+    ),
+    "CLASSIFY_POLL_WAIT": ConfigKey(
+        "CLASSIFY_POLL_WAIT", ConfigGroup.TIMING, ConfigType.INT, 10,
+        "Wait between entity-classify checks for scanned/ contents.", min=0,
+    ),
+    "SCRAPE_WAIT": ConfigKey(
+        "SCRAPE_WAIT", ConfigGroup.TIMING, ConfigType.INT, 600,
+        "Wait after a successful entity-scrape run before the next one.", min=0,
+    ),
+    "SCRAPE_BUFFER": ConfigKey(
+        "SCRAPE_BUFFER", ConfigGroup.TIMING, ConfigType.INT, 10,
+        "Wait between entity-scrape backpressure checks when skipped.", min=0,
+    ),
+    "FOLLOW_WAIT": ConfigKey(
+        "FOLLOW_WAIT", ConfigGroup.TIMING, ConfigType.INT, 1200,
+        "Wait after a successful entity-follow run before the next one.", min=0,
+    ),
+    "FOLLOW_BUFFER": ConfigKey(
+        "FOLLOW_BUFFER", ConfigGroup.TIMING, ConfigType.INT, 10,
+        "Wait between entity-follow day-limit checks when skipped.", min=0,
+    ),
+    "DAY_CHANGE_POLL": ConfigKey(
+        "DAY_CHANGE_POLL", ConfigGroup.TIMING, ConfigType.INT, 60,
+        "How often a day-limited flow re-checks for midnight.", min=1,
+    ),
+    "TICK": ConfigKey(
+        "TICK", ConfigGroup.TIMING, ConfigType.INT, 5,
+        "Granularity of every interruptible wait and countdown.", min=1,
+    ),
+    "SCRAPE_RESERVE_FACTOR": ConfigKey(
+        "SCRAPE_RESERVE_FACTOR", ConfigGroup.TIMING, ConfigType.INT, 3,
+        "How many days' worth of FOLLOW to keep in reserve (scraped+follow_queued) before "
+        "pausing entity-scrape.", min=1,
     ),
 }

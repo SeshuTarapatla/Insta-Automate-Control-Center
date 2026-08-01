@@ -122,19 +122,35 @@ class _LimitCardState extends ConsumerState<LimitCard> {
             children: [
               Row(
                 children: [
-                  Text(widget.schema.name, style: theme.textTheme.titleMedium),
-                  if (_dirty || _applying) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.tertiary,
+                  Expanded(
+                    child: Tooltip(
+                      message: widget.schema.name,
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.schema.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          if (_dirty || _applying) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.colorScheme.tertiary,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                  ],
-                  const Spacer(),
+                  ),
+                  const SizedBox(width: 12),
                   SizedBox(
                     width: 84,
                     child: TextField(
