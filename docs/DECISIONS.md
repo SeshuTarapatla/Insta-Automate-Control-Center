@@ -7,6 +7,43 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D38 · The worker pod's `create-work-pool` init container is destructive, not idempotent —
+restarting the worker pod for any reason orphans every deployment
+
+**Found immediately after D37's fix**, when you Force Ran Scrape again and the worker never picked
+it up at all (stuck `SCHEDULED`/`Late` forever, despite the worker showing `ONLINE` and its queue
+`READY`). Cause: the worker pod's init container named `create-work-pool` logs, on every pod start,
+literally `Deleted work pool 'insta-automate-pool'` followed by `Created work pool
+'insta-automate-pool'!` — a **delete-and-recreate**, not a create-if-missing. The restart I did for
+D37 (`kubectl set env`, which recreates the pod) triggered this init container, which gave the pool
+a brand-new UUID. Every existing deployment (`entity-scrape` etc.) still pointed at the old,
+now-deleted pool id, so all six showed `work_pool_name: None` / `status: NOT_READY` — invisible
+unless you specifically query a deployment's own record, since the pool itself still shows `READY`
+and the worker still registers and polls it fine.
+
+**Fixed:** `ia prefect deploy` (the CLI wraps `IaFlows.deploy_all()` — an existing, dedicated command
+for exactly this) run once inside the scheduler pod (confirmed with you first). Re-created/
+re-attached all six deployments against the current pool id; all show `READY` again. No pod restart,
+no image rebuild. The one flow run that was created while broken (`ruddy-wolf`, `aeb50e85-...`)
+stays orphaned permanently — a deployment reassociating later doesn't retroactively fix a run's own
+already-stored (now-dangling) queue reference — but that's cosmetic, it just sits as `Late` forever
+and nothing depends on it clearing.
+
+**Left open, not fixed:** the `create-work-pool` init container's delete+recreate behavior itself is
+unchanged — it lives in the Helmcharts repo's worker pod spec (not audited this session; whoever
+touches `Helmcharts/Insta-Automate/templates/worker.yaml` next should look at what actually runs
+there and consider making it idempotent, since **any** future worker pod restart — a crash, an OOM,
+a routine redeploy, not just a deliberate `kubectl set env` — will silently repeat this exact
+breakage until someone notices flow runs aren't being picked up and re-runs `ia prefect deploy` by
+hand. Worth an ARCHITECTURE/PLAN note whenever CP 7.1 (ops panel) or a Helmcharts session happens.
+
+**How to apply — chain lesson from D36/D37, continued:** each fix this session revealed the next
+problem only once verified end-to-end against real behavior, not just "the config looks right now."
+D36 fixed the branch, D37 fixed the missing secret, D38 was caused *by* fixing D37 (restarting a pod
+to apply an env var is not a no-op action in this cluster). When debugging a live pipeline gap here,
+expect fixing one layer to surface the next, and re-verify with a real trigger after every change
+rather than assuming the chain is closed.
+
 ### D37 · The worker pod never had `IA_AGENT_TOKEN` — every `emit()` call was 401ing silently
 
 **Found immediately after D36**, when you ran a real Force Run of Scrape after that fix and still
