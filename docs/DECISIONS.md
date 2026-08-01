@@ -7,6 +7,42 @@ session can tell a settled question from an open one.
 
 ## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
 
+### D40 · Two Live-screen bugs found by real data, once real data finally existed
+
+**Found the moment D39's rebuild made the visualization surface show anything at all** — the Live
+screen never had real events to look wrong against until tonight, so these were latent since CP 4.4.
+
+**1. `RunSummary`'s "Counters this run" mixed per-item facts into a run-level summary.** `scrape.done`
+carries `counters: {posts, followers, following}` — one profile's own stats, meant for that profile's
+card in the visualization surface. `_EventCounters` (`run_summary.dart`) merged *every* event's
+`counters` map indiscriminately, last-value-wins per key — so after scraping two different profiles,
+the panel showed one of their `posts`/`followers`/`following` (whichever `scrape.done` happened to
+land last) labeled as if it were a whole-run fact. Meaningless at the run level either way — summing
+follower counts across unrelated profiles isn't meaningful, and neither is showing one profile's
+count and implying it represents the run. **Fixed:** only `flow.completed`-kind events (CP 4.3's
+"unambiguous whole-run boundary" event, emitted exactly once per run with genuine aggregates like
+`processed`/`scraped`) contribute to this panel now. Per-item counters stay exactly where they
+already belonged — the per-card display in the visualization surface — and aren't duplicated here.
+
+**2. Stale/orphaned events leaked into every run's display, forever.** `LiveController` scoped events
+to the current run with `event.flowRunId == null || event.flowRunId == runId` — a permissive
+fallback written back when `flow_run_id` injection didn't exist yet (pre-`f494553`), so *something*
+would show up rather than nothing. Now that injection is reliable (confirmed by D39's real event
+data), that fallback is pure liability: any event that ever got recorded with a null `flow_run_id` —
+this session's own diagnostic probes among them — matches *every* run's filter forever, since `null`
+never stops satisfying the OR. Concretely: two ad-hoc diagnostic events posted while chasing D39 sat
+in the ring and showed up as phantom "scraping..." cards on the very next real run, alongside the two
+genuine ones. **Fixed:** removed the null fallback in both the REST replay (`_fetchEvents`) and the
+live WS handler (`_handleWsEvent`) — a `FlowEvent` now only belongs to a run if its `flow_run_id`
+actually matches. The in-memory event ring itself was also cleared (an agent restart — it's pure
+ephemeral debug/display state, nothing persisted depends on it) to flush the diagnostic events
+already sitting in it; real runs going forward stay correctly scoped without needing that.
+
+**Verified:** `flutter analyze` clean, `flutter test` 23/23 (unchanged — no new layout-risk surface,
+existing `live_layout_test.dart` coverage still exercises both widgets). Not yet re-verified against
+a live run with the fix in place — needs a rebuilt/restarted app and one more real scrape to confirm
+the panel now shows only `processed`/`scraped` and the surface shows only the current run's cards.
+
 ### D39 · **D36 was incomplete.** Correction: git-based deployment only refreshes the flow's own
 top-level file — everything it imports (`tasks/`, `controllers/`, `models/`) stays frozen at
 whatever was baked into the worker's Docker image, and needed a real rebuild all along

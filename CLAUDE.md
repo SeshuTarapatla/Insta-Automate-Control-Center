@@ -170,6 +170,16 @@ D30's pod-log merge is what surfaced it. Fixed by writing the coded default stra
 `config.env`, since that key is deliberately outside the app's config schema (D26). Verified:
 `flutter analyze` clean, `flutter test` 23/23.
 
+**Addendum, 2026-08-01 (CP 5.1 session, D40): two real bugs, only visible once D39's fix made the
+Live screen show real data for the first time.** `RunSummary`'s counters panel was merging per-item
+`scrape.done` stats (`posts`/`followers`/`following` — one profile's numbers) into the same bucket as
+`flow.completed`'s genuine run-level counters (`processed`/`scraped`), last-value-wins — fixed to
+only read `flow.completed`. And `LiveController` scoped events to a run with a permissive
+`flowRunId == null` fallback (a leftover from before `flow_run_id` injection existed), which let
+this session's own diagnostic probe events — and any future orphaned event — leak into every
+subsequent run's display forever; fixed by requiring an exact match now that injection is reliable.
+`flutter analyze` clean, `flutter test` 23/23 unchanged. Not yet re-verified against a live run.
+
 **CP 4.5 (Device view) done and user-verified, 🟢.** Two design forks were checked before writing
 any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
 fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked

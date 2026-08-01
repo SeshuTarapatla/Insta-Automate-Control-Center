@@ -68,10 +68,14 @@ class RunSummary extends ConsumerWidget {
   }
 }
 
-/// Sums every event's `counters` map for the run currently shown — the most
-/// recent value per key wins for things like "scanned so far", and keys that
-/// only ever appear once (a single `flow.completed` summary) just show that
-/// value. Good enough without knowing per-kind semantics ahead of time.
+/// Shows `flow.completed`'s own counters — the one event kind every flow
+/// emits exactly once, at the very end of a run, specifically to carry a
+/// whole-run summary (CP 4.3). Per-item events (`scrape.done`, `classify.
+/// gender`, ...) carry `counters` too, but those describe one entity each
+/// (e.g. `scrape.done`'s `posts`/`followers`/`following` are one profile's
+/// stats) — meaningless once merged across a run of many different entities,
+/// so they're deliberately excluded here even though they're real data
+/// (they're already shown per-card in the visualization surface instead).
 class _EventCounters extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,7 +83,7 @@ class _EventCounters extends ConsumerWidget {
     final events = ref.watch(liveControllerProvider).value?.events ?? const [];
     final counters = <String, dynamic>{};
     for (final event in events) {
-      counters.addAll(event.counters);
+      if (event.kind == 'flow.completed') counters.addAll(event.counters);
     }
     if (counters.isEmpty) {
       return Text(

@@ -71,9 +71,7 @@ class LiveController extends AsyncNotifier<LiveState> {
     final all = [
       for (final entry in response.data as List) FlowEvent.fromJson(entry as Map<String, dynamic>),
     ];
-    return all
-        .where((event) => event.flow == flow && (runId == null || event.flowRunId == null || event.flowRunId == runId))
-        .toList();
+    return all.where((event) => event.flow == flow && event.flowRunId == runId).toList();
   }
 
   void _handleSnapshot(SchedulerSnapshot snapshot) {
@@ -101,8 +99,7 @@ class LiveController extends AsyncNotifier<LiveState> {
         state = AsyncValue.data(current.copyWith(logs: [...current.logs, FlowRunLogEntry.fromJson(data)]));
       case 'flow.events':
         final event = FlowEvent.fromJson(wsEvent.data as Map<String, dynamic>);
-        if (event.flow != current.flow) return;
-        if (current.runId != null && event.flowRunId != null && event.flowRunId != current.runId) return;
+        if (event.flow != current.flow || event.flowRunId != current.runId) return;
         state = AsyncValue.data(current.copyWith(events: [...current.events, event]));
     }
   }
