@@ -5,6 +5,60 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 4 implementation session (CP 4.5, Device view)
+
+### D34 · Window found by PID, not title; the phone-glance stream deferred until Phase 6 can use it
+
+**Chosen, checked with you before writing any code rather than guessed** (both were real forks, not
+implementation details): the plan describes positioning the scrcpy window with `my_modules.win32.
+snap_window`, which searches by exact window title — but scrcpy's title varies by phone model, and
+both `my_modules` and wsl-bridge are marked "no changes expected" (ARCHITECTURE §8), so normalizing
+the title at the source wasn't available. New `ia_agent/window.py` finds the window by **PID**
+instead — wsl-bridge's `POST /scrcpy/start` already returns the spawned process's pid, exact, no
+cooperation needed from either repo. Uses the same raw `ctypes.windll.user32` approach `snap_window`
+already does (no new `pywin32` dependency), just `EnumWindows`+`GetWindowThreadProcessId` to match by
+pid rather than `FindWindowW` by title.
+
+**The plan's secondary, opt-in low-fps `device.mirror` stream (so a paired phone can glance at the
+mirror) is deferred entirely** — Phase 6 (mobile pairing) doesn't exist yet, so there is no consumer
+for that channel today. Building the `adb exec-out screencap` capture loop and broadcast plumbing
+now would be untested code with nothing to exercise it until Phase 6 lands; scoped this checkpoint to
+the primary desktop path only.
+
+**`POST /api/device/scrcpy/start` refuses to cycle an already-running mirror** — same "don't be rude"
+reasoning `test_wsl_bridge()`'s existing selftest already established (D-less precedent, just
+followed here): `wsl-bridge`'s own `start()` calls `stop()` on the way in, so restarting an active
+mirror would throw a new window on screen and interrupt whatever the mirror was being used for. The
+snap is retried for up to 5s after a successful start, since the window doesn't exist the instant the
+process does — and a snap that never lands still reports the start itself as successful, since the
+mirror came up fine regardless of whether the agent could reposition it. `snap_to_known_position`
+only re-asserts the exact position `my_modules.scrcpy.Scrcpy.start()` already requests at launch
+(`--window-x=1 --window-y=45`) and reads the window's current size first, so it is purely defensive
+(a compositor/DPI quirk ignoring the launch hint) and can never resize or distort the video.
+
+**Found while verifying the window-finding mechanism against a real process, not a mock:** the first
+attempt spawned a throwaway Notepad and called `find_window_by_pid` on its launched pid — found
+nothing. Windows 11's own Notepad turned out to be a packaged app where the pid `subprocess.Popen`
+returns is not the pid that owns the window (confirmed via `EnumWindows` dumping every visible
+window's owning pid — a different, unrelated pid owned "Untitled - Notepad"). This is exactly D11's
+"the pid that binds a port/owns a window is rarely the pid you launched" pattern, just a target this
+project hadn't characterized yet — Notepad, not anything this project spawns. Switched to the
+machine's actual already-running `scrcpy.exe` (found via `psutil` by name, read-only — nothing
+started, stopped, or moved) and confirmed: `where scrcpy` resolves to the exact same path as the
+running process's `.Path`, i.e. a real winget-installed native exe with no shim/trampoline in the
+chain, and `find_window_by_pid` correctly locates its window. The mechanism is verified correct for
+its real target; Notepad was simply the wrong thing to test it against.
+
+**Verified:** `agent/tests/test_device.py` (16/16 — every REST branch: already-mirroring skip, the
+snap retry loop succeeding after several tries, a snap that never succeeds not failing the start,
+both wsl-bridge failure paths as 502s — against a monkeypatched `wsl_bridge`/`window`, never the real
+bridge or a real window). `agent/tests/check_device.py` (new, read-only) then confirmed the real
+mechanism against the machine's actual scrcpy process, as described above. `flutter analyze` clean,
+`flutter test` 23/23 unchanged (no new layout risk beyond what `RunSummary`'s existing test coverage
+already exercises).
+
+---
+
 ## 2026-08-01 — Phase 4 implementation session (CP 4.4, Live screen)
 
 ### D33 · The Live screen resets on a new run id, not on every heartbeat tick; a shared flow-name lookup instead of a duplicate one

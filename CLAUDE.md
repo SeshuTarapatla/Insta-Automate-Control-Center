@@ -2,10 +2,10 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
-complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.4 done,
-CP 4.4 awaiting your test** (Live logs & flow-aware imagery; log + event aggregation, flow
-instrumentation, the Live screen). Phase 2 accepted 2026-07-31 — the user accepted it outright
-without a separate CP 2.6 verification pass. The
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.5 done,
+CP 4.5 awaiting your test** (Live logs & flow-aware imagery; log + event aggregation, flow
+instrumentation, the Live screen, device view). Phase 2 accepted 2026-07-31 — the user accepted it
+outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
@@ -109,7 +109,8 @@ actually reach `POST /api/events`. Nothing deployed to the live pod yet.
 above three panes — `LogConsole` (level filter, task-change dividers, sticky expandable error strip,
 scroll-aware auto-follow), the per-flow visualization surface (scan filmstrip, classify verdict
 stream with img/s, scrape/follow before→after cards, ingest hero grid), and `RunSummary` (phase/
-today/last-run + this-run counters + a CP-4.5-pending device placeholder). `LiveController` replays
+today/last-run + this-run counters + a device pane, filled in for real by CP 4.5 below).
+`LiveController` replays
 `/api/flow-runs/{id}/logs` and `/api/events` once, then stays current via `flowrun.logs`/
 `flow.events`, resetting on a new `last_run.id` rather than every heartbeat tick. New
 `core/agent_image.dart` fetches `/api/images/{key}[/thumb]` through `dio` for its auth header.
@@ -131,6 +132,36 @@ scheduler-pod log lines — not new (fires every heartbeat since CP 3.4), just n
 D30's pod-log merge is what surfaced it. Fixed by writing the coded default straight into the real
 `config.env`, since that key is deliberately outside the app's config schema (D26). Verified:
 `flutter analyze` clean, `flutter test` 23/23.
+
+**CP 4.5 (Device view) done, awaiting your test, 🟢.** Two design forks were checked before writing
+any code rather than guessed: the plan's "position with `my_modules.win32.snap_window`" assumes a
+fixed window title, but scrcpy's title varies by phone model and `my_modules`/wsl-bridge are marked
+"no changes expected" — **chosen: find the window by PID instead** (wsl-bridge's `/scrcpy/start`
+already returns it, exact, no cooperation needed from either repo). The plan's secondary opt-in
+phone-glance stream has no consumer until Phase 6 (mobile pairing) exists — **chosen: desktop-only
+this checkpoint**, deferring `device.mirror` broadcast plumbing until something can actually use it.
+New `ia_agent/integrations/wsl_bridge.py` (thin client, wsl-bridge itself untouched),
+`ia_agent/window.py` (`find_window_by_pid`/`snap_to_known_position` via raw `ctypes`, same approach
+`my_modules.win32.snap_window` uses, just PID- not title-keyed), and `ia_agent/api/device.py` —
+`GET /api/device`, `POST /api/device/scrcpy/{start|stop}` (refuses to cycle an already-running
+mirror, matching `test_wsl_bridge()`'s existing "don't be rude" precedent; retries the snap for up
+to 5s since the window doesn't exist the instant the process does, and a snap that never lands still
+reports the start as successful). `snap_to_known_position` only re-asserts scrcpy's own requested
+launch position, reading the window's current size first so it can never distort the video — purely
+defensive against a compositor ignoring the launch hint. Flutter: `core/device_models.dart` +
+`features/live/device_pane.dart` replace CP 4.4's placeholder — a lightweight 5s poll keeps it
+current (no WS channel exists for device state yet), and it explains itself when there's nothing to
+show rather than presenting dead controls. The video is never rendered inside the app — it's a real,
+separate OS window; the pane only starts/stops/reports on it.
+
+**Verified:** `agent/tests/test_device.py` (16/16, monkeypatched wsl-bridge/window). The
+window-finding mechanism was verified against a real process on this machine — a first attempt using
+a spawned Notepad failed (`find_window_by_pid` found nothing), turned out to be Windows 11's own
+Notepad being a packaged app where the launched pid isn't the window-owning one (D11's pattern,
+again, just a target this project hadn't characterized yet). Switched to the machine's actual
+already-running `scrcpy.exe` (found via `psutil`, read-only — nothing started, stopped, or moved)
+and confirmed the real window is found correctly, in new `agent/tests/check_device.py`. `flutter
+analyze` clean, `flutter test` 23/23 unchanged.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

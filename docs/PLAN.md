@@ -677,13 +677,63 @@ lines — not a new occurrence (it's fired every heartbeat since CP 3.4), just n
 D30's pod-log merge exists. Fixed at the source: wrote the coded default into the real `config.env`,
 since `IA_AGENT_URL` is deliberately outside the app's config schema (D26).
 
-### CP 4.5 — Device view 🟢
+### CP 4.5 — Device view 🟢 ✅ done, awaiting your test
 Primary: control the native scrcpy window through wsl-bridge, positioned with
 `my_modules.win32.snap_window`. Secondary (opt-in, low fps): `adb exec-out screencap` frames
 streamed over `device.mirror` so the phone can watch too. See Q6.
 
-**Test:** trigger `entity_scrape` and watch each queued row strip resolve into a profile report
-or a reason chip showing the actual follower count, live, with no gaps where files were deleted.
+**Scoped down after asking, before writing any code:** two forks were real design decisions, not
+implementation details, so they were checked rather than guessed. First — the plan's "positioned
+with `my_modules.win32.snap_window`" assumes a fixed window title to search for, but scrcpy's title
+varies by phone model, and `my_modules`/wsl-bridge are both marked "no changes expected"
+(ARCHITECTURE §8), so normalizing the title there wasn't available. **Chosen: find the window by
+PID instead** — wsl-bridge's `POST /scrcpy/start` already returns the spawned process's pid, exact
+and requiring no cooperation from either repo. Second — the secondary opt-in phone-glance stream has
+no consumer yet (Phase 6, mobile pairing, isn't built), so building `device.mirror` broadcast
+plumbing now would be untested code with nothing to exercise it. **Chosen: desktop-only this
+checkpoint** — the adb-screencap streaming path is deferred to whenever Phase 6 actually needs it.
+
+**What landed** — `ia_agent/integrations/wsl_bridge.py` (thin client for wsl-bridge's existing
+`/scrcpy/*` control plane, not modified), `ia_agent/window.py` (`find_window_by_pid`/
+`snap_to_known_position` via raw `ctypes.windll.user32` — same approach `my_modules.win32.
+snap_window` uses, just keyed by PID via `EnumWindows`+`GetWindowThreadProcessId` rather than title),
+and `ia_agent/api/device.py` — `GET /api/device` (serial, bridge reachability, mirroring) and
+`POST /api/device/scrcpy/{start|stop}`. `start` refuses to cycle an already-running mirror (matching
+`test_wsl_bridge()`'s existing "don't be rude" precedent — cycling would throw a new window on
+screen for no reason) and retries the snap for up to 5s since the window doesn't exist the instant
+the process does; a snap that never succeeds still reports the start as successful, since the
+mirror itself came up fine either way. `snap_to_known_position` only re-asserts scrcpy's own
+requested launch position (`--window-x=1 --window-y=45`, already in `my_modules.scrcpy.Scrcpy.
+start()`) and reads the window's current size first, so it can never resize or distort the video —
+purely defensive against a compositor ignoring the initial launch hint.
+
+Flutter: `core/device_models.dart` + `features/live/device_pane.dart` (`DeviceController` +
+`DevicePane`) replaces the CP 4.4 placeholder in `RunSummary`. No WS channel exists for device
+state, so a lightweight 5s `autoDispose` poll keeps it current while the Live screen is open. The
+pane explains itself when there's nothing to show (bridge unreachable, no `ANDROID_SERIAL`) rather
+than presenting dead controls, matching D17's rule. The scrcpy window itself is never rendered
+inside the app — it's a real, separate OS window; the pane only starts, stops and reports on it,
+with a line saying as much once mirroring is on.
+
+**Verified:** `agent/tests/test_device.py`, 16/16 (every REST branch — already-mirroring skip, the
+retry-loop around the snap succeeding after a few tries, snap never succeeding without failing the
+start, both `wsl-bridge` failure paths as 502s — against a monkeypatched `wsl_bridge`/`window`, never
+the real bridge or a real window). The window-finding mechanism itself was verified against a real
+process on this machine: a first attempt using a spawned Notepad as the test subject failed
+(`find_window_by_pid` found nothing) — turned out to be Windows 11's own Notepad being a packaged
+app where the launched pid isn't the window-owning pid (D11's "the pid you launched is rarely the
+pid that matters" pattern, again, just not the one this project already knew about). Switched to
+the machine's actual already-running `scrcpy.exe` (found via `psutil`, read-only — nothing was
+started, stopped, or moved) and confirmed `find_window_by_pid` locates its real window correctly, in
+`agent/tests/check_device.py` (new, read-only, respects the same "don't disturb an active mirror"
+rule as `test_wsl_bridge()`). `flutter analyze` clean, `flutter test` 23/23 (unchanged — no new
+layout-risk widgets introduced beyond what the existing suite already exercises via `RunSummary`).
+
+**Test (yours):** open the Live screen's Device pane. If nothing is mirroring, Start mirror should
+throw a real scrcpy window onto your desktop, positioned near the top-left, and the pane should flip
+to "Stop mirror" with a note that the window is separate from the app. Stop mirror should close it.
+If something's already mirroring when you open the pane, it should show that state immediately
+without touching the existing window.
 
 ---
 

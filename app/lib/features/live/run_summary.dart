@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
+import 'device_pane.dart';
 import 'live_controller.dart';
 
 String? _todayLine(FlowState state) {
@@ -19,10 +20,8 @@ String? _todayLine(FlowState state) {
   };
 }
 
-/// Counters for the run currently shown, plus the day's running totals and a
-/// device pane — the last of which stays a placeholder until CP 4.5 gives it
-/// something real to show, explained rather than left blank (D17's rule
-/// applied here too: a pane with nothing real to render says why).
+/// Counters for the run currently shown, plus the day's running totals and
+/// the device pane (CP 4.5's `DevicePane`).
 class RunSummary extends ConsumerWidget {
   const RunSummary({super.key});
 
@@ -62,7 +61,7 @@ class RunSummary extends ConsumerWidget {
           const SizedBox(height: 20),
           Text('Device', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          _DevicePanePlaceholder(theme: theme),
+          const DevicePane(),
         ],
       ),
     );
@@ -130,31 +129,3 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-class _DevicePanePlaceholder extends StatelessWidget {
-  const _DevicePanePlaceholder({required this.theme});
-
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.phone_android_outlined, size: 20, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              "Device mirror isn't wired up yet — that's CP 4.5.",
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

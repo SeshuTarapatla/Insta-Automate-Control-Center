@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from ia_agent.api.config import router as config_router
 from ia_agent.api.dependencies import router as dependencies_router
+from ia_agent.api.device import create_device_router
 from ia_agent.api.events import create_events_router
 from ia_agent.api.flowruns import create_flowruns_router
 from ia_agent.api.health import router as health_router
@@ -61,5 +62,6 @@ def create_app() -> FastAPI:
     app.include_router(create_flowruns_router(flowrun_tailer))
     app.include_router(create_events_router(event_store))
     app.include_router(create_images_router())
+    app.include_router(create_device_router())
     app.include_router(create_ws_router(bus, token))
     return app
