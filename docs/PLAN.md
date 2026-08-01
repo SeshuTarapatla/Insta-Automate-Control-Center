@@ -540,10 +540,33 @@ checkpoint.
 (🟢) and was verified the same way CP 3.4 was: agent-side test suite plus live read-only calls
 against the real Prefect/k3s, no GUI involved.
 
-### CP 4.2 — Event pipeline 🟢
+### CP 4.2 — Event pipeline 🟢 ✅ done
 `POST /api/events`; **cache image bytes on receipt** (content-addressed under
 `%LOCALAPPDATA%\ia-agent\cache`), generate thumbnails, serve `GET /api/images/{key}`; replay ring
 buffer; `flow.events` WS channel. Resolve IA_DIR-relative paths against the Windows `IA_DIR`.
+
+**What landed** — `ia_agent/images.py`: `cache(rel_path)` reads `IA_DIR/rel_path` and stores the
+bytes under their sha256 (so two events pointing at identical content share one cache entry),
+returning `None` rather than raising when the file is already gone — the race CP 4.3's `emit()`
+calls will lose sometimes, by design tolerated here rather than treated as an error. `thumbnail(key,
+width)` resizes lazily on first request and caches the result alongside the original — most keys are
+never viewed at every width the UI might ask for. `ia_agent/events/store.py`'s `EventStore` accepts
+events as a loose dict (same choice `SchedulerMirror.heartbeat` made — a validation error here would
+be an event the pipeline can never learn was dropped, since `emit()` doesn't read the response),
+assigns `seq`/`id`/`ts` when the caller didn't supply them, caches the image inline, and publishes on
+`flow.events`. New REST — `POST/GET /api/events[?since=]`, `GET /api/images/{key}`,
+`GET /api/images/{key}/thumb?w=` (clamped to 16–2000px) — wired into `app.py` alongside the other
+stores.
+
+**Verified:** `agent/tests/test_events.py`, 35/35 — content-addressing (identical bytes → identical
+key, different bytes → different key), the missing-file race, thumbnail proportions and width
+clamping, the replay ring, and a live app exercising every REST endpoint plus a real `flow.events` WS
+delivery, all against a scratch `IA_DIR`/cache directory (never the real ones). All other suites
+unchanged (36/36, 24/24, 26/26, 20/20; 71/71 and 32/32 confirmed earlier this session, untouched by
+this checkpoint).
+
+**No UI yet** — CP 4.4 puts this on screen; CP 4.3 (cross-repo, `Insta-Automate`) is what starts
+calling `POST /api/events` for real.
 
 ### CP 4.3 — Flow instrumentation 🟡
 Add `emit()` next to the existing log lines at every point in the ARCHITECTURE §5.1 table —

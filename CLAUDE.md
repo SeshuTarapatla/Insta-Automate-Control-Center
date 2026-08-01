@@ -2,9 +2,9 @@
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
-complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1 done**
-(Live logs & flow-aware imagery; log aggregation). Phase 2 accepted 2026-07-31 — the user accepted
-it outright without a separate CP 2.6 verification pass. The
+complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 open, CP 4.1–4.2 done**
+(Live logs & flow-aware imagery; log + event aggregation). Phase 2 accepted 2026-07-31 — the user
+accepted it outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
@@ -72,6 +72,20 @@ Prefect/k8s calls monkeypatched) plus new read-only `check_flowruns.py` against 
 server and k3s cluster. All prior suites unchanged; `test_ui_contract.py`'s `terminal_available`
 `KeyError` is a pre-existing issue (reproduces on a clean `main`, confirmed via `git stash`), not a
 regression from this session. Nothing to test in the GUI yet — CP 4.4 is what puts this on screen.
+
+**CP 4.2 (Event pipeline) done, agent-only, 🟢.** New `ia_agent/images.py`: content-addressed cache
+(`cache(rel_path)` reads `IA_DIR/rel_path`, keys the bytes by sha256, tolerates the file already
+being gone by returning `None` rather than raising — the race `entity_classify`/`entity_follow`'s
+future `emit()` calls will sometimes lose), `thumbnail(key, width)` generated lazily and cached
+alongside the original. New `ia_agent/events/store.py`'s `EventStore` accepts events as a loose
+dict (same reasoning as `SchedulerMirror.heartbeat` — a validation error here is an event the
+pipeline can never learn was dropped), assigns `seq`/`id`/`ts` when absent, caches any referenced
+image inline, and publishes on `flow.events`. New REST: `POST/GET /api/events[?since=]`,
+`GET /api/images/{key}`, `GET /api/images/{key}/thumb?w=` (clamped 16–2000px). Verified:
+`agent/tests/test_events.py` (35/35 — content-addressing, the missing-file race, thumbnail
+proportions/clamping, replay, and a live app exercising every endpoint plus a real WS delivery,
+all against a scratch directory, never the real `IA_DIR` or cache). All other suites unchanged.
+Nothing to test in the GUI yet, and no pipeline-side caller exists until CP 4.3.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

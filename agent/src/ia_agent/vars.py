@@ -42,3 +42,9 @@ SERVICE_RUN_DIR = AGENT_DATA_DIR / "run"
 SERVICE_LOG_DIR = AGENT_DATA_DIR / "logs"
 # Per-service self-heal / autostart switches. Machine-local, never synced (D12).
 SERVICE_SETTINGS_PATH = AGENT_DATA_DIR / "services.json"
+
+# Content-addressed flow-event image cache (CP 4.2) — entity_classify and
+# entity_follow delete their source image right after logging it, so the
+# agent reads the bytes the moment an event arrives rather than trusting the
+# path to still resolve later.
+IMAGE_CACHE_DIR = AGENT_DATA_DIR / "cache"

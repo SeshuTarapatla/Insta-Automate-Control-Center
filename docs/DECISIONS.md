@@ -76,6 +76,33 @@ otherwise mutating a flow run, pod, or service. All five prior suites unchanged:
 on a clean `main` with none of this session's changes applied (confirmed via `git stash`) — a
 pre-existing issue, not a regression from this work, and out of scope for this checkpoint.
 
+### D31 · Flow-event images are cached by content hash, not by source path; events are a loose dict like the heartbeat
+
+**Chosen:** `ia_agent/images.py`'s `cache(rel_path)` keys the cached bytes by `sha256(data)`, not by
+`rel_path` — two events pointing at byte-identical files (a duplicate scan hit is the obvious case)
+share one cache entry instead of two, and the key stays meaningful forever even though the source
+path is usually gone within moments (`entity_classify` unlinks public profiles, `entity_follow`
+unlinks right after acting — ARCHITECTURE §5). A missing source file is not an error: `cache()`
+returns `None` and `EventStore.record()` still records the event with `image_key: null`, because
+the event itself (a verdict, a counter, a reason string) is worth keeping even when the image race
+was lost — losing the picture should never mean losing the fact.
+
+**`POST /api/events` accepts a loose dict, not a validated `FlowEvent` pydantic model** — the same
+choice `SchedulerMirror.heartbeat` made (D26/D27's precedent). `emit()` (CP 4.3, not yet built) is
+fire-and-forget with a 1s timeout and doesn't read the response; a 422 from strict validation would
+be a silently dropped event with nobody positioned to notice, so the agent takes whatever shape it's
+given and fills in `seq`/`id`/`ts` only when the caller left them out.
+
+**Thumbnails are generated lazily per requested width and cached alongside the original**, not
+pre-rendered at a fixed set of sizes on ingest — most cached images are never viewed at every width
+the UI might eventually ask for, and ingest-time is exactly when the agent is racing a flow's
+`unlink()` call, so doing only the minimum (copy the bytes) there and deferring resize work to first
+view keeps that race as short as possible.
+
+**Verified:** `agent/tests/test_events.py`, 35/35 (identical content → identical key, different
+content → different key, the missing-file race, thumbnail proportions and width clamping, replay,
+and a live app round-trip including a real WS delivery) — see PLAN.md CP 4.2 for the full count.
+
 ---
 
 ## 2026-07-31 — Phase 3 implementation session (CP 3.5, Flows UI)

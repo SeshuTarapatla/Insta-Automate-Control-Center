@@ -12,6 +12,7 @@ uv run --project agent python agent/tests/test_ui_contract.py    # 49 checks, pa
 uv run --project agent python agent/tests/test_scheduler.py      # 24 checks, scheduler mirror (CP 3.4)
 uv run --project agent python agent/tests/test_startup.py        # 20 checks, logon task install/remove
 uv run --project agent python agent/tests/test_flowruns.py       # 36 checks, flow-run log tailer (CP 4.1)
+uv run --project agent python agent/tests/test_events.py         # 35 checks, flow-event + image cache (CP 4.2)
 uv run --project agent python agent/tests/check_roots.py         # read-only, live machine
 uv run --project agent python agent/tests/check_services.py      # runs the real self-tests
 uv run --project agent python agent/tests/check_deps.py [-v]     # runs the real dependency panel
