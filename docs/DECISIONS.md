@@ -5,6 +5,55 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-01 — Phase 5 implementation session (CP 5.1, Library API)
+
+### D35 · Recompute-on-touch counts, folder-scoped recursive watching, path-keyed lazy thumbnails
+
+**Cached counts invalidate by recomputing the touched pair, not by tracking deltas.**
+`LibraryCounts.touch(folder, root)` always re-`scandir`s the one directory a filesystem change
+pointed at and replaces whatever was cached for it, rather than adjusting a running +1/-1 counter.
+A watcher batch that coalesces multiple rapid changes into one event, or drops one under load, can
+never leave a delta-tracked count permanently wrong — a recompute-on-touch count is only ever as
+stale as "since the last touch," and the next touch always corrects it. Cost is a non-issue: even
+`scrape_queued`'s busiest real root today is ~136 files, and a full `seed()` across the whole real
+`IA_DIR` (433 + 7,042 + 180 files across ~120 directories) measured at **15 ms** in
+`check_library.py` — nowhere near where per-touch `scandir` cost would matter. A root's count
+recomputing to 0 drops it from the per-entity dict entirely rather than keeping an empty tile —
+mirrors the "explain why, don't show something dead" instinct behind D17, just for a count instead
+of a terminal pane.
+
+**The watcher passes the seven known stage directories to `watchfiles.awatch()` explicitly, and
+watches each recursively** — the opposite of `config/watcher.py`'s deliberately non-recursive
+top-level-only watch of `IA_DIR`. That earlier choice was about *dodging* the library folders'
+churn; this one exists *because of* it. Passing the seven paths directly rather than watching
+`IA_DIR` itself means `.thumbs` (the mobile app's own thumbnail cache) and `.Trash-0` (send2trash's
+trash, relevant again from CP 5.2) never wake the watcher, without needing an exclude filter.
+
+**Thumbnails are generated lazily, keyed by path at request time, reusing CP 4.2's
+content-addressed `images.cache`/`thumbnail` unchanged** — rather than eagerly hashing every listed
+file up front. A virtualized grid (CP 5.3) only ever renders the handful of cells actually on
+screen, so hashing and caching bytes for files nobody has scrolled to yet would be pure waste.
+Content-addressing already means a file later moved by CP 5.2's `apply`/`delete` mutations doesn't
+invalidate an already-cached thumbnail — same bytes, same key, regardless of where the file now
+lives (or whether it still exists at all).
+
+**Verified:** `agent/tests/test_library.py` (32/32 — folder taxonomy resolution including
+path-traversal rejection, seed/touch counting for both flat and per-root folders, a root dropping
+out of `entities()` at zero files, full REST round trip, and a real filesystem write reaching a
+`library.changes` WS subscriber) plus new read-only `agent/tests/check_library.py` against the real
+`IA_DIR` (seed timing, real entity listing, a real image cached and thumbnailed). All eight prior
+suites unchanged (71/71, 32/32, 49/49, 26/26, 20/20, 24/24, 36/36, 35/35, 16/16). Also verified live
+against the real running agent: restarted it to pick up the new code (same "the code changed, the
+running process didn't" step CP 4.4 needed, D21's launcher brought it back in ~8s), confirmed the
+three supervised services stayed `adopted` with uptime intact across that restart, then hit every
+new endpoint (`folders`, `entities`, `images` with pagination, `image`, `image/thumb`, the
+path-traversal 400) against the real `IA_DIR`'s real 7,655 files and confirmed the WS channel is
+live (received real `flows.state` heartbeats over the same socket; no `library.changes` frame
+happened to fire in the listening window since nothing was actively scanning/classifying at the
+time — already covered end-to-end by the test suite's own real-file-write check).
+
+---
+
 ## 2026-08-01 — Phase 4 implementation session (CP 4.5, Device view)
 
 ### D34 · Window found by PID, not title; the phone-glance stream deferred until Phase 6 can use it

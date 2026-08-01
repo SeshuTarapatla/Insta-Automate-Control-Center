@@ -33,6 +33,13 @@ ENTITY_DIR = IA_DIR / "entities"
 SCRAPE_QUEUE_DIR = IA_DIR / "scrape_queued"
 FOLLOW_QUEUE_DIR = IA_DIR / "follow_queued"
 
+# The remaining ARCHITECTURE §1.1 pipeline stage directories — CP 5.1's Library
+# API browses all seven, ENTITY_DIR/SCRAPE_QUEUE_DIR/FOLLOW_QUEUE_DIR included.
+SCANNED_DIR = IA_DIR / "scanned"
+GENDER_VALID_DIR = IA_DIR / "gender_valid"
+GENDER_INVALID_DIR = IA_DIR / "gender_invalid"
+SCRAPED_DIR = IA_DIR / "scraped"
+
 AGENT_DATA_DIR = Path(os.environ["LOCALAPPDATA"]) / "ia-agent"
 TOKEN_PATH = AGENT_DATA_DIR / "token"
 

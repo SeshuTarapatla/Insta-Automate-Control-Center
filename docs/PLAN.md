@@ -740,10 +740,35 @@ later pass rather than blocking this checkpoint.
 
 Goal: review the backlog on a 16-inch screen instead of a phone.
 
-### CP 5.1 — Library API 🟢
+### CP 5.1 — Library API 🟢 ✅ done
 Folders, entities, and images with cached counts (invalidated by the `IA_DIR` watcher, seeded
 from a background scan — 7.5k files means naive `rglob` per request is not acceptable).
 Thumbnail service. `library.changes` WS channel.
+
+**What landed** — `ia_agent/library/folders.py`'s static `FOLDERS` registry (the seven ARCHITECTURE
+§1.1 stage directories — `entities` flat, the other six one-subdirectory-per-root) plus
+`resolve(path)` mapping an absolute path back to `(folder, root)`; `library/counts.py`'s
+`LibraryCounts` (`seed()` — one `os.scandir` per folder plus one per root, ~120 calls today, not a
+per-file walk — and `touch(folder, root)`, which recomputes exactly the one pair a change touched
+rather than tracking deltas, dropping a root that hits 0 files instead of showing it empty);
+`library/watcher.py`'s `watch_library` (`watchfiles.awatch` scoped to the seven known directories,
+recursive — the deliberate opposite of `config/watcher.py`'s non-recursive top-level watch, and for
+the same reason in reverse: this one needs the churn config's watcher exists to dodge, while never
+watching `.thumbs`/`.Trash-0`); and `api/library.py`'s REST surface (`GET /api/library/folders` ·
+`GET /api/library/entities?folder=` · `GET /api/library/images?folder=&entity=&offset=&limit=` ·
+`GET /api/library/image?path=` · `GET /api/library/image/thumb?path=&w=`), the last two reusing CP
+4.2's content-addressed `images.cache`/`thumbnail` unchanged, keyed by path at request time rather
+than eagerly hashing every listed file. See D35 for the three design choices (recompute-on-touch,
+scoped recursive watching, lazy path-keyed thumbnailing) and their reasoning.
+
+**Verified:** `agent/tests/test_library.py` (32/32) plus new read-only `agent/tests/
+check_library.py` against the real `IA_DIR` — `seed()` took 15 ms over the real 7,655 files across
+~120 directories. All eight prior suites unchanged. Also verified against the real running agent
+(restarted to pick up the new code, same step CP 4.4 needed; the three supervised services stayed
+`adopted` with uptime intact across the restart) — every new endpoint hit against the real `IA_DIR`,
+plus a live WS connection confirming the channel is reachable.
+
+**No UI yet** — CP 5.3 puts this on screen; CP 5.2 (mutations) is next.
 
 ### CP 5.2 — Mutations 🟢
 `apply` (move selected to the folder's configured target, delete the rest), `delete`, and queue

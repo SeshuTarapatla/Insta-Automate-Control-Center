@@ -5,7 +5,8 @@ Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 complete** (CP 4.1–4.5:
 log + event aggregation, flow instrumentation, the Live screen, device view — user-verified
 2026-08-01, accepted as done for now with an open note that the Live screen's visual polish may want
-another pass later). Phase 2 accepted 2026-07-31 — the user accepted it
+another pass later). **Phase 5 (Library & curation parity) is open, CP 5.1 (Library API) done,
+agent-only, 🟢** — see the dedicated paragraph below. Phase 2 accepted 2026-07-31 — the user accepted it
 outright without a separate CP 2.6 verification pass. The
 `wt.exe` startup shortcut is gone: an `ia-agent` **logon task** starts
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
@@ -163,6 +164,38 @@ again, just a target this project hadn't characterized yet). Switched to the mac
 already-running `scrcpy.exe` (found via `psutil`, read-only — nothing started, stopped, or moved)
 and confirmed the real window is found correctly, in new `agent/tests/check_device.py`. `flutter
 analyze` clean, `flutter test` 23/23 unchanged.
+
+**CP 5.1 (Library API) done, agent-only, 🟢.** New `ia_agent/library/folders.py`'s static `FOLDERS`
+registry names the seven ARCHITECTURE §1.1 stage directories (`entities` flat — `<id>.jpg` files
+directly under it; `scanned`/`gender_valid`/`gender_invalid`/`scrape_queued`/`scraped`/
+`follow_queued` one subdirectory per entity root) and `resolve(path)` maps an absolute path back to
+`(folder, root)`, doubling as the path-traversal guard for the two new image routes below.
+`library/counts.py`'s `LibraryCounts` seeds once at startup (`os.scandir` per folder plus per root —
+~120 calls today, not a per-file walk; measured **15 ms** against the real `IA_DIR`'s 7,655 files in
+new `agent/tests/check_library.py`) and `touch(folder, root)` **recomputes** exactly the pair a
+filesystem change touched rather than tracking a running delta, so a coalesced or dropped watcher
+event can never leave a count wrong — see D35. A root that recomputes to 0 files is dropped rather
+than shown empty. New `library/watcher.py`'s `watch_library` passes the seven folders directly to
+`watchfiles.awatch(..., recursive=True)` — the deliberate opposite of `config/watcher.py`'s
+non-recursive top-level-only watch, and for the mirror-image reason: this one needs exactly the
+churn that watcher exists to dodge, while still never watching `.thumbs` (the mobile app's own
+thumbnail cache) or `.Trash-0` (send2trash's trash, relevant again from CP 5.2), since only the
+known seven paths are ever passed to `awatch`. New REST — `GET /api/library/folders` ·
+`GET /api/library/entities?folder=` · `GET /api/library/images?folder=&entity=&offset=&limit=` ·
+`GET /api/library/image?path=` · `GET /api/library/image/thumb?path=&w=` — the last two reusing CP
+4.2's content-addressed `images.cache`/`thumbnail` unchanged, keyed by path at request time (a
+virtualized grid only ever renders visible cells, so hashing every listed file up front would be
+wasted work) rather than eagerly, and new WS channel `library.changes`. Verified:
+`agent/tests/test_library.py` (32/32 — folder resolution and traversal rejection, seed/touch
+counting for flat and per-root folders, a drained root dropping out of `entities()`, full REST round
+trip, a real file write reaching a `library.changes` WS subscriber) plus `check_library.py` against
+the real `IA_DIR`. All eight prior suites unchanged (71/71, 32/32, 49/49, 26/26, 20/20, 24/24, 36/36,
+35/35, 16/16). Also verified against the real running agent — restarted to pick up the new code
+(same "the code changed, the running process didn't" step CP 4.4 needed; the launcher brought it
+back in ~8s per D21, and the three supervised services stayed `adopted` with uptime intact across
+the restart) — then every new endpoint hit against the real `IA_DIR`'s real 7,655 files, plus a live
+WS connection confirming the channel is reachable. Nothing to test in the GUI yet — CP 5.3 is what
+puts this on screen; CP 5.2 (mutations) is next.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
