@@ -5,6 +5,27 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 (continued) — Session resume: D68's last open item closed by observation
+
+### D70 · Real scrape runs confirmed completing successfully post-D68, no code change needed
+
+Resuming the session, the live agent's scheduler snapshot and flow-run history were checked before
+doing anything else (`GET /api/scheduler`, `GET /api/flow-runs`) — the one thing D69's write-up
+flagged as still open was "a real scrape run completing successfully post-D68," verified only
+structurally (code loaded, pods healthy, gates sane) at the time, not by watching a real profile
+scrape succeed.
+
+That's now observed for real without any intervention: `entity-scrape` shows `today.scraped: 136`
+(limit 300), and the two most recent `entity-scrape` flow runs (`d4389a76`, `d5835872`) both show
+`COMPLETED` at durations (62s, 71s) matching D55's historical successful-run baseline (92.4s) — real
+profiles have been scraping successfully since the fix, unattended, across however many trigger
+cycles produced 136 completions. All five flows are gating normally (`entity-scrape` on
+backpressure, `entity-follow` on `day_limit` at 70/60 — over the cap, consistent with D25's
+documented force-run behavior bypassing the day-limit gate, not a new bug). Device bridge reachable,
+mirroring active, all three supervised services reporting healthy. Nothing else needed action.
+
+---
+
 ## 2026-08-02 (continued) — Live retesting of D60–D65 found four more real issues, one a production incident
 
 The same session kept going once you started actually exercising the D60–D65 fixes end to end —

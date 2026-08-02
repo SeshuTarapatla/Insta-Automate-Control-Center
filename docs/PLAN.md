@@ -995,6 +995,14 @@ The mobile-app half of the CP 6.4 test above (notification lands with its image)
 the Telegram-fallback half wasn't independently re-tested with a live flow this session — it's
 CP 6.2's own already-verified behavior, unaffected by this checkpoint's changes.
 
+**Phase 6 accepted 2026-08-02** — CP 6.1 through CP 6.4 all done; the live-use bug pass that
+followed CP 6.4 (D55, D58–D69, seventeen real issues across five sessions of actual use, including
+one production incident, D68, that needed the whole Helm release uninstalled to stop) is what the
+phase's "not accepted yet" note was waiting on. With that pass's last flagged loose end confirmed
+closed by observation (D70 — real scrapes completing successfully, unattended, post-D68) and
+nothing else outstanding, the user accepted the phase outright, the same way Phase 2 and Phase 5
+were.
+
 ---
 
 ## Phase 7 — Ops & insight · solves #9

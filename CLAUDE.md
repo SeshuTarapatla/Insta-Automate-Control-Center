@@ -10,7 +10,7 @@ first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase
 parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3
 (Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
-pairing & notification rework) is open, CP 6.1 (Pairing + notification core) done, agent-only,
+pairing & notification rework) complete and accepted 2026-08-02**, CP 6.1 (Pairing + notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
 CP 6.3 (Desktop pairing & notification center) built, committed, and verified against the real
 agent with the pairing round trip backend-mocked (curl standing in for the phone) since CP 6.4
@@ -68,13 +68,15 @@ same space identically every launch) and a genuine `LivePage` bug (a postFrameCa
 on every rebuild, including the one from a user's own manual tab click, silently undoing it) (D69).
 Verified: `flutter analyze`/`flutter test` (39/39) clean after every round, all 13 agent suites
 green (475 checks) including the new cancel endpoint, built and live-retested by you after each
-change. **Not yet re-confirmed: a real scrape run completing successfully post-D68** — the fix was
-verified structurally (code loaded, pods healthy, scheduler gating normally), not by watching an
-actual profile scrape succeed end to end. Full detail in DECISIONS.md's D66–D69.
-**Phase 6 is explicitly not being accepted yet** —
-you flagged other changes/bugs to address first before the next checkpoint, so treat CP 6.1–6.4 as
-built and deployed, not signed off — see the dedicated paragraphs
-below. **2026-08-02: a live incident (`entity-follow` permanently
+change. **That last open item — a real scrape run completing successfully post-D68 — is now confirmed**
+(D70): resuming the session, the live scheduler showed `entity-scrape` at 136/300 scraped today
+with the two most recent runs both `COMPLETED` in normal duration, unattended, no code change
+needed. Full detail in DECISIONS.md's D66–D70.
+**Phase 6 accepted 2026-08-02** — the live-use bug pass below (D55, D58–D69) is exactly what the
+"not accepted yet" hold was waiting on; with its last flagged loose end confirmed closed by
+observation (D70, real scrapes completing successfully post-D68, unattended) and nothing else
+outstanding, the user accepted the phase outright, the same way Phase 2 and Phase 5 were — see the
+dedicated paragraphs below. **2026-08-02: a live incident (`entity-follow` permanently
 frozen "running", zero triggers for hours) uncovered and fixed five chained bugs — see D55 and the
 dedicated paragraph below. CP 6.2 is now deployed to the live worker pod for the first time**,
 earlier than rule 3's original "wait until accepted" plan, because it was needed for the fix. Phase 2 accepted
