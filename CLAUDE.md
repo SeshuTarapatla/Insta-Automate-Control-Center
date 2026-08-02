@@ -12,8 +12,15 @@ parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mut
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
 pairing & notification rework) is open, CP 6.1 (Pairing + notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
-CP 6.3 (Desktop pairing & notification center) built and awaiting your test, 🟢** — see the
-dedicated paragraphs below. **2026-08-02: a live incident (`entity-follow` permanently
+CP 6.3 (Desktop pairing & notification center) built, committed, and verified against the real
+agent with the pairing round trip backend-mocked (curl standing in for the phone) since CP 6.4
+doesn't exist yet, 🟢, CP 6.4 (Mobile client) built across all four slices (pairing, WS +
+foreground-service push notifications, compact live flow view, config write-through) and verified
+live against the real agent and a real phone, then extended with a notification-routing redesign
+(D58) found by actually using it — device-aware `delivered`/`targets` (a phone, not just the
+desktop, has to be connected), always-Telegram + tap-to-open for the three per-profile
+notifications, and real markdown rendering on both clients — 🟢** — see the dedicated paragraphs
+below. **2026-08-02: a live incident (`entity-follow` permanently
 frozen "running", zero triggers for hours) uncovered and fixed five chained bugs — see D55 and the
 dedicated paragraph below. CP 6.2 is now deployed to the live worker pod for the first time**,
 earlier than rule 3's original "wait until accepted" plan, because it was needed for the fix. Phase 2 accepted
@@ -594,10 +601,84 @@ See D56 for the full account, including a benign `flutter_test` hit-test-warning
 
 **Verified:** `flutter analyze` clean, `flutter test` 38/38 (26 prior + 12 new across
 `devices_layout_test.dart`/`notification_center_layout_test.dart`), `flutter build windows
---debug` succeeds. **Not yet user-verified and not yet committed (rule 4)** — the freshly built
-exe is running now for you to test: pairing (mint a code, claim via manual entry or CP 6.4 once it
-exists, revoke), and the notification center against whatever `POST /api/notify` traffic the now-
-live CP 6.2 facade produces on the real pod.
+--debug` succeeds. Committed. **Testing is real but partial, by design, not an oversight**: the
+pairing round trip and the notification bell/panel were confirmed against the real running agent
+with the phone side backend-mocked (`curl` playing the part of `/api/pair/claim`), since CP 6.4 —
+the actual mobile client — doesn't exist yet. This checkpoint cannot be called fully tested until
+CP 6.4 exists and a real phone completes the QR scan → claim → live notification path end to end.
+
+**CP 6.4 (Mobile client) is next — ground rules confirmed with you 2026-08-02, before writing any
+code (D57).** It lands in `flutter/Insta-Automate-Client` (pubspec `ia_manager`), **feature branch
+only** (`feat/lan-agent`, per rule 3 — never `main`). After each change, build the real APK and
+install it on the phone currently connected over adb for testing. If anything needs a human
+action (accepting an install prompt, granting a permission, scanning a QR), stop and ask rather
+than trying to script around it. **The adb-connected test phone is not the production phone**: its
+`IA_DIR` is stale and has no active Syncthing sync to this laptop — it exists purely for
+installing/exercising the app, not for seeing real pipeline images or curation state. The user's
+own separate phone is the one with real `IA_DIR` sync; that phone is not what CP 6.4 gets tested
+against. Keep this distinction in mind when judging whether a test result ("no images show up")
+reflects an app bug or just the test device's stale data.
+
+**CP 6.4 (Mobile client) built across all four planned slices, 🟢, each verified against the real
+agent and a real phone before moving to the next.** New `ia_manager` code (`feat/lan-agent`): a
+`Desktop Pairing` section in Settings (`widgets/pairing_card.dart` — QR scan via `mobile_scanner`
+plus a manual host/port/code fallback, `services/agent_provider.dart` persisting the claimed
+device token via `shared_preferences`, same trust model as the desktop's own unencrypted token
+file); a `flutter_foreground_task`-backed background service
+(`services/notification_service.dart`) holding a `services/agent_ws.dart` connection open so
+`flutter_local_notifications` can show a real push within about a second, image included, even
+backgrounded; a compact read-only `widgets/live_flow_strip.dart` on the home screen (phase per
+flow, no controls — editing stays the desktop's job); and `screens/queue_screen.dart`'s one Save
+button now tries `PATCH /api/config` through the agent first when paired (falling back to the
+existing local `config.env` write only on a genuine connectivity failure, never on a validation
+rejection — that's surfaced as an error instead, so a local write can't bypass a rule the agent is
+correctly enforcing). `android/app/build.gradle` needed `coreLibraryDesugaringEnabled` for
+`flutter_local_notifications`; the manifest gained `usesCleartextTraffic` (the agent is plain
+`http://`, deliberately, LAN-only) plus camera/notification/foreground-service permissions. One
+real bug caught mid-build, not by `flutter analyze`: the live flow strip overflowed its own row by
+2px (D19's precedent again) — fixed by loosening the fixed height. No agent-side changes were
+needed for any of this — CP 6.1 already shipped the full REST/WS surface.
+
+**Then extended same-day with a notification-routing redesign (D58), found by actually using
+CP 6.4 rather than scoped in advance.** Three real gaps: raw markdown showing as literal text
+(messages are built for Telegram's renderer, not the agent's own display); `NOTIFY_POLICY
+=app_first`'s `delivered` counting the desktop's own WS connection, not just a phone's — D53's
+flagged-and-deferred risk, now a real bug with a phone client actually in the picture; and three
+notifications (unfollow-prompt, followed-by, already-known-entity) being about one specific
+profile rather than a flow event, needing to always reach Telegram and be tappable to open that
+profile. Fixed across all four repos: the agent's `EventBus` (`agent/src/ia_agent/events/bus.py`)
+now tags every WS subscriber with the device id that authenticated it, so `targets`/`delivered`
+means "a phone got it," never "the desktop happens to be open" — the desktop still receives every
+broadcast regardless, just never gates the decision; `GET /api/pair/devices` gained a live
+`connected` bool riding the same plumbing. The pipeline's `notify()` (`Insta-Automate`,
+`feat/control-center`) gained `url` (the entity's Instagram URL, already in scope at all three
+call sites) and `always_telegram` (forces Telegram regardless of phone connectivity, independent
+of `NOTIFY_POLICY`). Both Flutter clients got a small hand-rolled markdown-to-plain/rich-text
+formatter (no new dependency, matching this app's existing preference — `core/notification_text.dart`
+on each side) and tap-to-open wired to the `url` field rather than an inline clickable link, which
+would be unreliable to hit inside a truncated, ellipsized message.
+
+**Two corrections from your live desktop testing, same session.** The first version bolded the
+stripped text (a real `**bold**` → styled `TextSpan`) — you found plain text reads better, so
+desktop's formatter was simplified to exactly match mobile's already-plain approach (same
+function shape, bold machinery dropped entirely). And the "followed by" name needed a leading `@`
+for visual consistency with the linked profile above it, even though it's not a link itself —
+fixed at the pipeline source (`tasks/ia.py`), not the client formatters, since it's message
+content: a regex inserts `@` right after Instagram's own `"Followed by "` UI text.
+
+**Verified:** agent — `agent/tests/test_notifications.py` 37/37, `test_pairing.py` 31/31, full
+13-suite regression green (698 checks). One real slip caught immediately: the notifications test's
+new pairing calls didn't scratch-redirect `PAIRING_DEVICES_PATH` like `test_pairing.py` already
+does, briefly writing a fake device into the *real* `pairing.json` — caught, fixed, real file
+cleaned up by hand before it could confuse a future session. Live-checked against the real agent
+and your actually-connected phone: `connected` true only while its socket was actually open,
+`delivered: true` only with it connected. Pipeline — import sanity check plus a throwaway script
+(8/8) covering all four device-active/inactive × general/`always_telegram` combinations against a
+monkeypatched `AgentClient`/`IaTelegram`. Desktop — `flutter analyze` clean, `flutter test` 39/39;
+built and started for you, confirmed live twice (once prompting the two corrections above, once
+after). Mobile — `flutter analyze` clean, built, installed on the real test phone, and a real
+per-profile-shaped notification (markdown + `url` set) confirmed by you to arrive clean and work
+end to end.
 
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.

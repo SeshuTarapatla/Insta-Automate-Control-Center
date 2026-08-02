@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/agent_image.dart';
+import '../../core/file_opener.dart';
 import '../../core/notification_models.dart';
+import '../../core/notification_text.dart';
 import '../../core/relative_time.dart';
 import 'notification_controller.dart';
 
@@ -227,10 +229,18 @@ class _NotificationTile extends ConsumerWidget {
     final color = _levelColors[notification.level] ?? theme.colorScheme.onSurfaceVariant;
     final icon = _levelIcons[notification.level] ?? Icons.circle_notifications_outlined;
 
+    final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: notification.read ? FontWeight.normal : FontWeight.w600,
+    );
+    final url = notification.url;
+
     return InkWell(
-      onTap: notification.read
-          ? null
-          : () => ref.read(notificationControllerProvider.notifier).markRead(notification.id),
+      onTap: () {
+        if (!notification.read) {
+          ref.read(notificationControllerProvider.notifier).markRead(notification.id);
+        }
+        if (url != null) FileOpener.openUrl(url);
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -243,17 +253,23 @@ class _NotificationTile extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    notification.msg,
+                    stripNotificationMarkdown(notification.msg),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: notification.read ? FontWeight.normal : FontWeight.w600,
-                    ),
+                    style: bodyStyle,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    relativeTime(notification.ts),
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  Row(
+                    children: [
+                      Text(
+                        relativeTime(notification.ts),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      if (url != null) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.open_in_new_rounded, size: 12, color: theme.colorScheme.primary.withValues(alpha: 0.7)),
+                      ],
+                    ],
                   ),
                 ],
               ),

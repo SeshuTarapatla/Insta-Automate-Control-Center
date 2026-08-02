@@ -103,11 +103,18 @@ async def store_checks() -> None:
     check("seq continues from where it left off, not restarting at 1",
           reloaded._seq == store._seq, str((reloaded._seq, store._seq)))
 
-    print("\n8. publish() reports the live subscriber count as 'targets'")
+    print("\n8. publish() reports the live *device* subscriber count as 'targets' — desktop doesn't count")
     check("zero subscribers today", await store.publish(entry) == 0)
-    queue = bus.subscribe()
-    check("one subscriber now", await store.publish(entry) == 1)
-    bus.unsubscribe(queue)
+    desktop_queue = bus.subscribe()  # device_id=None — the desktop
+    check("a desktop-only subscriber still reports zero device targets", await store.publish(entry) == 0)
+    device_queue = bus.subscribe(device_id="phone-1")
+    check("a device subscriber brings targets to one", await store.publish(entry) == 1)
+    check("subscriber_count() without devices_only still counts both",
+          bus.subscriber_count() == 2 and bus.subscriber_count(devices_only=True) == 1)
+    check("device_ids() reports the connected phone", bus.device_ids() == {"phone-1"})
+    bus.unsubscribe(desktop_queue)
+    bus.unsubscribe(device_queue)
+    check("device_ids() empties out after disconnect", bus.device_ids() == set())
 
 
 asyncio.run(store_checks())
@@ -116,10 +123,15 @@ asyncio.run(store_checks())
 
 import ia_agent.app as app_module  # noqa: E402
 import ia_agent.library.folders as folders  # noqa: E402
+import ia_agent.pairing as pairing_module  # noqa: E402
 from ia_agent.library.folders import LibraryFolder  # noqa: E402
 
 app_module.build_specs = lambda: []
 folders.IA_DIR = FAKE_IA_DIR
+# 11c mints a real device pairing to test device-aware targets — must not
+# touch the real %LOCALAPPDATA%\ia-agent\pairing.json (same precedent as
+# test_pairing.py).
+pairing_module.PAIRING_DEVICES_PATH = SCRATCH / "pairing.json"
 folders.FOLDERS = {"entities": LibraryFolder("entities", FAKE_IA_DIR / "entities", flat=True)}
 
 PORT = 8798
@@ -151,24 +163,53 @@ async def live_checks() -> None:
         listed = (await client.get("/api/notify")).json()
         check("the posted notification is in the list", any(n["msg"] == "device disconnected" for n in listed), str(listed))
 
-        print("\n11. a live WS subscriber flips delivered to true and receives the broadcast")
-        async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws?token={token}") as ws:
-            posted2 = await client.post("/api/notify", json={"msg": "scan complete", "tags": ["scan"]})
-            check("delivered true with one subscriber", posted2.json()["delivered"] is True and posted2.json()["targets"] == 1, posted2.text)
+        print("\n11a. a desktop WS connection alone does NOT flip delivered — the D53/D57 regression case")
+        async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws?token={token}") as desktop_ws:
+            posted_desktop_only = await client.post("/api/notify", json={"msg": "desktop is open, no phone"})
+            check("delivered stays false with only the desktop connected",
+                  posted_desktop_only.json()["delivered"] is False and posted_desktop_only.json()["targets"] == 0,
+                  posted_desktop_only.text)
 
+            print("\n11b. but the desktop still receives the broadcast — it's a passive viewer, not a gate")
             frame = None
             deadline = asyncio.get_running_loop().time() + 5
             while asyncio.get_running_loop().time() < deadline:
                 try:
-                    frame = __import__("json").loads(await asyncio.wait_for(ws.recv(), timeout=2))
+                    frame = __import__("json").loads(await asyncio.wait_for(desktop_ws.recv(), timeout=2))
                 except asyncio.TimeoutError:
                     continue
                 if frame.get("channel") == "notifications":
                     break
                 frame = None
-            check("a notifications frame arrives", frame is not None)
-            if frame:
-                check("carries the real message", frame["data"]["msg"] == "scan complete", str(frame))
+            check("the desktop still gets the frame despite delivered=false", frame is not None)
+
+            print("\n11c. a paired *device* WS connection is what actually flips delivered")
+            started = (await client.post("/api/pair/start", headers=headers)).json()
+            claimed = await client.post("/api/pair/claim", json={"code": started["code"], "device_name": "test phone"})
+            device_token = claimed.json()["token"]
+            async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws?token={device_token}") as ws:
+                posted2 = await client.post("/api/notify", json={"msg": "scan complete", "tags": ["scan"]})
+                check("delivered true with a device connected (desktop still open too)",
+                      posted2.json()["delivered"] is True and posted2.json()["targets"] == 1, posted2.text)
+
+                frame = None
+                deadline = asyncio.get_running_loop().time() + 5
+                while asyncio.get_running_loop().time() < deadline:
+                    try:
+                        frame = __import__("json").loads(await asyncio.wait_for(ws.recv(), timeout=2))
+                    except asyncio.TimeoutError:
+                        continue
+                    if frame.get("channel") == "notifications":
+                        break
+                    frame = None
+                check("a notifications frame arrives on the device socket", frame is not None)
+                if frame:
+                    check("carries the real message", frame["data"]["msg"] == "scan complete", str(frame))
+
+                print("\n11d. GET /api/pair/devices reports this device as live-connected, not just paired")
+                listing = (await client.get("/api/pair/devices", headers=headers)).json()
+                check("the connected phone shows connected: true",
+                      any(d["name"] == "test phone" and d["connected"] is True for d in listing), str(listing))
 
         print("\n12. POST /api/notify/{id}/read and /api/notify/read-all")
         notification_id = posted2.json()["id"]

@@ -978,13 +978,22 @@ revoke) becomes a new "Devices" tab in Settings, alongside Flows/Limits/Queue. T
 center becomes a bell icon in the title bar, reachable from every screen. Neither gets a new nav
 destination.
 
-### CP 6.4 — Mobile client 🔵
+### CP 6.4 — Mobile client 🟢
 QR scan (`mobile_scanner`), agent client, foreground-service WebSocket
 (`flutter_foreground_task`), local notifications, a compact live flow view, and config writes
 through the agent when connected with the existing Syncthing path as the offline fallback.
 
 **Test:** pair the phone; run a flow; the notification lands in under a second **with its image**.
 Kill the mobile app → the next notification arrives on Telegram instead.
+
+**Done, all four slices verified live against the real agent and phone (CLAUDE.md, D58's build
+summary).** Extended same-day with a notification-routing redesign (D58) once real use surfaced
+three gaps: raw markdown showing as literal text, `delivered` counting the desktop's own
+connection instead of just a phone's (D53's deferred risk, now real), and three per-profile
+notifications needing an always-Telegram + tap-to-open treatment distinct from flow-level ones.
+The mobile-app half of the CP 6.4 test above (notification lands with its image) is confirmed;
+the Telegram-fallback half wasn't independently re-tested with a live flow this session — it's
+CP 6.2's own already-verified behavior, unaffected by this checkpoint's changes.
 
 ---
 

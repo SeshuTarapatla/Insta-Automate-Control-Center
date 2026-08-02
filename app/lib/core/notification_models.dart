@@ -13,6 +13,7 @@ class AppNotification {
     required this.dedupe,
     required this.transient,
     required this.read,
+    this.url,
   });
 
   final String id;
@@ -26,6 +27,12 @@ class AppNotification {
   final bool transient;
   final bool read;
 
+  /// A profile's Instagram URL, set only on per-profile notifications
+  /// (follow/unfollow prompts, already-known entities) — the tap target for
+  /// those tiles. Null for flow-level notifications, which have nothing to
+  /// open.
+  final String? url;
+
   AppNotification copyWith({bool? read}) => AppNotification(
     id: id,
     seq: seq,
@@ -37,6 +44,7 @@ class AppNotification {
     dedupe: dedupe,
     transient: transient,
     read: read ?? this.read,
+    url: url,
   );
 
   factory AppNotification.fromJson(Map<String, dynamic> json) => AppNotification(
@@ -50,5 +58,6 @@ class AppNotification {
     dedupe: json['dedupe'] as String?,
     transient: json['transient'] as bool? ?? false,
     read: json['read'] as bool? ?? false,
+    url: json['url'] as String?,
   );
 }

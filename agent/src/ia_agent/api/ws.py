@@ -20,8 +20,13 @@ def create_ws_router(bus: EventBus, token: str, pairing_store: PairingStore) -> 
             await websocket.close(code=4401)
             return
 
+        # None if `credential` was the desktop token (no device token matches
+        # it) — that's exactly the desktop/device distinction `EventBus` needs
+        # to make `targets` mean "reached a phone" (see notifications.py).
+        device_id = pairing_store.authenticate(credential)
+
         await websocket.accept()
-        queue = bus.subscribe()
+        queue = bus.subscribe(device_id=device_id)
         try:
             while True:
                 receive_task = asyncio.ensure_future(websocket.receive())

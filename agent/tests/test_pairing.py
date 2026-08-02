@@ -163,6 +163,14 @@ async def live_checks() -> None:
             await asyncio.sleep(0.1)
             check("the socket accepted the device token (still open)", ws.state.name == "OPEN")
 
+            print("\n13b. GET /api/pair/devices reports it live-connected while the socket is open")
+            while_open = (await client.get("/api/pair/devices", headers=desktop_headers)).json()
+            check("Pixel 7 shows connected: true", any(d["name"] == "Pixel 7" and d["connected"] for d in while_open), str(while_open))
+
+        await asyncio.sleep(0.1)  # let the server notice the close and unsubscribe
+        after_close = (await client.get("/api/pair/devices", headers=desktop_headers)).json()
+        check("connected flips back to false once the socket closes", all(not d["connected"] for d in after_close if d["name"] == "Pixel 7"), str(after_close))
+
         print("\n14. DELETE /api/pair/devices/{id} revokes; the old device token stops working everywhere")
         revoked = await client.delete(f"/api/pair/devices/{device_id}", headers=desktop_headers)
         check("revoke succeeds", revoked.status_code == 200, revoked.text)

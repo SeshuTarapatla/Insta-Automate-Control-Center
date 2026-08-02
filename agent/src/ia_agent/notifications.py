@@ -73,6 +73,7 @@ class NotificationStore:
                 "seq": self._seq,
                 "ts": payload.get("ts") or time.time(),
                 "msg": payload.get("msg", ""),
+                "url": payload.get("url"),
                 "image_key": image_key,
                 "level": payload.get("level", "info"),
                 "tags": list(payload.get("tags") or []),
@@ -87,10 +88,13 @@ class NotificationStore:
         return entry
 
     async def publish(self, entry: dict[str, Any]) -> int:
-        """Returns how many live WS clients were reachable at publish time —
-        the closest thing to "delivered" the bus's broadcast-to-everyone
-        model (see events/bus.py) can answer today."""
-        targets = self._bus.subscriber_count()
+        """Returns how many paired *devices* were reachable at publish time —
+        deliberately not the desktop's own connection, since `targets`/
+        `delivered` is what the pipeline's notify() facade uses to decide
+        whether Telegram is still needed (ARCHITECTURE §6). The broadcast
+        itself still reaches every subscriber, desktop included — the
+        desktop is a passive viewer of the bus, never part of this count."""
+        targets = self._bus.subscriber_count(devices_only=True)
         await self._bus.publish("notifications", entry)
         return targets
 

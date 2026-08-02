@@ -5,6 +5,132 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 — CP 6.4 built, then a notification redesign found by actually using it
+
+### D58 · Device-aware notify routing, plus per-profile notifications get a real tap target and clean text — spans all four repos
+
+CP 6.4 (mobile client) shipped all four planned slices (pairing, WS + foreground-service push
+notifications, compact live flow view, config write-through) and each was verified live against
+the real agent and a real phone — see the session's build log. Using it for real (both the
+desktop's notification bell and the new phone notifications) surfaced three problems serious
+enough to fix before calling the notifications phase done, per your explicit instruction:
+
+**1. Markdown showed as raw text.** `**[@user](url)**`-shaped messages are built for Telegram's
+renderer, but the same string is stored/shown verbatim by the agent — the desktop's notification
+center displayed the literal asterisks and brackets.
+
+**2. Routing was actually wrong, not just imprecise — this is D53's deferred risk, now real.**
+`NOTIFY_POLICY=app_first`'s `delivered` meant "at least one live WS subscriber," which included
+the *desktop app itself*. Once a phone client existed, having the desktop open at all would
+silently swallow every notification that should have gone to Telegram. Fixed at the source:
+`EventBus` (`agent/src/ia_agent/events/bus.py`) now tags every subscriber with the device id that
+authenticated it (`None` for desktop), `subscriber_count(devices_only=True)` counts only phones,
+and `NotificationStore.publish()` uses that count for `targets`/`delivered`. `ws.py` computes the
+device id by calling `pairing_store.authenticate(credential)` a second time after the existing
+`is_authorized()` check (harmless for desktop — no device token matches it). `EventBus.publish()`
+itself is unchanged — the desktop still receives everything; it's a passive viewer that never
+gates delivery or blocks Telegram either way. Small bonus riding the same plumbing: `GET
+/api/pair/devices` now reports a live `connected` bool per device (cross-referencing
+`EventBus.device_ids()`), not just `last_seen` — real confirmation of "actively connected," which
+is the exact distinction you drew a line under ("don't confuse with simple pair").
+
+**3. Three notifications are about one specific profile, not a flow-level event** — found by
+auditing every `notify()` call site in `Insta-Automate`: `notify_profile_unfollow` ("scan
+complete, you can unfollow"), `profile_follow`'s followed-by branch ("X is followed by Y"), and
+`add_new_entity`'s already-exists branch (the third one, not in your original two — confirmed with
+you before including it). These get two things the other seven call sites don't: a new
+`always_telegram=True` param on `notify()` (independent of `NOTIFY_POLICY`) that forces Telegram
+delivery regardless of whether a phone is connected, since these are judged consequential enough
+to always leave a Telegram record; and a `url` field (the `Entity.url` already in scope at each
+call site — no extra lookup needed) that flows agent-ward as the notification's tap target on
+both clients, rather than relying on an inline clickable link inside possibly-truncated text.
+
+**Rendering approach — deliberately not a markdown package on either client.** Both apps already
+prefer small hand-rolled parsing for narrow needs (desktop's `FileOpener` instead of
+`url_launcher`, e.g.) — new `core/notification_text.dart` (desktop) and its mobile twin
+(`notification_text.dart` in `Insta-Automate-Client`) both strip `[text](url)` down to `text` and
+drop `**` entirely rather than rendering it bold; the link itself is dropped from display
+regardless since navigation is now the whole tile's job via the `url` field, not a fragile
+inline-span tap target inside a 3-line ellipsized `Text`. **First version bolded the stripped
+text on desktop — corrected from your live feedback**: plain text reads better here, so desktop's
+formatter was simplified to exactly match mobile's (same function, same output shape), dropping
+the now-unused bold-`TextSpan` machinery entirely. Mobile's tap-to-open is wired through a second
+`FlutterLocalNotificationsPlugin` instance in the main isolate (tapping a notification is
+inherently a main-isolate/UI event regardless of which isolate posted it), reusing the app's
+existing `url_launcher` dependency and exact launch convention already used everywhere else in
+that app (`queue_entity_card.dart` etc.).
+
+**Also from your live feedback: the "followed by" name needed a leading `@` for visual
+consistency with the linked profile above it**, even though it's not itself a link. Fixed at the
+pipeline source (`tasks/ia.py`'s `profile_follow`), not the client formatters, since it's message
+*content* — a regex inserts `@` right after Instagram's own `"Followed by "` UI text
+(`ui.followed_by.get_text()`), before whatever name(s) follow. On Instagram's own multi-name
+phrasing ("Followed by X and 3 others") only the first name gets the `@`, accepted as a minor
+edge case since this is cosmetic polish, not a second link target.
+
+**Verified:** agent — `agent/tests/test_notifications.py` grew to 37/37 (new cases distinguish a
+desktop-only subscriber from a device one, and prove the desktop still receives the broadcast
+despite `delivered=false` — the actual regression test for the bug), `test_pairing.py` to 31/31
+(the new `connected` field flips true/false around the WS lifecycle); the full 13-suite agent
+regression (698 checks total) stayed green. One real mistake caught before it stuck: the first
+version of the `test_notifications.py` pairing addition didn't scratch-redirect
+`PAIRING_DEVICES_PATH` like `test_pairing.py` already does, so it briefly wrote a fake "test
+phone" into the *real* `%LOCALAPPDATA%\ia-agent\pairing.json` — caught immediately, fixed, and the
+real file cleaned back up by hand. Live-checked against the real agent + your actually-connected
+phone afterward: `GET /api/pair/devices` showed `connected: true` only for the live phone,
+`POST /api/notify` reported `delivered: true` with it connected.
+
+Pipeline — no test suite (standing precedent since CP 3.1); import sanity-check across every
+changed module, plus a throwaway script (8/8) exercising all four `notify()` combinations
+(device-active/inactive × general/`always_telegram`) against a monkeypatched `AgentClient`/
+`IaTelegram`, confirming exactly which channel(s) fire in each case. Nothing deployed to the live
+pod — same standing precedent as every `Insta-Automate` checkpoint since CP 4.3.
+
+Desktop — `flutter analyze` clean, `flutter test` 39/39 (38 prior + 1 new: a per-profile
+notification with markdown and a long username renders without overflow, the raw `**[`/`](https`
+syntax never appears literally, and the open-link icon shows). Built and started for you per
+rule 5 — confirmed live by you, twice: once against the original bold rendering (which prompted
+the plain-text correction above) and again after the fix plus the `@`-prefix change, both times
+against a real notification posted through the real agent.
+
+Mobile — `flutter analyze` clean (no test suite exists for this app, matching CP 6.4's own
+precedent that real verification here is on-device, not unit tests). Built, installed on the
+connected test phone, and confirmed live against the real agent: a real per-profile-shaped
+notification (`**[@user](url)**` message, `url` field set) arrived with clean readable text and
+no raw markdown, and — per your report — worked end to end.
+
+---
+
+## 2026-08-02 — Session resume: CP 6.3 status reconciled, CP 6.4 ground rules set
+
+### D57 · CP 6.3's "not committed yet" note was stale relative to the actual commit; CP 6.4 ground rules confirmed before writing any code
+
+**The docs and the repo had drifted.** `CLAUDE.md` and `DECISIONS.md` (D56, below) both still read
+"awaiting your test" / "not yet committed, per rule 4" even though commit `b2dd16b` — the same
+commit that carried that text — was already on `main` with a message describing real verification.
+Resolved by asking the user directly rather than guessing which side was right. Answer: the
+verification described in the commit message did happen (pairing + notification bell against the
+real agent), but it doesn't make CP 6.3 *fully* tested — that requires the phone side, which was
+backend-mocked with `curl` standing in for `/api/pair/claim` because CP 6.4 (the actual mobile
+client) doesn't exist yet. `CLAUDE.md` corrected to say exactly that instead of either extreme.
+
+**CP 6.4 ground rules, confirmed before any code:**
+- Work happens in `flutter/Insta-Automate-Client` (pubspec `ia_manager`) on `feat/lan-agent` only
+  — never `main` — per rule 3, re-confirmed rather than assumed.
+- After each change, build a real APK and install it on the phone currently connected over adb;
+  that's the test loop for this checkpoint, not `flutter test`/`flutter analyze` alone (those
+  still run, but an Android foreground-service WebSocket and real notification delivery need a
+  real device).
+- Any step needing a human — accepting an install prompt, granting a permission, actually scanning
+  the QR — stops and asks rather than being scripted around.
+- **The adb-connected test phone is not the user's production phone.** Its `IA_DIR` is stale, with
+  no active Syncthing sync to this laptop — it's a coding/testing device only. The user's own,
+  separate phone is the one with real `IA_DIR` sync, and CP 6.4 is not tested against it. A test
+  result like "no images render" on the test phone may just mean stale local data, not an app bug
+  — check which is which before treating it as a regression.
+
+---
+
 ## 2026-08-02 — Phase 6 implementation session (CP 6.3, Desktop pairing & notification center)
 
 ### D56 · Built on D54's placement decision with no new agent code; a real header-row overflow was caught by the new layout test, not by `flutter analyze`

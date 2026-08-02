@@ -83,7 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(create_images_router())
     app.include_router(create_library_router(library_counts))
     app.include_router(create_device_router())
-    app.include_router(create_pairing_router(pairing_store, token))
+    app.include_router(create_pairing_router(pairing_store, token, bus))
     app.include_router(create_notify_router(notification_store))
     app.include_router(create_ws_router(bus, token, pairing_store))
     return app

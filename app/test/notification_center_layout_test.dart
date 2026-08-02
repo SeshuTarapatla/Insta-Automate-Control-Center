@@ -34,6 +34,7 @@ AppNotification _notification({
   List<String> tags = const [],
   bool read = false,
   String level = 'info',
+  String? url,
 }) => AppNotification(
   id: id,
   seq: seq,
@@ -45,6 +46,7 @@ AppNotification _notification({
   dedupe: null,
   transient: false,
   read: read,
+  url: url,
 );
 
 void main() {
@@ -93,6 +95,53 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(FilterChip), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Notification panel: a per-profile notification with markdown + url renders without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final longUsername = 'a_very_long_instagram_username_for_testing_wrap_1234567890';
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notificationControllerProvider.overrideWith(
+            () => _FakeNotificationController([
+              _notification(
+                id: '1',
+                seq: 1,
+                msg: '**[@$longUsername](https://www.instagram.com/$longUsername)** is Followed by someone_else',
+                tags: const ['follow'],
+                level: 'warn',
+                url: 'https://www.instagram.com/$longUsername',
+              ),
+            ]),
+          ),
+          mutedTagsControllerProvider.overrideWith(() => _FakeMutedTagsController(const {})),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+          home: const Scaffold(body: Align(alignment: Alignment.topRight, child: NotificationCenter())),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byIcon(Icons.notifications_outlined), warnIfMissed: false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // The raw markdown syntax must not appear literally — it should have
+    // been formatted (bold, link syntax stripped) rather than shown as-is.
+    expect(find.textContaining('**['), findsNothing);
+    expect(find.textContaining('](https'), findsNothing);
+    expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

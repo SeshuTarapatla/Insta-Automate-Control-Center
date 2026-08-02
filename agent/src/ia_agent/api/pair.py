@@ -3,10 +3,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from ia_agent.events.bus import EventBus
 from ia_agent.pairing import PairingStore
 
 
-def create_pairing_router(store: PairingStore, desktop_token: str) -> APIRouter:
+def create_pairing_router(store: PairingStore, desktop_token: str, bus: EventBus) -> APIRouter:
     router = APIRouter(prefix="/api/pair")
 
     def _require_desktop(request: Request) -> None:
@@ -35,7 +36,8 @@ def create_pairing_router(store: PairingStore, desktop_token: str) -> APIRouter:
     @router.get("/devices")
     async def devices(request: Request) -> list[dict]:
         _require_desktop(request)
-        return store.devices()
+        connected = bus.device_ids()
+        return [{**device, "connected": device["id"] in connected} for device in store.devices()]
 
     @router.delete("/devices/{device_id}")
     async def revoke(device_id: str, request: Request) -> dict:
