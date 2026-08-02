@@ -5,6 +5,310 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 (continued) — Live retesting of D60–D65 found four more real issues, one a production incident
+
+The same session kept going once you started actually exercising the D60–D65 fixes end to end —
+each round of testing surfaced something the first pass hadn't, including one bug (D68) that
+required uninstalling the live Helm release to stop.
+
+### D69 · Window position needed a real unit conversion, not just a hardcoded offset; plus a Stop button, a real auto-follow bug, and one design revert
+
+**Window position, round two.** D67's first attempt positioned the app next to scrcpy using
+scrcpy's own launch geometry (`--window-x=1`, width derived from the phone's aspect ratio at
+`--window-height=1480`) fed directly into `windowManager.setPosition`. Still a visible gap after
+rebuilding — root cause: those figures are scrcpy's *physical* pixels (a native SDL app), while
+`window_manager`/`screen_retriever` both work in Flutter's *logical* pixels. On this machine's
+150%-scaled display that's a real ~1.5x error, confirmed by back-calculating the actual on-screen
+pixel positions from a screenshot (predicted physical x≈1020 for a logical x=680 target, observed
+≈1039 — matching the scale factor almost exactly). Fixed by dividing by `Display.scaleFactor`
+(queried live via `screen_retriever`, itself confirmed to genuinely compute this via
+`FlutterDesktopGetDpiForMonitor`, not a stub). A further few-pixel residual (likely DWM's own
+invisible border/shadow around a borderless window) was tuned by hand against the real screen
+rather than reasoned about further — landed at `-5` logical px, adjusted directly by you after
+`-2` still showed a hair of a gap.
+
+**Window sizing was a second, separate bug**, found on the very next screenshot: the app was
+still leaving the whole right edge of the screen unused. Cause: `main.dart` restored a previous
+manual resize's *size* even though position was already being freshly computed — an old saved
+width (from before scrcpy was ever part of the picture) simply wasn't wide enough to reach the
+screen's edge. Given the ask ("make sure this space is actually taken by our app when it starts")
+is explicitly about *every* launch behaving identically, the whole `WindowGeometry`
+save/restore mechanism was removed rather than partially preserved — a persisted preference
+that's designed to always be overridden by a fresh computation isn't worth the complexity of
+keeping around half-used. `core/window_geometry.dart` deleted.
+
+**A third bug, found by you clicking "Classify" several times while Scrape was actively
+running and seeing nothing happen:** `LivePage`'s postFrameCallback (a one-time "catch up on
+data that arrived before this page mounted" nudge) was actually re-firing on *every* rebuild —
+including the rebuild caused by the manual click itself, since `selectedFlowProvider` is one of
+`LivePage`'s own `ref.watch`ed dependencies. Each click's own rebuild immediately re-ran
+`_maybeAutoSelect`, saw Scrape still running, and silently re-selected it back within the same
+frame — a real bug, not the "auto-follow overrides a stale click" behavior chosen in D67, since
+here the override was firing off the click's *own* rebuild rather than any genuine new scheduler
+data. Fixed with a `_didInitialCatchUp` flag so the postFrameCallback only ever fires once; all
+subsequent auto-follow behavior now comes exclusively from `ref.listen`'s reaction to *real*
+`flows.state` broadcasts, which still correctly overrides a manual click the moment something
+actually changes.
+
+**A fourth item was a design revert, not a bug:** the Scan surface's newest-at-top,
+no-scroll-needed ordering (D67) had been copied onto Classify too, unintentionally — you'd only
+asked for the "one entry per row, no wasted space" layout change there, not the ordering change.
+Classify reverted to its original oldest-at-top / auto-scroll-to-the-newest-at-the-bottom pattern,
+keeping D67's layout fix (full-width image, caption below).
+
+**New feature: a Stop button**, requested directly out of the D68 incident below — there was
+genuinely no way to halt a run already in progress from the control center short of uninstalling
+the whole Helm release. New `prefect.cancel_flow_run()` (agent) sets a flow run to `CANCELLING`
+via Prefect's REST API — the same transition the Prefect UI's own Cancel button triggers — exposed
+as `POST /api/flow-runs/{id}/cancel`. `forceRunFlow`'s confirmation-dialog pattern was extracted
+into a new shared `core/force_run.dart` (deduplicating what used to be a private copy inside
+`FlowCard`) alongside a new `stopFlowRun`, and both now appear on the Flows screen's cards and the
+Live screen's header, visible only while that flow's `phase == 'running'`.
+
+**Verified:** `flutter analyze` clean, `flutter test` 39/39 across every round in this section. Agent:
+all 13 suites green (475 checks) after the new cancel endpoint; `test_flowruns.py` unaffected.
+Built and started for you between every round, live-retested by you each time — the window
+position/sizing, the Classify-click bug, and the Stop button were all confirmed fixed live in this
+same session.
+
+### D68 · A same-session regression: the disabled-profile guard (D64) was silently skipping every real profile, PRIVATE or PUBLIC — a real production incident
+
+**What happened:** once D64/D66/D67's Insta-Automate changes were redeployed and you resumed
+testing for real, every single profile `entity_scrape` touched was logged and skipped as
+`"UNAVAILABLE"` — including profiles you could see, live on the mirrored phone, rendering
+completely normally (a real, existing, PRIVATE Instagram profile with its own private-account
+banner visible). This wasn't a rare edge case; it broke scraping outright, for every profile, and
+you had to **uninstall the `insta-automate` Helm release** to stop it — the harshest stop
+available, used precisely because D69's Stop button didn't exist yet.
+
+**Root cause:** D64's guard checked only `ui.profile_tabs_container.wait(timeout=5)` — a
+PUBLIC-profile-only signal (`controllers/device.py`'s own `_profile_entity_access` uses it
+exactly that way, `elif self.ui.profile_tabs_container.exists: return EntityAccess.PUBLIC`). A
+legitimate PRIVATE profile never has that element either — it shows a lock/banner instead — and
+PRIVATE is **scrape's own dominant, expected case**: the very next check in the same function,
+`if user.access == EntityAccess.PUBLIC: skip`, exists precisely because scrape only wants PRIVATE
+profiles. D64's guard was checking the wrong half of a two-sided condition, so it treated the
+majority of real, working input as if it were the rare disabled-page case it was written for.
+
+**Fixed by reusing `IaDevice._profile_entity_access()` directly** (already implements the correct
+three-way PRIVATE/PUBLIC/neither check) instead of re-deriving a partial version of the same
+logic — called once, early, with its result carried forward into `User.access` rather than
+re-querying it a second time later in the function (which the pre-D64 code did, at the default
+30s timeout). `None` (neither signal ever appears) is the only case that still means genuinely
+unavailable.
+
+**The verification gap that let this ship:** D64's own throwaway script never modeled the
+private-banner case at all — its `FakeUI` had only `profile_id`/`profile_tabs_container`, so it
+was structurally incapable of catching this regardless of how many cases it ran. The corrected
+script explicitly exercises all three real outcomes of `_profile_entity_access` (PRIVATE must
+proceed unskipped, PUBLIC must proceed unskipped by *this* guard then get skipped by the
+pre-existing separate check, `None` must skip as `UNAVAILABLE` without ever reaching
+`User.from_ui`) — 6/6 passing this time actually means something.
+
+**Recovery, in order:** committed + pushed the fix, `GIT_BRANCH=feat/control-center ia build`,
+`helm install insta-automate` (the release you'd removed — chart's `values.yaml` needed no
+changes), restored the two manual `kubectl set env` patches (`IA_AGENT_TOKEN` on both
+deployments, `GIT_BRANCH` on the scheduler — neither is in the committed Helm chart, so a
+reinstall from scratch loses them, not just a restart) and `GIT_BRANCH=feat/control-center ia
+prefect deploy` again (the worker's `create-work-pool` init container recreates the pool on every
+pod start, D38's already-documented behavior). Verified live: both pods' installed source
+confirmed via `kubectl exec` to have the fix, env vars intact, scheduler reporting `online: true`
+with every flow gating normally. **Not yet re-confirmed against a real scrape run** — the
+recovery was verified structurally (code present, pods healthy, gates sane) but no profile was
+actually scraped again in this session to watch it succeed end to end.
+
+### D67 · Ingest/Scan/Classify surfaces redesigned from a second round of live feedback; the Live screen's stale-flow-content bug found and fixed
+
+**Ingest never had the image it was trying to show.** `IngestSurface` assumed `entities/<id>.jpg`
+(the event's own `image` field) would usually exist — it doesn't, ever, at ingest time:
+`export_entity()` (the only code that writes that file) is called from `scan_entity_init`, a
+*later* flow, not from `add_new_entity` itself. Every ingest card was rendering a permanent
+"image unavailable" placeholder that read as broken. Rather than build a new screenshot-capture
+pipeline change (scoped and explicitly deferred — a real feature addition needing live phone
+testing, not a bug fix), `IngestSurface` was rebuilt as a metadata card: a type-based icon,
+the entity id, its URL, and type/access badges — all already present in `entity.added`'s own
+`extra` field, no pipeline change needed.
+
+**Scan's ordering, corrected again from your own clarification:** the vertical layout (D62) still
+auto-scrolled to the bottom on new items — you'd actually meant the newest item to render
+pinned at the top with nothing older ever needing to be scrolled to see it, closer to a
+live activity feed than a chat log. Re-implemented without `reverse: true` (that flag is
+specifically the chat-message "newest anchored at the bottom" pattern, not what was wanted here) —
+newest-first is now just the first item in a plain top-down `ListView`. Also switched from two
+images per row (an unintended side effect of `Wrap` at this pane's width) to one full-width image
+with its caption below, matching what "one entry per row" actually meant.
+
+**A real, separate `LiveController` bug:** switching flows (Ingest → Scan, auto-followed) left the
+log console and visualization surface showing Ingest's *stale* content under the Scan tab for
+several seconds, self-correcting only once you manually navigated away and back. Cause:
+`AsyncNotifier`'s default `skipLoadingOnRefresh` behavior keeps showing the previous value while
+a dependency-triggered rebuild is still in flight — exactly what a widget watching
+`liveControllerProvider` with a plain `.when(loading: ...)` sees. Fixed by explicitly forcing
+`state = const AsyncValue.loading()` at the top of `build()` whenever the *flow itself* changed
+(not just its logs/events), so a real flow switch always shows a genuine loading state instead of
+another flow's leftover data.
+
+**New: a Force Run button on the Live screen's header** (your own request — "convenient to not
+have to switch tabs just to trigger a flow and watch its logs"), working on whichever flow is
+currently selected, reusing `FlowCard`'s existing confirmation-dialog logic (now shared, see D69).
+
+**Verified:** `flutter analyze` clean, `flutter test` 39/39. Confirmed live: Ingest → Scan → Scan →
+Classify all auto-followed correctly in your retest (this is what first surfaced D66's still-open
+gap, addressed separately below).
+
+### D66 · Message-triggered ingest never surfaced as `phase: "running"` in the scheduler snapshot
+
+Root cause, found from your own retest: `entity_ingest_message_trigger` (the Telethon `NewMessage`
+handler that fires instantly on a channel post — the "real-time" ingest path ARCHITECTURE
+describes) calls `entity_ingest_trigger()` directly, bypassing `entity_ingest_time_trigger()`'s
+loop entirely — the *only* place that calls `self._set_state("entity-ingest", phase="running",
+...)`. The flow itself ran correctly; the scheduler snapshot simply never reflected it, so nothing
+reading `phase` (the Live screen's auto-follow, in particular) could tell it was happening. Fixed
+by setting `phase="running"` (then back to `"idle"` on completion) directly inside the message
+handler too, tagged with `_current_flow.set("entity-ingest")` for D63's log-routing to pick up
+correctly as well.
+
+---
+
+## 2026-08-02 — Seven bugs from live use, fixed in one session: real research first, then real redeploys
+
+You listed seven things wrong with the app from actually using it (two screenshots included).
+Three parallel Explore agents root-caused all seven before any code was touched — worth recording
+because two of the seven turned out not to be what they looked like at a glance: the "Follow
+button" cards in the Scan screenshot were native Instagram row-crop screenshots, not an app bug,
+and the notification code was already correct — the real problem was D59's own flagged loose end
+(never independently confirmed against a real Telegram delivery).
+
+### D65 · scrcpy's `--adb=` flag doesn't exist — D55's fix silently failed every launch since the day it landed
+
+**The report:** screen mirroring stopped working after D55's adb-churn fix, which the user
+correctly suspected was related rather than coincidental.
+
+**First finding: the fix's own mechanism was still intact but fragile.** `wsl-bridge`'s
+`pyproject.toml` had no `rev`/`branch` pin on `my-modules` at all — its `uv.lock` was resolved to a
+commit from *before* D55's fix, a live-venv hotfix one `uv sync` away from silently reverting.
+Fixed by pinning `my-modules = { git = "...", rev = "<commit>" }` explicitly rather than trusting
+the unpinned default to keep resolving to the right thing — the same durable-pin-over-live-hotfix
+upgrade D55 itself deferred ("pending a real release").
+
+**Second, bigger finding, only surfaced by actually starting a real mirror and reading the
+process list: D55's fix never worked at all.** `scrcpy 3.3.4` has no `--adb=<path>` CLI flag —
+running the exact command `my_modules.scrcpy.Scrcpy.start()` builds gets `scrcpy: unknown option
+-- adb=...`, invisible in production because the class's own `Popen(..., stdout=DEVNULL,
+stderr=DEVNULL)` swallows it. scrcpy only exposes this via the `ADB` **environment variable**
+(confirmed against `scrcpy --help`'s own "Environment variables" section). D55's commit shipped
+without ever launching a real mirror to confirm it worked — the churn-fix half (adb server binding
+to `0.0.0.0`) was real and tested; this half wasn't. Fixed with a new commit on the same
+`fix/scrcpy-adb-version-pin` branch (`94b308a`, still unmerged): `env["ADB"] = ADB` passed to
+`Popen`, flag removed. Manually verified the raw command against a real error message before
+writing the fix, then re-verified the corrected version against the real phone — mirror launches,
+positions correctly (`snapped: true`, previously `false`), and is trackable through
+`/api/device` for the first time since D55.
+
+**Also found and fixed: a live orphaned mirror.** A `scrcpy.exe` process was running with no flags
+at all — not launched through wsl-bridge's own `/scrcpy/start`, using the wrong bundled adb,
+invisible to `GET /scrcpy/`. Killed with the user's confirmation first (a real on-screen window).
+
+**Verified end to end:** stop wsl-bridge (agent-supervised) → `uv sync` → start via the agent →
+`POST /api/device/scrcpy/start` → `snapped: true`, `/api/device` reports `mirroring: true` →
+`POST /api/device/scrcpy/stop` → confirmed zero `scrcpy.exe` processes remain. This is the first
+session this mirror has been proven to actually work end to end since CP 4.5.
+
+### D64 · Disabled/unavailable Instagram profiles now skip gracefully instead of crashing `entity_scrape`
+
+`profile_scrape` (`tasks/ia.py`) called `User.from_ui()` unconditionally once a profile page's app
+bar populated — but a disabled/unavailable account still shows a username in the app bar while
+having none of the post/follower/following elements `User.from_ui` reads without an `.exists`
+guard (unlike `name`/`bio`, two lines above it, which already have one). Uncaught, this burned all
+3 of `@ia_task()`'s retries (~90s) then hard-failed the whole `entity_scrape` run, aborting every
+other queued profile in it too — a single bad profile in the queue could silently stop a run that
+had nothing else wrong with it.
+
+No live disabled profile was available to inspect Instagram's actual "account unavailable" page
+copy/resource-ids, so rather than guess a new selector, the fix reuses the existing, already-proven
+`profile_tabs_container` (`controllers/device.py`, already used by `_profile_entity_access` to mean
+"this is a normal loaded profile") as a pre-check before `User.from_ui()` runs — a missing element
+now short-circuits into the same `scrape.skipped(reason=...)` event pattern already used for
+PUBLIC/NO_POSTS/FMIN/FMAX, rather than raising. **Flagged as best-effort**: verified by a throwaway
+script (`.fn()`-level, every dependency faked) proving both branches — a missing
+`profile_tabs_container` skips cleanly with `reason: "UNAVAILABLE"` and never reaches
+`User.from_ui`, a present one falls through unaffected — but never exercised against a genuine
+disabled account, since none was in the queue this session.
+
+### D63 · Scheduler-pod log lines are now tagged by flow at the source, not broadcast to every active run
+
+The Live screen's log pane showed other flows' trigger/gate lines mixed into whichever flow was
+selected (`agent/flowruns.py`'s `_poll_scheduler_pod` sent every scheduler-pod line into *every*
+currently-active run's ring — never attempted per-flow filtering at all), plus a duplicated
+timestamp/level (`my_modules.logger`'s `RichHandler` already renders `[date] time LEVEL ... file:
+line` into the raw text, and the app's `LogConsole` renders its own pill in front of that same
+text).
+
+Chose the real fix over an agent-only text-matching heuristic (checked with the user first) because
+a heuristic provably misattributes real lines — Classify's own "Scanned entities found to classify"
+gate-check line mentions "classify" but is Classify's own log, not Scan's; text content isn't a
+reliable signal for *who logged it*, only a `contextvars.ContextVar` set once per trigger-loop task
+is. `controllers/prefect.py` gained `_current_flow` + a `logging.Filter` that prefixes every record
+from within a loop's task context with `[entity-scan]` etc. — one `_current_flow.set(...)` line per
+trigger loop, no changes needed to individual `log.info`/`log.error` call sites or to `Deployment`,
+since asyncio tasks each carry their own copy of the contextvar. `flowruns.py::_poll_scheduler_pod`
+was rewritten to reconstruct Rich's wrapped multi-line records (a known, previously-unhandled gap
+its own docstring already flagged), strip the baked-in prefix/suffix, route by the extracted tag to
+only that flow's active run(s), and drop untagged lines (the startup banner, telegram-keepalive)
+rather than broadcasting them — there's no consumer for a flow-agnostic scheduler stream today.
+
+**Verified:** `agent/tests/test_flowruns.py` grew from 34/36 (2 pre-existing checks failed
+immediately after the rewrite — correctly, since the old fixture's untagged lines are now
+correctly dropped) to 39/39 after updating the fixture to the real tagged/wrapped shape and adding
+checks for cross-flow isolation and wrap-reconstruction. All 13 agent suites green (698+ checks).
+Bundled into one `Insta-Automate` commit with D64 and one redeploy cycle, deliberately, to avoid
+two separate live pod restarts for two related fixes in the same session.
+
+### D62 · Scan filmstrip changed from horizontal to vertical
+
+`scan_surface.dart`'s row-crop images (1080:198 — wide, short) scrolled left-to-right in a fixed
+180px-wide `ListView.separated(scrollDirection: Axis.horizontal)`. D44 had called this "not a
+problem" for a different concern (cards not using pane width) and never actually evaluated
+direction against what the user wanted — this session's explicit feedback overrides that. Converted
+to the same vertical `SingleChildScrollView` + `Wrap` + scroll-to-`maxScrollExtent`-on-new-item
+pattern already proven in `classify_surface.dart`, rather than inventing a new one.
+
+### D61 · Live screen's auto-follow-the-running-flow only ever fired once, not "only for Scrape"
+
+`live_page.dart`'s `_autoSelected` was a one-shot latch, not a per-transition flag — the first flow
+observed `running` (usually Scrape, the shortest cycle) set it `true` permanently, silently
+disabling auto-select for every later flow change for the rest of the session. Nothing was actually
+scrape-specific anywhere in the surrounding code; the symptom was just "whichever flow happened to
+run first, forever." Fixed by renaming the flag to mean only "the user manually picked a tab"
+(`_userSelected`, set solely in the chip's `onSelected`) and re-checking whether the *currently
+selected* flow is still running before ever considering an auto-switch — so the view now follows
+every flow transition, not just the first one, until a real manual click opts out.
+
+### D60 · Bugs 1 & 5 (Telegram fallback / missing hyperlink) were D59's own flagged loose end, not new bugs — closed for real this time
+
+Investigation confirmed all of D59's four code paths were already correct (`notify()`'s fallback
+logic, `EventBus`'s device-tagging, all three per-profile call sites' `url=`/`always_telegram=True`)
+— D59 itself had already written "not yet independently confirmed: a real Telegram delivery
+post-fix." This session did that confirmation for real: `kubectl exec`-ed into both pods and
+grep-confirmed the D58/D59 code was genuinely loaded (it was — the pods hadn't gone stale again),
+then called `notify()` directly inside the worker pod with zero paired devices connected. Result:
+`delivered=False` (correctly reflecting zero real phone connections) → fell through to Telegram →
+**user confirmed the message actually arrived.** The historical "Scan complete" entries with
+`url: null` visible in `GET /api/notify`'s replay are pre-D58/D59 history sent by the stale pod
+D59 already documented, not a live recurrence — every entry after this session's redeploy carries
+`url` correctly.
+
+Landed as part of the same commit + redeploy cycle as D63/D64, plus this session's own two additional
+Insta-Automate fixes — `GIT_BRANCH=feat/control-center` was set explicitly for **both** `ia build`
+and `ia prefect deploy` this time (the user flagged, correctly, that `ia build` needed the same
+discipline `ia prefect deploy` already required after D55/D59 — `ia build` in fact resolves the
+branch from the locally checked-out branch via `git branch --show-current`, not `GIT_BRANCH`, but
+setting it explicitly regardless is the safer standing habit and was verified either way: the
+generated Dockerfile's `pip install git+...@feat/control-center` was checked against the exact
+commit hash before trusting it).
+
+---
+
 ## 2026-08-02 — D58's pipeline half never reached the live worker pod; found from your own report
 
 ### D59 · A forgotten `git push` meant the worker pod kept skipping Telegram — same undeployed-code shape as D36/D39, different specific cause

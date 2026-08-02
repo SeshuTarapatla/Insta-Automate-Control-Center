@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/file_opener.dart';
 import '../../core/flow_switch_confirm.dart';
+import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
 import '../settings/config_controller.dart';
 import 'flows_controller.dart';
@@ -53,49 +54,6 @@ class FlowCard extends ConsumerWidget {
     await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'skip_wait');
     if (context.mounted) {
       AppSnackBar.show(context, '${flowTitle[state.flow]}: ${_runNowLabel()} sent');
-    }
-  }
-
-  // entity-scan needs a real queued entity to supply as a parameter;
-  // entity-follow needs real files in follow_queued/ to iterate — force
-  // can't invent either, so a no_work gate on these two stays a genuine
-  // dead end even when forced (D29). Worth saying up front rather than
-  // letting the button silently do nothing.
-  static const _hardNoWorkFlows = {'entity-scan', 'entity-follow'};
-
-  Future<void> _forceRun(BuildContext context, WidgetRef ref) async {
-    final content = switch (state.gate) {
-      FlowGate(ok: true) =>
-        'Triggers ${flowTitle[state.flow]} immediately, ignoring its normal schedule, '
-            'switch, and daily limits.',
-      FlowGate(reason: 'no_work') when _hardNoWorkFlows.contains(state.flow) =>
-        'Nothing is currently queued for ${flowTitle[state.flow]} — Force run bypasses timing '
-            'and limits, but there\'s no queued entity to act on, so this will complete without '
-            'doing anything.',
-      FlowGate(:final detail, :final reason) =>
-        'This triggers it despite: ${detail ?? reason}',
-    };
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Force run ${flowTitle[state.flow]}?'),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Force run'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'force_run');
-    if (context.mounted) {
-      AppSnackBar.show(context, '${flowTitle[state.flow]}: force run queued');
     }
   }
 
@@ -209,9 +167,15 @@ class FlowCard extends ConsumerWidget {
                             child: Text(_runNowLabel()),
                           ),
                           OutlinedButton(
-                            onPressed: () => _forceRun(context, ref),
+                            onPressed: () => forceRunFlow(context, ref, state),
                             child: const Text('Force run'),
                           ),
+                          if (state.phase == 'running' && state.lastRun != null)
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+                              onPressed: () => stopFlowRun(context, ref, state),
+                              child: const Text('Stop'),
+                            ),
                         ],
                       ),
               ),

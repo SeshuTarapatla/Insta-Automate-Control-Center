@@ -50,8 +50,21 @@ RUN_LOGS = [
 ]
 
 POD_LINES = [
-    ("2026-08-01T10:00:00.500000000Z", "INFO     entity-scrape: triggering run"),
-    ("2026-08-01T10:00:01.500000000Z", "gate ok, proceeding"),
+    # A tagged, single-line record for the run under test.
+    ("2026-08-01T10:00:00.500000000Z",
+     "[2026-08-01] 10:00:00 INFO     [entity-scrape] triggering run          prefect.py:100"),
+    # A tagged record whose message wraps onto a plain continuation line with
+    # no prefix of its own - my_modules.logger's RichHandler behavior
+    # (D30/D60) that `_poll_scheduler_pod` has to reassemble.
+    ("2026-08-01T10:00:01.500000000Z",
+     "[2026-08-01] 10:00:01 INFO     [entity-scrape] gate ok,          prefect.py:101"),
+    ("2026-08-01T10:00:01.600000000Z", "proceeding"),
+    # Tagged for a *different* flow - must never land in entity-scrape's ring.
+    ("2026-08-01T10:00:01.700000000Z",
+     "[2026-08-01] 10:00:01 INFO     [entity-classify] unrelated line   prefect.py:200"),
+    # No flow tag at all (startup banner, telegram-keepalive) - dropped.
+    ("2026-08-01T10:00:01.800000000Z",
+     "[2026-08-01] 10:00:01 INFO     Insta Automate Scheduler and Trigerrer started!  prefect.py:457"),
 ]
 
 
@@ -214,16 +227,30 @@ async def poll_run_checks() -> None:
 
 
 async def scheduler_pod_checks() -> None:
-    print("\n8. scheduler pod lines are merged only into currently active runs")
+    print("\n8. scheduler pod lines are routed by flow tag, joined across wraps, untagged dropped (D60)")
     bus = EventBus()
     mirror = SchedulerMirror(bus)
     tailer = FlowRunTailer(bus, mirror)
     await tailer._ensure_tracked("entity-scrape", ACTIVE_RUN_ID)
+    classify_run_id = "run-classify-1"
+    await tailer._ensure_tracked("entity-classify", classify_run_id)
 
-    await tailer._poll_scheduler_pod(active_run_ids={ACTIVE_RUN_ID})
+    await tailer._poll_scheduler_pod(active_run_ids={ACTIVE_RUN_ID, classify_run_id})
     tracked = tailer.run(ACTIVE_RUN_ID)
     scheduler_entries = [e for e in tracked.ring.tail(None) if e["source"] == "scheduler"]
-    check("both pod lines landed, tagged as scheduler-sourced", len(scheduler_entries) == 2, str(scheduler_entries))
+    check("only entity-scrape's two tagged lines landed in its own ring",
+          len(scheduler_entries) == 2, str(scheduler_entries))
+    check("the wrapped continuation was joined onto the record it belongs to",
+          any(e["message"] == "gate ok, proceeding" for e in scheduler_entries), str(scheduler_entries))
+    check("the flow tag itself was stripped from the displayed message",
+          all(not e["message"].startswith("[entity-") for e in scheduler_entries), str(scheduler_entries))
+
+    classify_tracked = tailer.run(classify_run_id)
+    classify_entries = [e for e in classify_tracked.ring.tail(None) if e["source"] == "scheduler"]
+    check("entity-classify's tagged line landed only in its own ring, not entity-scrape's",
+          len(classify_entries) == 1 and classify_entries[0]["message"] == "unrelated line",
+          str(classify_entries))
+
     check("cursor advanced to the last line's parsed timestamp",
           tailer._scheduler_cursor == parse_ts(POD_LINES[-1][0]))
 

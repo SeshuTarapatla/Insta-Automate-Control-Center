@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
 import 'device_bar.dart';
@@ -32,13 +33,28 @@ class LivePage extends ConsumerStatefulWidget {
 }
 
 class _LivePageState extends ConsumerState<LivePage> {
-  bool _autoSelected = false;
+  // Whether the initial catch-up (below) has already run once. Without this,
+  // the postFrameCallback fired on *every* build - including one triggered
+  // by a manual chip click itself (`selectedFlowProvider` changing is a
+  // `ref.watch`ed dependency of this very widget) - which re-ran
+  // `_maybeAutoSelect` against the still-unchanged snapshot and immediately
+  // selected the still-running flow right back, undoing the click within
+  // the same frame. A real click now only ever gets overridden by a real
+  // subsequent `flows.state` broadcast (`ref.listen` below), never by its
+  // own rebuild.
+  bool _didInitialCatchUp = false;
 
+  // Always follows whichever flow is running - a manual tab click only ever
+  // shows something *until the next relevant snapshot*, it does not opt out
+  // of auto-follow permanently (that was tried and explicitly rejected: it
+  // made the view get stuck on whatever tab happened to be open, since any
+  // earlier click - even an incidental one - silently disabled auto-follow
+  // for the rest of the session).
   void _maybeAutoSelect(SchedulerSnapshot snapshot) {
-    if (_autoSelected) return;
+    final current = ref.read(selectedFlowProvider);
+    if (snapshot.flows[current]?.phase == 'running') return; // already following the active one
     for (final flow in flowOrder) {
       if (snapshot.flows[flow]?.phase == 'running') {
-        _autoSelected = true;
         ref.read(selectedFlowProvider.notifier).select(flow);
         return;
       }
@@ -55,9 +71,12 @@ class _LivePageState extends ConsumerState<LivePage> {
     // arrived before this page was built (likely, since Flows watches the
     // same provider), the auto-select needs a nudge from the value already
     // held. Deferred to after this frame since mutating another provider's
-    // state synchronously mid-build isn't safe.
+    // state synchronously mid-build isn't safe. Only ever done once — see
+    // `_didInitialCatchUp`'s own comment for why re-running this on every
+    // rebuild was a real bug, not just unnecessary.
     final snapshot = ref.watch(flowsControllerProvider).value;
-    if (snapshot != null && !_autoSelected) {
+    if (snapshot != null && !_didInitialCatchUp) {
+      _didInitialCatchUp = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoSelect(snapshot));
     }
 
@@ -78,14 +97,39 @@ class _LivePageState extends ConsumerState<LivePage> {
                       ChoiceChip(
                         label: Text(flowTitle[flow] ?? flow),
                         selected: selectedFlow == flow,
-                        onSelected: (_) {
-                          _autoSelected = true;
-                          ref.read(selectedFlowProvider.notifier).select(flow);
-                        },
+                        onSelected: (_) => ref.read(selectedFlowProvider.notifier).select(flow),
                       ),
                   ],
                 ),
               ),
+              // Force run / Stop the selected flow right from here — the
+              // point of these living in the header (not just on the Flows
+              // screen) is not having to switch tabs when the goal is
+              // simply "trigger this and watch its logs," or "something's
+              // wrong, stop it now" (D69 — added after a real incident with
+              // no way to do the latter short of uninstalling the release).
+              if (snapshot?.flows[selectedFlow] case final state?)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (state.phase == 'running' && state.lastRun != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                            onPressed: () => stopFlowRun(context, ref, state),
+                            child: const Text('Stop'),
+                          ),
+                        ),
+                      OutlinedButton(
+                        onPressed: () => forceRunFlow(context, ref, state),
+                        child: const Text('Force run'),
+                      ),
+                    ],
+                  ),
+                ),
               // Device control lives here, not in RunSummary's body (D46) —
               // this row already has the height to spare next to the flow
               // chips, and it frees the whole left column below for the log

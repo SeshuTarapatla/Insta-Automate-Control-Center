@@ -43,6 +43,17 @@ class LiveController extends AsyncNotifier<LiveState> {
   Future<LiveState> build() async {
     final flow = ref.watch(selectedFlowProvider);
 
+    // A real flow switch (not just new logs/events on the same flow) forces
+    // a genuine loading state instead of leaving Riverpod's default
+    // skip-loading-on-refresh behavior showing the *previous* flow's stale
+    // LiveState until this rebuild resolves — otherwise the tab visibly
+    // says e.g. "Scan" while the log console and visualization surface keep
+    // showing Ingest's content underneath it for however long the fetch
+    // below takes.
+    if (state.value?.flow != flow) {
+      state = const AsyncValue.loading();
+    }
+
     ref.listen<AsyncValue<AgentEvent>>(agentEventsProvider, (previous, next) {
       next.whenData(_handleWsEvent);
     });

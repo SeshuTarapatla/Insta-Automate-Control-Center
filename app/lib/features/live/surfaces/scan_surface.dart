@@ -17,15 +17,6 @@ class ScanSurface extends StatefulWidget {
 }
 
 class _ScanSurfaceState extends State<ScanSurface> {
-  final _scroll = ScrollController();
-  int _lastCount = 0;
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -35,13 +26,6 @@ class _ScanSurfaceState extends State<ScanSurface> {
 
     if (started == null && items.isEmpty && completed == null) {
       return const SurfaceEmpty(message: 'No scan activity yet for this run.');
-    }
-
-    if (items.length != _lastCount) {
-      _lastCount = items.length;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-      });
     }
 
     final counters = (completed ?? items.lastOrNull)?.counters;
@@ -87,29 +71,33 @@ class _ScanSurfaceState extends State<ScanSurface> {
           Expanded(
             child: items.isEmpty
                 ? const SurfaceEmpty(message: 'No rows scanned yet.')
+                // Vertical, one full-width item per row, newest at the top -
+                // NOT `reverse: true` (that's the chat-message pattern:
+                // newest at the *bottom*, index 0 anchored there). Here the
+                // newest item is simply rendered first in normal top-down
+                // order, so it's always visible without any scrolling at
+                // all; older items sink down and off-screen as new ones
+                // arrive above them.
                 : ListView.separated(
-                    controller: _scroll,
-                    scrollDirection: Axis.horizontal,
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
-                      final item = items[index];
-                      return SizedBox(
-                        width: 180,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            AgentImage(imageKey: item.imageKey, width: 180, aspectRatio: 1080 / 198),
-                            const SizedBox(height: 4),
-                            Text(
-                              '@${item.subject ?? '?'}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelSmall,
-                            ),
-                          ],
-                        ),
+                      final item = items[items.length - 1 - index];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Full pane width, not a fixed thumbnail - the
+                          // 1080:198 row crop was cramped and hard to read
+                          // at 180px wide next to its caption.
+                          AgentImage(imageKey: item.imageKey, width: 400, aspectRatio: 1080 / 198),
+                          const SizedBox(height: 4),
+                          Text(
+                            '@${item.subject ?? '?'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall,
+                          ),
+                        ],
                       );
                     },
                   ),

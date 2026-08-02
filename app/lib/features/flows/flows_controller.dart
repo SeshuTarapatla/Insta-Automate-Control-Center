@@ -69,6 +69,14 @@ class FlowsController extends AsyncNotifier<SchedulerSnapshot> {
     await dio.post('/api/scheduler/$flow/command', data: {'command': command});
   }
 
+  /// Stops a run genuinely in progress (D69) — not a scheduling command
+  /// like [sendCommand] above, so it goes straight to the flow-runs REST
+  /// surface instead of the scheduler's command queue.
+  Future<void> cancelRun(String runId) async {
+    final dio = ref.read(agentClientProvider);
+    await dio.post('/api/flow-runs/$runId/cancel');
+  }
+
   Future<void> refresh() async {
     final snapshot = await _fetch();
     _trackDeadlines(snapshot);

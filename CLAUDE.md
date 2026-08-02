@@ -21,8 +21,57 @@ live against the real agent and a real phone, then extended with a notification-
 desktop, has to be connected), always-Telegram + tap-to-open for the three per-profile
 notifications, and real markdown rendering on both clients — 🟢, then D58's *pipeline* half found
 undeployed hours later (D59 — a forgotten `git push` meant the live worker pod kept running
-pre-D58 code; fixed the D39 way, push + `ia build` + restart + redeploy; not yet independently
-confirmed against a real Telegram delivery). **Phase 6 is explicitly not being accepted yet** —
+pre-D58 code; fixed the D39 way, push + `ia build` + restart + redeploy). **2026-08-02, later the
+same day: a seven-bug fix pass from live use, all landed and verified live.** D59's own flagged
+loose end closed for real — a `notify()` call made with zero paired devices connected, live inside
+the worker pod, confirmed `delivered=False` correctly triggering the Telegram fallback, and you
+confirmed the message actually arrived (D60). The Live screen's auto-follow-the-running-flow bug
+was a one-shot latch, not anything scrape-specific — fixed to re-arm on every flow transition,
+not just the first one observed (D61). The Scan filmstrip changed from horizontal to vertical per
+your feedback, reusing `classify_surface.dart`'s proven wrap-and-auto-follow pattern (D62).
+Scheduler-pod log lines are now tagged with their own flow at the source (a `contextvars.ContextVar`
++ `logging.Filter` in `controllers/prefect.py`, one line per trigger loop) so the agent's log tailer
+routes each line to the right flow's pane instead of broadcasting every line to every active run —
+chosen over a text-matching heuristic after confirming the heuristic would provably misattribute
+real lines (D63). A disabled/unavailable Instagram profile no longer crashes `entity_scrape` — a
+missing `profile_tabs_container` now short-circuits into the existing `scrape.skipped` event pattern
+instead of an uncaught exception in `User.from_ui()` (D64). And the scrcpy screen mirror, broken
+since D55, turned out to have never actually worked at all — `scrcpy 3.3.4` has no `--adb=` CLI
+flag, so D55's fix failed silently on every launch (swallowed by `stdout=DEVNULL`); found only by
+starting a real mirror and reading the literal error text, fixed via the `ADB` environment variable
+instead, verified with a real start/stop round trip against the phone (D65). Bugs 6/7 shared one
+Insta-Automate commit and one redeploy cycle (`GIT_BRANCH=feat/control-center` set explicitly for
+both `ia build` and `ia prefect deploy` this time, per your correction); full detail in
+DECISIONS.md's D60–D65. **The same session kept going as you actually retested these fixes live,
+surfacing four more rounds (D66–D69), one a real production incident.** Message-triggered ingest
+(a Telegram channel post) still never showed as `phase: "running"` — a different, narrower gap
+than D61's fix, since it bypasses the polling loop entirely (D66). Ingest/Scan/Classify got
+reworked again from your follow-up feedback (Ingest replaced with a metadata card since it never
+actually has the image it was trying to show; Scan's ordering corrected to newest-pinned-at-the-
+top with no scrolling, not the chat-style bottom-anchor it had been given; a real `LiveController`
+bug found and fixed where a flow switch briefly kept showing the *previous* flow's stale content),
+plus a new Force Run button on the Live screen's own header (D67). **Then a real regression
+shipped and had to be caught live**: D64's disabled-profile guard silently skipped *every* real
+profile scraped after it — PRIVATE ones especially, scrape's own dominant case — severe enough
+that you uninstalled the whole `insta-automate` Helm release to stop it. Fixed by reusing the
+existing three-way PRIVATE/PUBLIC/unavailable check instead of the partial one-signal version
+D64 shipped, caught this time by a corrected verification script that actually models the
+private-profile case D64's never did; release reinstalled, manual env-var patches restored,
+deployments re-registered, verified live (D68). Closing that gap directly motivated a new **Stop
+button** (Flows screen + Live header, cancels a run in progress via Prefect's own cancel-state
+transition) — there had been no way to do that short of the Helm uninstall. The window-next-to-
+the-mirror positioning needed a real unit fix too (scrcpy's launch geometry is physical pixels,
+window_manager/screen_retriever are logical — a real ~1.5x error on this machine's 150% scaling)
+plus a sizing fix (an old saved window size was still capping the width short of the screen's
+right edge — the whole save/restore mechanism was removed, since the design intent is to fill the
+same space identically every launch) and a genuine `LivePage` bug (a postFrameCallback re-firing
+on every rebuild, including the one from a user's own manual tab click, silently undoing it) (D69).
+Verified: `flutter analyze`/`flutter test` (39/39) clean after every round, all 13 agent suites
+green (475 checks) including the new cancel endpoint, built and live-retested by you after each
+change. **Not yet re-confirmed: a real scrape run completing successfully post-D68** — the fix was
+verified structurally (code loaded, pods healthy, scheduler gating normally), not by watching an
+actual profile scrape succeed end to end. Full detail in DECISIONS.md's D66–D69.
+**Phase 6 is explicitly not being accepted yet** —
 you flagged other changes/bugs to address first before the next checkpoint, so treat CP 6.1–6.4 as
 built and deployed, not signed off — see the dedicated paragraphs
 below. **2026-08-02: a live incident (`entity-follow` permanently

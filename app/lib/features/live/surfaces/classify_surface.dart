@@ -36,9 +36,9 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
 
     final rate = _rate(verdicts);
 
-    // Same auto-follow trick `scan_surface.dart` uses — classify streams
-    // fast enough (an img/s rate is shown) that the newest verdict needs to
-    // stay in view without a manual scroll.
+    // Unlike scan (newest pinned at the top, no scrolling) — classify
+    // streams fast enough that oldest-at-top/scroll-to-follow-the-newest
+    // reads more naturally here, matching this surface's original design.
     if (verdicts.length != _lastCount) {
       _lastCount = verdicts.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,47 +61,45 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
+          // Single full-width column (D67's layout fix, kept) — oldest at
+          // the top, auto-scrolling to the newest at the bottom (reverted
+          // from a same-session mistake that copied scan's newest-at-top
+          // pattern here too, which wasn't asked for and read wrong for
+          // this surface's faster streaming pace).
+          child: ListView.separated(
             controller: _scroll,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            // Wrapped left-to-right at a capped width per card rather than
-            // one full-bleed row each (D43's follow-up, same reasoning as
-            // `scrape_surface.dart`'s `_HistoryWrap`) — oldest first, so the
-            // auto-scroll above lands on the newest at the bottom.
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final event in verdicts)
-                  SizedBox(
-                    width: 320,
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 100,
-                              child: AgentImage(imageKey: event.imageKey, width: 200, aspectRatio: 1080 / 198),
+            itemCount: verdicts.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) {
+              final event = verdicts[index];
+              return Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AgentImage(imageKey: event.imageKey, width: 400, aspectRatio: 1080 / 198),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '@${event.subject ?? '?'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '@${event.subject ?? '?'}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            ),
-                            OutcomeBadge(label: event.verdict ?? '?', tone: toneFor(event.verdict)),
-                          ],
-                        ),
+                          ),
+                          OutcomeBadge(label: event.verdict ?? '?', tone: toneFor(event.verdict)),
+                        ],
                       ),
-                    ),
+                    ],
                   ),
-              ],
-            ),
+                ),
+              );
+            },
           ),
         ),
       ],

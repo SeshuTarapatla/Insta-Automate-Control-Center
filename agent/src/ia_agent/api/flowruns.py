@@ -70,4 +70,20 @@ def create_flowruns_router(tailer: FlowRunTailer) -> APIRouter:
         ]
         return {"flow_run_id": run_id, "flow": None, "live": False, "entries": entries}
 
+    @router.post("/{run_id}/cancel")
+    async def cancel_flow_run(run_id: str) -> dict:
+        """Stop a run in progress - the only way to do this today short of
+        uninstalling the whole release (D69). Not immediate: this sets
+        CANCELLING, which Prefect's own cancellation monitoring then
+        carries through to actually tearing the run's infrastructure down;
+        the scheduler's own trigger loop notices the terminal state on its
+        next `wait_for_flow_run` poll same as any other run ending."""
+        info = await prefect.flow_run(run_id)
+        if info is None:
+            raise HTTPException(status_code=404, detail=f"unknown flow run: {run_id}")
+        ok = await prefect.cancel_flow_run(run_id)
+        if not ok:
+            raise HTTPException(status_code=502, detail="prefect refused the cancel request")
+        return {"status": "cancelling"}
+
     return router

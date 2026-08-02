@@ -105,6 +105,23 @@ async def run_logs(flow_run_id: str, after: str | None = None, limit: int = 200)
         return response.json()
 
 
+async def cancel_flow_run(flow_run_id: str) -> bool:
+    """Sets a flow run to CANCELLING - the same state transition the
+    Prefect UI's own Cancel button triggers, which Prefect's cancellation
+    monitoring then carries through to actually stopping the run's
+    infrastructure. Not immediate (the worker still has to notice and tear
+    the run down), but the fastest stop available without touching the
+    pod directly. Added for a real incident (D69): a bad flow run had no
+    way to be stopped from the control center at all short of uninstalling
+    the whole release."""
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=5) as client:
+        response = await client.post(
+            f"/flow_runs/{flow_run_id}/set_state",
+            json={"state": {"type": "CANCELLING", "name": "Cancelling"}, "force": True},
+        )
+        return response.status_code == 200
+
+
 async def task_run_name(task_run_id: str) -> str | None:
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=5) as client:
         response = await client.get(f"/task_runs/{task_run_id}")

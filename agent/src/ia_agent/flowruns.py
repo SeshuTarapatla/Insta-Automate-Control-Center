@@ -18,6 +18,7 @@ scheduler mirror is offline.
 """
 import asyncio
 import logging
+import re
 import threading
 import time
 from datetime import datetime
@@ -35,19 +36,20 @@ FINISHED_GRACE = 5.0  # seconds a just-finished run is still polled, to catch tr
 FLOWS = ["entity-ingest", "entity-scan", "entity-classify", "entity-scrape", "entity-follow"]
 SCHEDULER_POD_DEPLOYMENT = "insta-automate"  # runs `ia prefect serve` — the trigger loops
 
-_LEVEL_WORDS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
-
-
-def _sniff_level(message: str) -> str:
-    """The scheduler pod mixes two logging styles (`my_modules.logger`'s Rich
-    columns and loguru-ish `time | LEVEL | ...` from third-party libraries),
-    so there is no one format to parse — the level word usually appears near
-    the front of the line either way."""
-    head = message[:40]
-    for word in _LEVEL_WORDS:
-        if word in head:
-            return word
-    return "INFO"
+# `my_modules.logger`'s RichHandler renders one column layout per record:
+# `[date] time LEVEL   message...   file.py:line`, right-justifying the
+# source column onto the *first* physical line and wrapping any message text
+# that doesn't fit onto plain continuation lines with none of the above -
+# `kube.pod_logs`'s own docstring already flags this as an unhandled gap.
+# `_RICH_LINE` recognizes a record's first line and captures its level; a
+# line that doesn't match is a continuation of whatever's pending.
+_RICH_LINE = re.compile(r"^\[\d{4}-\d{2}-\d{2}\]\s+\d{2}:\d{2}:\d{2}\s+(\w+)\s+(.*)$")
+_TRAILING_SOURCE = re.compile(r"\s{2,}\S+\.py:\d+\s*$")
+# Set by `controllers.prefect`'s `_FlowTagFilter` (Insta-Automate, D60) on
+# every record logged from within a trigger loop's own task context - the
+# only way to attribute a scheduler-pod line to one specific flow, since all
+# five loops share one process/one stdout stream.
+_FLOW_TAG = re.compile(r"^\[(entity-[a-z]+)\]\s*")
 
 
 def parse_ts(value: str) -> float:
@@ -104,6 +106,7 @@ class FlowRunTailer:
         self._deployment_ids: dict[str, str] = {}
         self._task_names: dict[str, str | None] = {}
         self._scheduler_cursor: float | None = None
+        self._scheduler_pending: dict[str, str] | None = None  # {"level", "message"} - a record still being joined
         self._task: asyncio.Task | None = None
 
     # ------------------------------------------------------------- lifecycle
@@ -261,19 +264,60 @@ class FlowRunTailer:
         if not parsed:
             return
         self._scheduler_cursor = parsed[-1][1]
-        if not active_run_ids:
-            return
-        targets = [tracked for tracked in self.known_runs() if tracked.run_id in active_run_ids]
+
         for _, _, text in parsed:
             if not text.strip():
                 continue
-            for tracked in targets:
-                entry = tracked.ring.append(
-                    ts=time.time(), source="scheduler", level=_sniff_level(text), task=None, message=text
-                )
-                await self._bus.publish(
-                    "flowrun.logs", {"flow_run_id": tracked.run_id, "flow": tracked.flow, **entry}
-                )
+            start = _RICH_LINE.match(text)
+            if start:
+                await self._flush_scheduler_pending(active_run_ids)
+                level, rest = start.group(1), start.group(2)
+                self._scheduler_pending = {"level": level, "message": _TRAILING_SOURCE.sub("", rest).rstrip()}
+            elif self._scheduler_pending is not None:
+                # A wrapped continuation of the pending record - joined
+                # rather than shown as its own disconnected fragment
+                # (previously: "Triggering:" / "Deployment(...)" / "- attempt
+                # 1" as three separate log rows for one logical message).
+                continuation = _TRAILING_SOURCE.sub("", text).strip()
+                if continuation:
+                    self._scheduler_pending["message"] += " " + continuation
+            # else: a continuation line with nothing pending to attach to
+            # (e.g. right after an agent restart mid-message) - dropped.
+
+        # Flushed at the end of every tick rather than held for a future
+        # continuation that might still be coming - keeps the console
+        # current. The rare cost is a message that straddles exactly a poll
+        # boundary losing its still-in-flight tail, not a wrong-flow mix-up.
+        await self._flush_scheduler_pending(active_run_ids)
+
+    async def _flush_scheduler_pending(self, active_run_ids: set[str]) -> None:
+        pending = self._scheduler_pending
+        if pending is None:
+            return
+        self._scheduler_pending = None
+        message = pending["message"].strip()
+        if not message:
+            return
+        tagged = _FLOW_TAG.match(message)
+        if not tagged:
+            # No consumer for a flow-agnostic scheduler stream today (the
+            # startup banner, telegram-keepalive) - dropped rather than
+            # broadcast to every active run, which is the noise this whole
+            # rewrite exists to remove.
+            return
+        flow = tagged.group(1)
+        message = message[tagged.end():]
+        targets = [
+            tracked for tracked in self.known_runs()
+            if tracked.flow == flow and tracked.run_id in active_run_ids
+        ]
+        for tracked in targets:
+            entry = tracked.ring.append(
+                ts=time.time(), source="scheduler", level=pending["level"], task=None, message=message
+            )
+            await self._bus.publish(
+                "flowrun.logs", {"flow_run_id": tracked.run_id, "flow": tracked.flow, **entry}
+            )
 
     def _evict(self) -> None:
         with self._lock:

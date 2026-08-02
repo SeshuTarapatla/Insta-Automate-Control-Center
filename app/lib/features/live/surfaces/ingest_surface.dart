@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
 import 'surface_common.dart';
 
-/// entity-ingest: hero page cards for every entity added this run — the full
-/// profile page (`entities/<id>.jpg`, 1080×2246), with its type/access badges.
+/// entity-ingest: a metadata card per entity added this run. Ingest never
+/// produces an image of its own — `entities/<id>.jpg` (the full profile
+/// page screenshot the event's `image` field names) isn't written until a
+/// *later* flow (`entity_scan`'s `scan_entity_init`) opens the entity, so at
+/// ingest time it never exists yet. An earlier version tried to show it
+/// anyway and always rendered a broken-looking placeholder; this shows what
+/// ingest actually has — the entity's type/access/URL — instead.
 class IngestSurface extends StatelessWidget {
   const IngestSurface({super.key, required this.events});
 
@@ -18,60 +22,89 @@ class IngestSurface extends StatelessWidget {
       return const SurfaceEmpty(message: 'No entities added yet this run.');
     }
 
-    return GridView.builder(
+    return ListView.separated(
       padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1080 / 2246 * 1.35, // room for the caption below the image
-      ),
       itemCount: added.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        // Newest first.
+        // Newest first, no scrolling needed to see the latest.
         final event = added[added.length - 1 - index];
-        return _HeroCard(event: event);
+        return _EntityCard(event: event);
       },
     );
   }
 }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.event});
+IconData _iconForType(String? type) => switch (type?.toLowerCase()) {
+  'reel' => Icons.movie_outlined,
+  'post' => Icons.grid_on_outlined,
+  'profile' => Icons.person_outline,
+  _ => Icons.help_outline,
+};
+
+class _EntityCard extends StatelessWidget {
+  const _EntityCard({required this.event});
 
   final FlowEvent event;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: AgentImage(imageKey: event.imageKey, width: 320, aspectRatio: 1080 / 2246)),
-        const SizedBox(height: 6),
-        Text(
-          '@${event.entity ?? event.subject ?? '?'}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.labelMedium,
+    final type = event.extra['type'] as String?;
+    final access = event.extra['access'] as String?;
+    final url = event.extra['url'] as String?;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              child: Icon(_iconForType(type), color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '@${event.entity ?? event.subject ?? '?'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  if (url != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        url,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  if (type != null || access != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Wrap(
+                        spacing: 6,
+                        children: [
+                          if (type != null) OutcomeBadge(label: type.toUpperCase(), tone: BadgeTone.neutral),
+                          if (access != null)
+                            OutcomeBadge(label: access.toUpperCase(), tone: toneFor(access.toUpperCase())),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
-        if (event.extra['type'] != null || event.extra['access'] != null)
-          Wrap(
-            spacing: 4,
-            children: [
-              if (event.extra['type'] != null)
-                Text(
-                  '${event.extra['type']}'.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              if (event.extra['access'] != null)
-                Text(
-                  '${event.extra['access']}'.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-            ],
-          ),
-      ],
+      ),
     );
   }
 }
