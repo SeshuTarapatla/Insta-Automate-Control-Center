@@ -19,7 +19,12 @@ foreground-service push notifications, compact live flow view, config write-thro
 live against the real agent and a real phone, then extended with a notification-routing redesign
 (D58) found by actually using it — device-aware `delivered`/`targets` (a phone, not just the
 desktop, has to be connected), always-Telegram + tap-to-open for the three per-profile
-notifications, and real markdown rendering on both clients — 🟢** — see the dedicated paragraphs
+notifications, and real markdown rendering on both clients — 🟢, then D58's *pipeline* half found
+undeployed hours later (D59 — a forgotten `git push` meant the live worker pod kept running
+pre-D58 code; fixed the D39 way, push + `ia build` + restart + redeploy; not yet independently
+confirmed against a real Telegram delivery). **Phase 6 is explicitly not being accepted yet** —
+you flagged other changes/bugs to address first before the next checkpoint, so treat CP 6.1–6.4 as
+built and deployed, not signed off — see the dedicated paragraphs
 below. **2026-08-02: a live incident (`entity-follow` permanently
 frozen "running", zero triggers for hours) uncovered and fixed five chained bugs — see D55 and the
 dedicated paragraph below. CP 6.2 is now deployed to the live worker pod for the first time**,

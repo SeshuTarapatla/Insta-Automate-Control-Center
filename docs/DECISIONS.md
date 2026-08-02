@@ -5,6 +5,50 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 — D58's pipeline half never reached the live worker pod; found from your own report
+
+### D59 · A forgotten `git push` meant the worker pod kept skipping Telegram — same undeployed-code shape as D36/D39, different specific cause
+
+**The report:** you noticed the three "always Telegram" notifications had stopped arriving on
+Telegram, despite D58 landing that exact behavior hours earlier.
+
+**Root cause, confirmed before touching anything:** D58's `Insta-Automate` commit
+(`3e2186a`, `feat/control-center`) was created with `git commit` but never `git push`ed — the
+worker pod's Prefect deployments `git_clone` from GitHub, not local disk, so it was still running
+the pre-D58 `notify()` with no `always_telegram`/`url` at all (confirmed by `kubectl exec`-ing in
+and reading the installed source directly, same technique as D39). Combined with the *agent* half
+of D58 — already live, since `ia-agent.exe` is a local process I'd already restarted — correctly
+computing `delivered` from real phone connectivity instead of "any WS client, desktop included,"
+the live pipeline now saw `delivered=True` almost continuously (your phone's foreground service
+holds a connection open most of the time) with no `always_telegram` override yet deployed to force
+Telegram anyway. Every notification, not just the three per-profile ones, had been silently
+skipping Telegram whenever your phone was connected — this is D53's original risk, made worse by
+the agent-side fix landing before the pipeline-side override that was supposed to compensate for
+it in the one case (per-profile notifications) where losing Telegram matters most.
+
+**Fixed the same way as D39: push, `ia build`, restart, `ia prefect deploy`.** `git push origin
+feat/control-center`, `ia build` (pinned the new commit, confirmed via the build log), `kubectl
+rollout restart deployment/insta-automate-worker`, then verified the *new* pod's installed
+`notify()` actually has `always_telegram`/`url` before doing anything else. The restart re-hit
+D38's known work-pool-orphaning init container as expected — fixed the documented way,
+`GIT_BRANCH=feat/control-center ia prefect deploy` (D55's exact lesson: a bare local shell
+defaults to `main` without it). All 5 real flows + `sample-flow` confirmed `READY` against
+`insta-automate-pool` afterward, and the scheduler's live state showed no crashes, normal gate
+reasons across the board.
+
+**Not yet independently confirmed:** a real Telegram delivery post-fix — there's no way to force
+one without waiting for a genuine per-profile event (a follow, an already-known entity, an
+unfollow-prompt) or a general notification while the phone happens to be connected. Flagged for
+whoever picks this back up to watch for.
+
+**The durable lesson, worth restating since this is at least the third time this exact shape has
+bitten a session (D36, D39, now D59):** a local `git commit` is not deployed. Every checkpoint that
+touches `Insta-Automate` needs an explicit "did I push, and does the live pod actually have this"
+check before calling the work done — D58's own write-up asserted verification without that check,
+which is exactly how this slipped through for hours undetected.
+
+---
+
 ## 2026-08-02 — CP 6.4 built, then a notification redesign found by actually using it
 
 ### D58 · Device-aware notify routing, plus per-profile notifications get a real tap target and clean text — spans all four repos
