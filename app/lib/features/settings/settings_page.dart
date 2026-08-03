@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
+import '../../core/async_state_view.dart';
 import '../../core/file_opener.dart';
 import 'config_controller.dart';
 import 'config_file_bar.dart';
@@ -25,9 +26,9 @@ class SettingsPage extends ConsumerWidget {
 
     final configAsync = ref.watch(configControllerProvider);
 
-    return configAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Failed to load config: $error')),
+    return configAsync.stateView(
+      describeError: (error) => 'Failed to load config: $error',
+      onRetry: () => ref.invalidate(configControllerProvider),
       data: (config) => CallbackShortcuts(
         // At this level Ctrl+E still fires while a limit's text field holds
         // focus — shortcuts propagate up the focus chain.

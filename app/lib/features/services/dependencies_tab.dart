@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/dependency_models.dart';
 import 'dependencies_controller.dart';
 import 'services_controller.dart';
@@ -30,18 +31,9 @@ class _DependenciesTabState extends ConsumerState<DependenciesTab> {
     final theme = Theme.of(context);
     final async = ref.watch(dependenciesControllerProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Could not reach the agent: ${describeAgentError(error)}'),
-            const SizedBox(height: 12),
-            OutlinedButton(onPressed: _refresh, child: const Text('Try again')),
-          ],
-        ),
-      ),
+    return async.stateView(
+      describeError: describeAgentError,
+      onRetry: _refresh,
       data: (snapshot) => ListView(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         children: [
@@ -77,11 +69,11 @@ class _DependenciesTabState extends ConsumerState<DependenciesTab> {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: worst.color(scheme).withValues(alpha: 0.45)),
+        border: Border.all(color: worst.color(theme).withValues(alpha: 0.45)),
       ),
       child: Row(
         children: [
-          Icon(worst.icon, color: worst.color(scheme)),
+          Icon(worst.icon, color: worst.color(theme)),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -145,7 +137,7 @@ class DependencyRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final color = dependency.level.color(scheme);
+    final color = dependency.level.color(theme);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),

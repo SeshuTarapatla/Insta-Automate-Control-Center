@@ -5,6 +5,96 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-03 (continued) — CP 7.3 (Polish), built, awaiting your checkpoint test
+
+### D80 · Five real implementation snags, none of them design questions
+
+Found and fixed while building, not scoping decisions: (1) `tray_manager.setIcon()` loads a
+**Flutter asset**, not the Win32 `.ico` resource `windows/runner/resources/app_icon.ico` already
+embeds via `Runner.rc` — the plan's "no new asset needed" assumption was wrong; fixed by copying
+the same file to `assets/tray_icon.ico` and declaring it. (2) Riverpod's `Override` type isn't
+exported from `flutter_riverpod`'s public barrel file, so a helper function typed `List<Override>`
+doesn't compile outside the package itself — `overview_layout_test.dart`'s override list is built
+inline inside an untyped `_pump()` helper instead (Dart infers the list's type without ever needing
+to spell out the name), matching how every other layout test in this app already inlines its
+overrides rather than factoring them out. (3) `OverviewPage`'s "nothing has reported in yet" test
+initially failed to find the notifications section's empty-state text — a plain `ListView`'s
+sliver children outside the viewport's cache extent are never built at all, empty-state or not, so
+the test now scrolls there first (`dragUntilVisible`) rather than dropping the assertion. (4)
+`ServiceState.color()`/`DependencyLevel.color()` both took a bare `ColorScheme`, but the new
+`AppPalette` extension lives on `ThemeData` — every call site (`flow_card.dart`,
+`dependencies_tab.dart`, `service_tile.dart`, `service_detail.dart`, `status_dot.dart`,
+`title_bar.dart`) had `theme` in scope already, so this was a mechanical signature change, not a
+design fork. (5) Every existing `flutter test` file builds its own bare `ThemeData()` with no
+`AppPalette` registered — rather than touch a dozen test files, `ThemeData.palette` falls back to
+`AppPalette.dark` when the extension isn't found, which is the correct value there too (this app
+is dark-only), not a workaround.
+
+### D79 · CP 7.3 scope and every design fork checked with you before writing code
+
+**Overview built as part of this checkpoint, not split out** — ARCHITECTURE §9 describes it as
+"mission control" (five flow rings, three service pills, a dependency strip, burn-down bars, a
+device thumbnail, the notification feed) but CP 7.3's own bullet list never mentions building it,
+and it's been CP 0.3's bare placeholder ever since. You confirmed it belongs here: every piece of
+data it needs already exists behind an endpoint from Phases 2–7, so it's composition, not new
+plumbing — `features/overview/overview_page.dart` reuses `FlowCard`, `ServiceTile`, `BurndownCard`,
+`DeviceBar`, and (made public for this, same precedent as `FunnelStage`/D77 and `DependencyRow`)
+`NotificationTile` directly rather than rebuilding smaller versions of any of them. Each section
+header jumps to the matching full destination via a new `selectedNavIndexProvider`
+(`core/nav_state.dart`) — `AppShell`'s selected tab moved out of local `State` into a provider
+specifically so a page other than the shell itself can change it.
+
+**Tray + hotkey**: `tray_manager` + `hotkey_manager`, both from the same author/family as
+`window_manager` (already a dependency) — confirmed with you over `system_tray` for exactly that
+consistency. Global hotkey **Ctrl+Alt+I** toggles the window; the tray menu shows Show/Hide, each
+flow's phase as a disabled glance row, Start/Stop for each of the 3 supervised services (skipped
+for a running-but-external service, since take-over needs more than a tray click can safely
+confirm), and Quit. **A real behavior change follows from having a tray icon at all**: the title
+bar's close button (`title_bar.dart`, still plain `windowManager.close()`, unchanged) now hides to
+tray instead of exiting, via `windowManager.setPreventClose(true)` plus a new
+`CloseToTrayListener` (`shell/window_lifecycle.dart`) — a global hotkey and a tray icon both need
+something still running to bring back. Real quit is the tray menu's Quit entry, which flips
+`setPreventClose` back off first.
+
+**Theming**: the already-informal dark palette (status colors duplicated between
+`ServiceState.color()` and `flow_card.dart`'s `_statusColor`, plus a third copy found in
+`DependencyLevel.color()` not previously noticed; the service terminal's full ANSI set; the title
+bar's connection dot) centralized into one `ThemeExtension<AppPalette>`
+(`core/app_theme.dart`), registered on `app.dart`'s existing `darkTheme`. Confirmed with you:
+dark-only, no light theme, no toggle — the app was never asked to support one, and Mica plus the
+terminal-heavy UI assume it.
+
+**Onboarding**: a single one-time welcome dialog (`core/onboarding.dart`, `shared_preferences`
+flag mirroring `MutedTagsController`'s exact pattern), not a multi-step guided tour — confirmed as
+proportionate for a single-user app. Re-openable any time via a new "?" affordance in the title
+bar, which also opens the shortcut cheat sheet directly.
+
+**Shared empty/error/loading states**: `core/async_state_view.dart` generalizes the shape
+`ops_tab.dart`'s private `_placeholder` already had (the richest of several near-identical copies
+found across the app) into `LoadingView`/`EmptyView`/`ErrorView` plus an `AsyncValue.stateView()`
+extension for the common `.when(loading/error/data)` shape with a retry action. Retrofitted into
+every page that hand-rolled this — `flows_page.dart`, `services_page.dart` +
+`dependencies_tab.dart`, `library_page.dart` (had **no** page-level loading/error handling at all
+before this), `library_grid.dart`, `insights_page.dart`, `settings_page.dart` (its config-load
+error had no retry button before this), `ops_tab.dart`, `service_terminal.dart`, and
+`live_page.dart` (whose header controls silently rendered nothing before the first heartbeat —
+now says "Waiting for scheduler data…").
+
+**Checkpoint test: partial, by your own choice — committed anyway.** You did an initial pass
+against the real running app and called it good, but explicitly did not run the full checklist
+below and said you'd come back to it if needed rather than block the commit on it. Recorded
+honestly rather than claimed as a full pass, per rule 4's own "the test is the checkpoint"
+standard — this is a deliberate, acknowledged exception, not a skipped step nobody noticed. Still
+open, whenever you do come back to it: tray icon's real flow/service state and its Start/Stop
+actually reaching the agent; Ctrl+Alt+I from another app; the title bar's close button hiding
+rather than exiting, with only the tray's Quit actually exiting; the welcome dialog appearing once
+and not on a second launch; "?" (and the title bar's help icon) opening the shortcut list from
+anywhere, **including whether it eats a literal "?" typed into a search box** — flagged rather
+than assumed, since this is the app's first app-wide keyboard binding; and Overview's section
+headers jumping to the right tab.
+
+---
+
 ## 2026-08-03 (continued) — Two rounds of live UI feedback on CP 7.2, checkpoint test passed
 
 ### D78 · The Funnel tab's flat, all-normalized-to-the-top bars replaced with a real narrowing funnel showing both conversion numbers per stage

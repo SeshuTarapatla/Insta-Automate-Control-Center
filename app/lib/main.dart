@@ -5,6 +5,9 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'shell/hotkey.dart';
+import 'shell/tray.dart';
+import 'shell/window_lifecycle.dart';
 
 const _minimumSize = Size(1024, 700);
 
@@ -77,5 +80,20 @@ Future<void> main() async {
   await windowManager.show();
   await windowManager.focus();
 
-  runApp(const ProviderScope(child: ControlCenterApp()));
+  // CP 7.3: a tray icon + global hotkey need something to bring back, so the
+  // title bar's close button (unchanged — still plain `windowManager.close`)
+  // now hides instead of exiting; `setPreventClose` is what makes `close()`
+  // reach `CloseToTrayListener` instead of actually closing.
+  windowManager.addListener(CloseToTrayListener());
+  await windowManager.setPreventClose(true);
+  await registerShowHideHotKey();
+
+  // A real `ProviderContainer`, not just `ProviderScope`'s implicit one —
+  // the tray menu (`AppTray`) reads/watches providers from outside the
+  // widget tree entirely, the same reason the window setup above already
+  // can't go through a `BuildContext`.
+  final container = ProviderContainer();
+  await AppTray(container).init();
+
+  runApp(UncontrolledProviderScope(container: container, child: const ControlCenterApp()));
 }

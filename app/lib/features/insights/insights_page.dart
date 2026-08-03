@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/insights_models.dart';
 import '../library/entity_yield_dialog.dart';
 import 'burndown_chart.dart';
@@ -46,27 +47,6 @@ class InsightsPage extends StatelessWidget {
   }
 }
 
-class _RetryableError extends StatelessWidget {
-  const _RetryableError({required this.error, required this.onRetry});
-
-  final Object error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Could not reach the agent: ${describeInsightsError(error)}'),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
-        ],
-      ),
-    );
-  }
-}
-
 class FunnelTab extends ConsumerWidget {
   const FunnelTab({super.key});
 
@@ -75,9 +55,9 @@ class FunnelTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final async = ref.watch(funnelSummaryProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _RetryableError(error: error, onRetry: () => ref.invalidate(funnelSummaryProvider)),
+    return async.stateView(
+      describeError: describeInsightsError,
+      onRetry: () => ref.invalidate(funnelSummaryProvider),
       data: (summary) {
         final stages = [
           FunnelStageData(label: 'Scanned', count: summary.scanned),
@@ -261,9 +241,9 @@ class RankingTabState extends ConsumerState<RankingTab> {
     final theme = Theme.of(context);
     final async = ref.watch(entityRankingProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _RetryableError(error: error, onRetry: () => ref.invalidate(entityRankingProvider)),
+    return async.stateView(
+      describeError: describeInsightsError,
+      onRetry: () => ref.invalidate(entityRankingProvider),
       data: (rows) {
         final filtered = _query.isEmpty
             ? rows
@@ -277,7 +257,10 @@ class RankingTabState extends ConsumerState<RankingTab> {
           });
 
         if (rows.isEmpty) {
-          return const Center(child: Text('No entity has any scan or scrape activity yet.'));
+          return const EmptyView(
+            icon: Icons.insights_outlined,
+            title: 'No entity has any scan or scrape activity yet.',
+          );
         }
 
         final searchRow = Row(
@@ -388,15 +371,9 @@ class BurndownTab extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 16),
-        async.when(
-          loading: () => const Padding(
-            padding: EdgeInsets.symmetric(vertical: 60),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, _) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: _RetryableError(error: error, onRetry: () => ref.invalidate(burndownProvider)),
-          ),
+        async.stateView(
+          describeError: describeInsightsError,
+          onRetry: () => ref.invalidate(burndownProvider),
           data: (burndown) => Wrap(
             spacing: 16,
             runSpacing: 16,

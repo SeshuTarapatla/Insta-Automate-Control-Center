@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 /// Mirrors `ia_agent.services.spec.ServiceState`.
 enum ServiceState {
   stopped,
@@ -23,14 +25,17 @@ enum ServiceState {
 
   /// The status palette is deliberately not the seed scheme: green/amber/red
   /// read as health at a glance, and the scheme's primary does not.
-  Color color(ColorScheme scheme) => switch (this) {
-    ServiceState.running => const Color(0xFF3DD68C),
-    ServiceState.starting => const Color(0xFF6EA8FE),
-    ServiceState.backoff => const Color(0xFFFFB454),
-    ServiceState.unhealthy => const Color(0xFFFFB454),
-    ServiceState.failed => scheme.error,
-    ServiceState.stopped => scheme.onSurfaceVariant,
-  };
+  Color color(ThemeData theme) {
+    final palette = theme.palette;
+    return switch (this) {
+      ServiceState.running => palette.statusGood,
+      ServiceState.starting => palette.statusInfo,
+      ServiceState.backoff => palette.statusWarn,
+      ServiceState.unhealthy => palette.statusWarn,
+      ServiceState.failed => theme.colorScheme.error,
+      ServiceState.stopped => theme.colorScheme.onSurfaceVariant,
+    };
+  }
 
   /// States where something is expected to change on its own, so the tile
   /// animates rather than sitting still and looking wedged.

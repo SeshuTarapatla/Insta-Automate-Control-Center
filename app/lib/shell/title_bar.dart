@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/app_theme.dart';
 import '../core/connection_state.dart';
+import '../core/shortcuts_reference.dart';
 import '../core/window_work_area.dart';
 import '../features/notifications/notification_center.dart';
 
@@ -39,6 +41,13 @@ class TitleBar extends ConsumerWidget {
               ),
             ),
           ),
+          IconButton(
+            tooltip: 'Keyboard shortcuts  (?)',
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showShortcutsReference(context),
+          ),
           const NotificationCenter(),
           const _WindowButtons(),
         ],
@@ -54,10 +63,12 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.palette;
     final (Color color, String label) = switch (status) {
-      AgentConnection.connected => (Colors.green, 'Agent: connected'),
-      AgentConnection.connecting => (Colors.orange, 'Agent: connecting'),
-      AgentConnection.disconnected => (Colors.red, 'Agent: disconnected'),
+      AgentConnection.connected => (palette.statusGood, 'Agent: connected'),
+      AgentConnection.connecting => (palette.statusInfo, 'Agent: connecting'),
+      AgentConnection.disconnected => (theme.colorScheme.error, 'Agent: disconnected'),
     };
 
     return Row(
@@ -69,7 +80,7 @@ class _StatusChip extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        Text(label, style: theme.textTheme.bodySmall),
       ],
     );
   }

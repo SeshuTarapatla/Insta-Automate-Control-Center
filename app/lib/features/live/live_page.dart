@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
 import '../flows/flows_controller.dart';
@@ -129,6 +130,19 @@ class _LivePageState extends ConsumerState<LivePage> {
                       ),
                     ],
                   ),
+                )
+              else
+                // Before the first heartbeat arrives there's nothing to act
+                // on yet — say so instead of just not rendering the controls,
+                // which read as a layout glitch rather than "still loading."
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    'Waiting for scheduler data…',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
                 ),
               // Device control lives here, not in RunSummary's body (D46) —
               // this row already has the height to spare next to the flow
@@ -187,16 +201,14 @@ class _VisualizationSurface extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(liveControllerProvider);
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Could not load: $error')),
+    return async.stateView(
       data: (state) => switch (state.flow) {
         'entity-scan' => ScanSurface(events: state.events),
         'entity-classify' => ClassifySurface(events: state.events),
         'entity-scrape' => ScrapeSurface(events: state.events),
         'entity-follow' => FollowSurface(events: state.events),
         'entity-ingest' => IngestSurface(events: state.events),
-        _ => Center(child: Text('No visualization for ${state.flow}')),
+        _ => EmptyView(icon: Icons.visibility_off_outlined, title: 'No visualization for ${state.flow}'),
       },
     );
   }

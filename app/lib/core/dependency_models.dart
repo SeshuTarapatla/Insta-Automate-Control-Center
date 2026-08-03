@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 /// Mirrors `ia_agent.dependencies.Level`. A dependency that fails is an answer,
 /// not an error — the agent always returns 200 and so every level renders.
 enum DependencyLevel {
@@ -10,10 +12,10 @@ enum DependencyLevel {
   static DependencyLevel parse(String raw) =>
       DependencyLevel.values.firstWhere((l) => l.name == raw, orElse: () => DependencyLevel.fail);
 
-  Color color(ColorScheme scheme) => switch (this) {
-    DependencyLevel.ok => const Color(0xFF3DD68C),
-    DependencyLevel.warn => const Color(0xFFFFB454),
-    DependencyLevel.fail => scheme.error,
+  Color color(ThemeData theme) => switch (this) {
+    DependencyLevel.ok => theme.palette.statusGood,
+    DependencyLevel.warn => theme.palette.statusWarn,
+    DependencyLevel.fail => theme.colorScheme.error,
   };
 
   IconData get icon => switch (this) {

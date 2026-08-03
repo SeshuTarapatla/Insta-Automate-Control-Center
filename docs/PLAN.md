@@ -1157,9 +1157,21 @@ same per-entity dialog the Library screen uses; Daily limits tab shows five real
 flow's current cap as a dashed line and working day-range chips. Full account in DECISIONS.md's
 D75–D78.
 
-### CP 7.3 — Polish 🟢
+### CP 7.3 — Polish 🟢 ✅ built and committed, checkpoint test partial by your own choice
 Theming, tray icon, global hotkey, empty/error/loading states everywhere, first-run onboarding,
-keyboard shortcut cheat sheet.
+keyboard shortcut cheat sheet. **Scope grew by one item, confirmed with you first (D79):** the
+Overview nav destination — still CP 0.3's bare placeholder — is built here too, since ARCHITECTURE
+§9's "mission control" description needs no new data plumbing, only composing widgets/providers
+every other checkpoint already built. Full account of every design fork and implementation detail
+in `CLAUDE.md`'s dedicated paragraph and DECISIONS.md's D79/D80.
+
+**Checkpoint test: you ran an initial pass and called it good, but said outright you hadn't gone
+through everything and would come back to it later** — committed on that basis rather than a full
+pass (rule 4's exception is explicit, not silent). Still open next time: tray menu's real
+flow/service state and Start/Stop actually working; Ctrl+Alt+I from another app; the title bar's
+close button hiding instead of exiting, with only the tray's Quit actually exiting; the welcome
+dialog appearing once; "?" opening the shortcut list from anywhere, including whether it swallows
+a literal "?" typed into a search box; Overview's section-header navigation.
 
 ---
 

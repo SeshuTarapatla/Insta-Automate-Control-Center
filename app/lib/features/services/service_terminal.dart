@@ -8,6 +8,8 @@ import 'package:xterm/xterm.dart';
 import '../../core/agent_client.dart';
 import '../../core/agent_ws.dart';
 import '../../core/app_snack_bar.dart';
+import '../../core/app_theme.dart';
+import '../../core/async_state_view.dart';
 import '../../core/service_models.dart';
 import 'services_controller.dart';
 
@@ -198,12 +200,13 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
           from = line.indexOf(needle, from + needle.length);
         }
       }
+      final highlightColor = Theme.of(context).palette.terminal.searchHitBackground.withValues(alpha: 0.4);
       for (final match in _matches) {
         _highlights.add(
           _controller.highlight(
             p1: _terminal.buffer.createAnchor(match.x, match.y),
             p2: _terminal.buffer.createAnchor(match.x + match.length, match.y),
-            color: const Color(0x66FFB454),
+            color: highlightColor,
           ),
         );
       }
@@ -268,10 +271,11 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final terminalPalette = theme.palette.terminal;
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF12121A),
+        color: terminalPalette.panelBackground,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.outlineVariant),
       ),
@@ -295,7 +299,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
       height: 40,
       padding: const EdgeInsets.only(left: 14, right: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A24),
+        color: theme.palette.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
@@ -303,7 +307,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
           Icon(
             Icons.terminal,
             size: 16,
-            color: live ? const Color(0xFF3DD68C) : scheme.onSurfaceVariant,
+            color: live ? theme.palette.statusGood : scheme.onSurfaceVariant,
           ),
           const SizedBox(width: 8),
           Text(
@@ -350,7 +354,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A24),
+        color: theme.palette.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
@@ -444,9 +448,9 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
       return const Center(child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)));
     }
     if (_loadError != null) {
-      return _placeholder(theme, Icons.error_outline, 'Could not load output', _loadError!);
+      return ErrorView(title: 'Could not load output', message: _loadError!);
     }
-    if (_detached || !_hasOutput) return _emptyExplanation(theme);
+    if (_detached || !_hasOutput) return _emptyExplanation();
 
     return CallbackShortcuts(
       bindings: {
@@ -457,7 +461,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
         _terminal,
         controller: _controller,
         scrollController: _scroll,
-        theme: _terminalTheme(theme.colorScheme),
+        theme: _terminalTheme(theme),
         textStyle: const TerminalStyle(fontSize: 13, fontFamily: 'Consolas'),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         // Nothing here is interactive: these panes replace terminal tabs the
@@ -479,85 +483,37 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
   /// The pane never shows a blank box: when there is nothing to render it says
   /// which of the four reasons applies.
-  Widget _emptyExplanation(ThemeData theme) {
+  Widget _emptyExplanation() {
     final status = widget.status;
     return switch (status.origin) {
-      ServiceOrigin.adopted => _placeholder(
-        theme,
-        Icons.link,
-        'Adopted, not spawned',
-        'This process was left running by an earlier agent run (pid ${status.pid}). Its console '
+      ServiceOrigin.adopted => EmptyView(
+        icon: Icons.link,
+        title: 'Adopted, not spawned',
+        body:
+            'This process was left running by an earlier agent run (pid ${status.pid}). Its console '
             'belonged to that run, so there is no output to stream. Restart it when convenient and '
             'the agent will own its terminal from then on.',
       ),
-      ServiceOrigin.external => _placeholder(
-        theme,
-        Icons.open_in_new,
-        'Running outside the agent',
-        'Port ${status.port} is held by ${status.portOwner?.display ?? 'another process'}, which the '
+      ServiceOrigin.external => EmptyView(
+        icon: Icons.open_in_new,
+        title: 'Running outside the agent',
+        body:
+            'Port ${status.port} is held by ${status.portOwner?.display ?? 'another process'}, which the '
             'agent did not start — most likely the dev-startup shortcut. Take over to replace it with '
             'a supervised copy and stream its output here.',
       ),
-      _ => _placeholder(
-        theme,
-        Icons.terminal,
-        'Nothing to show yet',
-        'The agent captures a service\'s output from the moment it starts it. Start ${status.label} '
-            'and this pane fills in.',
+      _ => const EmptyView(
+        icon: Icons.terminal,
+        title: 'Nothing to show yet',
+        body: 'The agent captures a service\'s output from the moment it starts it. Start it and this '
+            'pane fills in.',
       ),
     };
   }
 
-  Widget _placeholder(ThemeData theme, IconData icon, String title, String body) {
-    final scheme = theme.colorScheme;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 28, color: scheme.onSurfaceVariant),
-              const SizedBox(height: 12),
-              Text(title, style: theme.textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Text(
-                body,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  TerminalTheme _terminalTheme(ColorScheme scheme) => TerminalTheme(
-    cursor: scheme.primary,
-    selection: scheme.primary.withValues(alpha: 0.35),
-    foreground: const Color(0xFFD5D6E0),
-    background: const Color(0xFF12121A),
-    black: const Color(0xFF15151E),
-    red: const Color(0xFFF7768E),
-    green: const Color(0xFF3DD68C),
-    yellow: const Color(0xFFE0AF68),
-    blue: const Color(0xFF7AA2F7),
-    magenta: const Color(0xFFBB9AF7),
-    cyan: const Color(0xFF7DCFFF),
-    white: const Color(0xFFC0CAF5),
-    brightBlack: const Color(0xFF6B6F8C),
-    brightRed: const Color(0xFFFF8FA3),
-    brightGreen: const Color(0xFF64E3A6),
-    brightYellow: const Color(0xFFF3C77B),
-    brightBlue: const Color(0xFF9AB8FF),
-    brightMagenta: const Color(0xFFD0B4FF),
-    brightCyan: const Color(0xFF9FE0FF),
-    brightWhite: const Color(0xFFEDEFFA),
-    searchHitBackground: const Color(0xFFFFB454),
-    searchHitBackgroundCurrent: const Color(0xFF3DD68C),
-    searchHitForeground: const Color(0xFF12121A),
+  TerminalTheme _terminalTheme(ThemeData theme) => theme.palette.terminal.toXterm(
+    cursor: theme.colorScheme.primary,
+    selection: theme.colorScheme.primary.withValues(alpha: 0.35),
   );
 }
 

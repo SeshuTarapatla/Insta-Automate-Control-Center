@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
+import '../../core/app_theme.dart';
 import '../../core/file_opener.dart';
 import '../../core/flow_switch_confirm.dart';
 import '../../core/force_run.dart';
@@ -19,11 +20,13 @@ class FlowCard extends ConsumerWidget {
 
   final FlowState state;
 
-  Color _statusColor(ColorScheme scheme) {
+  Color _statusColor(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final palette = theme.palette;
     if (!state.switchOn) return scheme.onSurfaceVariant;
-    if (state.phase == 'running') return const Color(0xFF3DD68C);
-    if (!state.gate.ok) return const Color(0xFFFFB454);
-    return const Color(0xFF6EA8FE);
+    if (state.phase == 'running') return palette.statusGood;
+    if (!state.gate.ok) return palette.statusWarn;
+    return palette.statusInfo;
   }
 
   String? _todayLine() {
@@ -84,7 +87,7 @@ class FlowCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  _CountdownRing(state: state, observedAt: observedAt, color: _statusColor(scheme)),
+                  _CountdownRing(state: state, observedAt: observedAt, color: _statusColor(theme)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/scheduler_models.dart';
 import 'flow_card.dart';
 import 'flows_controller.dart';
@@ -13,33 +14,21 @@ class FlowsPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final async = ref.watch(flowsControllerProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Could not reach the agent: ${describeFlowsError(error)}'),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () => ref.read(flowsControllerProvider.notifier).refresh(),
-              child: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
+    return async.stateView(
+      describeError: describeFlowsError,
+      onRetry: () => ref.read(flowsControllerProvider.notifier).refresh(),
       data: (snapshot) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!snapshot.online) _OfflineBanner(theme: theme),
           Expanded(
             child: snapshot.flows.isEmpty
-                ? Center(
-                    child: Text(
-                      snapshot.online
-                          ? 'No flow state yet — waiting for the first heartbeat.'
-                          : "The scheduler hasn't posted a heartbeat yet. Is the pipeline pod running?",
-                    ),
+                ? EmptyView(
+                    icon: Icons.hourglass_empty,
+                    title: snapshot.online ? 'Waiting for the first heartbeat' : 'No flow state yet',
+                    body: snapshot.online
+                        ? 'No flow state yet — waiting for the first heartbeat.'
+                        : "The scheduler hasn't posted a heartbeat yet. Is the pipeline pod running?",
                   )
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(24),

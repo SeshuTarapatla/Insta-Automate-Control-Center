@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/service_models.dart';
 import 'dependencies_tab.dart';
 import 'service_detail.dart';
@@ -50,24 +51,12 @@ class _SupervisedTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final async = ref.watch(servicesControllerProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Could not reach the agent: ${describeAgentError(error)}'),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () => ref.read(servicesControllerProvider.notifier).refresh(),
-              child: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
+    return async.stateView(
+      describeError: describeAgentError,
+      onRetry: () => ref.read(servicesControllerProvider.notifier).refresh(),
       data: (services) {
         if (services.isEmpty) {
-          return const Center(child: Text('The agent supervises no services.'));
+          return const EmptyView(icon: Icons.dns_outlined, title: 'The agent supervises no services.');
         }
 
         final selectedName = ref.watch(selectedServiceProvider);

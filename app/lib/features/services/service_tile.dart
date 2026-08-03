@@ -26,7 +26,7 @@ class ServiceTile extends ConsumerWidget {
 
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final color = status.state.color(scheme);
+    final color = status.state.color(theme);
 
     return Material(
       color: selected ? scheme.surfaceContainerHighest : scheme.surfaceContainerHigh,

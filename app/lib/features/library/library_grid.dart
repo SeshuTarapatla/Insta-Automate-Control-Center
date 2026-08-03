@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/library_models.dart';
 import 'library_controller.dart';
 import 'library_tile.dart';
@@ -125,15 +126,12 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
     final zoom = ref.watch(libraryZoomProvider);
     final selection = ref.watch(librarySelectionProvider);
 
-    return imagesAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _RetryPane(
-        error: error,
-        onRetry: () => ref.read(libraryImagesControllerProvider.notifier).reload(),
-      ),
+    return imagesAsync.stateView(
+      onRetry: () => ref.read(libraryImagesControllerProvider.notifier).reload(),
+      describeError: (error) => 'Could not load this folder: $error',
       data: (data) {
         if (data.images.isEmpty) {
-          return const Center(child: Text('No images here.'));
+          return const EmptyView(icon: Icons.image_not_supported_outlined, title: 'No images here.');
         }
 
         return LayoutBuilder(
@@ -185,27 +183,6 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
           },
         );
       },
-    );
-  }
-}
-
-class _RetryPane extends StatelessWidget {
-  const _RetryPane({required this.error, required this.onRetry});
-
-  final Object error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Could not load this folder: $error'),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
-        ],
-      ),
     );
   }
 }

@@ -51,7 +51,7 @@ class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.state.color(Theme.of(context).colorScheme);
+    final color = widget.state.color(Theme.of(context));
 
     return AnimatedBuilder(
       animation: _pulse,

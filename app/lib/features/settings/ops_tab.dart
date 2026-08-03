@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/agent_client.dart';
 import '../../core/agent_ws.dart';
 import '../../core/app_snack_bar.dart';
+import '../../core/async_state_view.dart';
 import '../../core/ops_confirm.dart';
 import '../../core/ops_models.dart';
 import '../../core/relative_time.dart';
@@ -420,7 +421,7 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
         children: [
           _header(theme),
           const Divider(height: 1),
-          Expanded(child: _body(theme)),
+          Expanded(child: _body()),
         ],
       ),
     );
@@ -454,21 +455,24 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
     if (mounted) AppSnackBar.show(context, 'Log output copied');
   }
 
-  Widget _body(ThemeData theme) {
+  Widget _body() {
     if (widget.jobId == null) {
-      return _placeholder(
-        theme,
-        Icons.terminal,
-        'No job selected',
-        'Run a job above, or pick one from history, to see its output here.',
+      return const EmptyView(
+        icon: Icons.terminal,
+        title: 'No job selected',
+        body: 'Run a job above, or pick one from history, to see its output here.',
       );
     }
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const LoadingView();
     if (_loadError != null) {
-      return _placeholder(theme, Icons.error_outline, 'Could not load output', _loadError!);
+      return ErrorView(title: 'Could not load output', message: _loadError!);
     }
     if (_entries.isEmpty) {
-      return _placeholder(theme, Icons.hourglass_empty, 'No output yet', 'Waiting for the job to produce output.');
+      return const EmptyView(
+        icon: Icons.hourglass_empty,
+        title: 'No output yet',
+        body: 'Waiting for the job to produce output.',
+      );
     }
 
     return ListView.builder(
@@ -476,32 +480,6 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
       padding: const EdgeInsets.all(12),
       itemCount: _entries.length,
       itemBuilder: (context, index) => _OpsLogLine(entry: _entries[index]),
-    );
-  }
-
-  Widget _placeholder(ThemeData theme, IconData icon, String title, String body) {
-    final scheme = theme.colorScheme;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 28, color: scheme.onSurfaceVariant),
-              const SizedBox(height: 12),
-              Text(title, style: theme.textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Text(
-                body,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/async_state_view.dart';
 import '../../core/library_models.dart';
 import 'library_controller.dart';
 import 'library_grid.dart';
@@ -20,6 +21,19 @@ class LibraryPage extends ConsumerWidget {
     final selectedFolder = ref.watch(selectedFolderProvider);
     final selectedEntity = ref.watch(selectedEntityProvider);
 
+    // Page-level guard only for the states `.value` can't paper over — once
+    // a first list has ever loaded, a slow/erroring re-fetch keeps showing
+    // the stale layout rather than replacing it with a spinner (same "don't
+    // flash a loading state over content the user is looking at" choice the
+    // rest of the app already makes).
+    if (foldersAsync.isLoading && !foldersAsync.hasValue) return const LoadingView();
+    if (foldersAsync.hasError && !foldersAsync.hasValue) {
+      return ErrorView(
+        message: '${foldersAsync.error}',
+        onRetry: () => ref.invalidate(libraryFoldersControllerProvider),
+      );
+    }
+
     final flat = foldersAsync.value?.where((f) => f.name == selectedFolder).firstOrNull?.flat ?? true;
     final showGrid = selectedFolder != null && (flat || selectedEntity != null);
 
@@ -38,9 +52,9 @@ class LibraryPage extends ConsumerWidget {
             child: Card(
               margin: EdgeInsets.zero,
               child: selectedFolder == null
-                  ? const Center(child: Text('No folders yet.'))
+                  ? const EmptyView(icon: Icons.folder_off_outlined, title: 'No folders yet.')
                   : !showGrid
-                  ? const Center(child: Text('Pick an entity to browse its images.'))
+                  ? const EmptyView(icon: Icons.touch_app_outlined, title: 'Pick an entity to browse its images.')
                   : Column(
                       children: [
                         LibraryToolbar(folder: selectedFolder, entity: flat ? null : selectedEntity),

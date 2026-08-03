@@ -24,7 +24,15 @@ aggregate view and dropped entirely from the per-entity one — D76. Two more ro
 followed: the Ranking table rebuilt by hand since `DataTable` can't make one column absorb extra
 width while the rest stay fixed (D77), and the Funnel tab's flat bars replaced with a real
 narrowing funnel showing both "% of previous stage" and "% of total" per stage (D78) — see the
-dedicated paragraph below. Phase 6: CP 6.1 (Pairing +
+dedicated paragraph below. **CP 7.3 (Polish) built and committed, 🟢, checkpoint test partial by
+your own explicit choice** — the last item in Phase 7: the real Overview page (scoped into this
+checkpoint after checking with you, D79), a system tray icon + global show/hide hotkey
+(Ctrl+Alt+I), a centralized dark-only theme palette, shared empty/error/loading states retrofitted
+across every page, a first-run welcome dialog, and a keyboard-shortcut cheat sheet reachable via a
+new title-bar "?" affordance and the app's first-ever app-wide "?" shortcut. You ran an initial
+pass and called it good but hadn't gone through the full checklist, and said so outright rather
+than let it pass silently — see the dedicated paragraph below for what's still open (D79/D80 have
+the full design-fork and implementation-snag history). Phase 6: CP 6.1 (Pairing +
 notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
 CP 6.3 (Desktop pairing & notification center) built, committed, and verified against the real
@@ -937,6 +945,66 @@ conversion numbers per stage; Ranking tab lists real entities with Scanned/Priva
 fit the window without a horizontal scroll or ugly gaps, sorts, filters, and clicking a row opens
 the same per-entity dialog the Library screen uses; Daily limits tab shows five real charts with
 each flow's current cap as a dashed line and working day-range chips. Committed.
+
+**CP 7.3 (Polish) built, 🟢, awaiting your checkpoint test — the last item in Phase 7.** Scoped
+with you before writing any code (D79): the Overview nav destination, still CP 0.3's bare
+placeholder, is built as part of this checkpoint rather than split out, since ARCHITECTURE §9's
+"mission control" description needs no new data plumbing — every section reuses an existing
+widget/provider directly (`FlowCard`, `ServiceTile`, `BurndownCard`, `DeviceBar`, and
+`NotificationTile`, made public for this the same way `FunnelStage`/D77 and `DependencyRow` were).
+`AppShell`'s selected tab moved from local `State` into a new `selectedNavIndexProvider`
+(`core/nav_state.dart`) so Overview's section headers can jump to the matching full screen.
+System tray + global hotkey landed via `tray_manager`/`hotkey_manager` (same author family as the
+already-used `window_manager`): a tray menu with real flow-phase/service Start-Stop rows and Quit,
+and **Ctrl+Alt+I** to show/hide the window from anywhere. This makes the title bar's close button
+hide to tray instead of exiting (`windowManager.setPreventClose` + a new `CloseToTrayListener`) —
+a real, deliberate behavior change, since a tray icon and a global hotkey both need something
+still running to bring back; real quit is now the tray menu's own Quit entry. The dark palette
+scattered across ~15 files as repeated `Color(0x...)` literals (service/flow/dependency status
+colors independently duplicated in three places, the terminal's full ANSI set, the title bar's
+connection dot) is centralized into one `ThemeExtension<AppPalette>` (`core/app_theme.dart`) —
+same visual result, one source of truth; the app stays deliberately dark-only. New
+`core/async_state_view.dart` generalizes the loading/error/empty shape every page was hand-rolling
+independently (`ops_tab.dart`'s private `_placeholder` was the richest of several near-identical
+copies) into shared `LoadingView`/`EmptyView`/`ErrorView` widgets plus an `AsyncValue.stateView()`
+extension, retrofitted into every page that had it — fixing two real gaps found doing this:
+`library_page.dart` had **no** page-level loading/error handling at all, and
+`settings_page.dart`'s config-load error had no retry button, unlike every other page's. A
+one-time welcome dialog (`core/onboarding.dart`, a `shared_preferences` flag mirroring
+`MutedTagsController`'s exact pattern) and a keyboard-shortcut cheat sheet
+(`core/shortcuts_reference.dart`, hand-assembled from the real bindings scattered across
+`config_file_bar.dart`/`devices_tab.dart`/`library_grid.dart` since nothing declares them in one
+place) round it out, both reachable from a new "?" affordance in the title bar; "?" itself is also
+now a genuine app-wide `CallbackShortcuts` binding — the first one, since every prior binding was
+page-scoped.
+
+Five real implementation snags surfaced while building, none of them design questions (full detail
+in D80): `tray_manager` needs its icon as a **Flutter asset**, not the Win32 `.ico` resource
+`Runner.rc` already embeds, so the same file is copied to `assets/tray_icon.ico`; Riverpod's
+`Override` type isn't publicly exported from `flutter_riverpod`, so the new
+`overview_layout_test.dart` builds its provider overrides inline inside an untyped helper rather
+than a typed list, matching how every other layout test already does it; a plain `ListView`'s
+offscreen children are never built at all (not just unpainted), which broke an empty-state
+assertion until the test scrolled there first; the two `.color()` methods that moved onto the new
+theme extension needed a `ColorScheme` → `ThemeData` signature change at every call site, since the
+extension lives on `ThemeData`; and every existing `flutter test` file builds its own bare
+`ThemeData()` with no `AppPalette` registered, so `ThemeData.palette` falls back to
+`AppPalette.dark` (the only palette this app has) rather than requiring a dozen test files to be
+touched. `flutter analyze` clean, `flutter test` 48/48 (46 prior − 1 for the now-dead
+`PlaceholderPage`/its test, replaced by the real Overview page, + 2 new in
+`overview_layout_test.dart`), `flutter build windows --debug` succeeds with both new native
+plugins compiled in. Built and started for you per rule 5.
+
+**Checkpoint test partial — committed anyway, by your explicit choice.** You ran an initial pass
+against the real app and called it good, but said outright you hadn't gone through everything and
+would come back to it later rather than hold up the commit for it — recorded as exactly that,
+not claimed as a full pass. Still open whenever you return to it: the tray menu's real flow/service
+state and its Start/Stop actually reaching the agent, Ctrl+Alt+I from another app, the close
+button hiding rather than exiting (only the tray's Quit should actually exit), the welcome dialog
+firing once and not on a second launch, "?" opening the shortcut list from anywhere — including
+whether it eats a literal "?" typed into a search box, the one thing that specifically needs a
+second look since it's the app's first app-wide keyboard binding — and Overview's section headers
+jumping to the right tab. See D79/D80 for full detail.
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the

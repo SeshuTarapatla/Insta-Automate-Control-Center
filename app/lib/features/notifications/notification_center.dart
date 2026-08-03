@@ -200,13 +200,13 @@ class _NotificationList extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: visible.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) => _NotificationTile(notification: visible[index]),
+      itemBuilder: (context, index) => NotificationTile(notification: visible[index]),
     );
   }
 }
 
-class _NotificationTile extends ConsumerWidget {
-  const _NotificationTile({required this.notification});
+class NotificationTile extends ConsumerWidget {
+  const NotificationTile({super.key, required this.notification});
   final AppNotification notification;
 
   static const _levelColors = {

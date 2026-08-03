@@ -217,7 +217,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
                   Text(
                     status.state.label.toUpperCase(),
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: status.state.color(scheme),
+                      color: status.state.color(theme),
                       letterSpacing: 1.2,
                     ),
                   ),
