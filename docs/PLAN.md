@@ -1007,16 +1007,90 @@ were.
 
 ## Phase 7 — Ops & insight · solves #9
 
-### CP 7.1 — Ops panel 🟢 🟣
+### CP 7.1 — Ops panel 🟢 ✅ done, agent-only + cross-repo, user-verified
 `ia build`, `helm upgrade`/`uninstall`, pod restart, `prefect-k3s purge`, `ia db backup`/`restore`
-— each with streamed output on `ops.logs`. Surface `IA_AGENT_URL`/`IA_AGENT_TOKEN` through helm
-values so they change without an image rebuild. This closes the loop on the
+— each with streamed output on `ops.logs`. Surface `IA_AGENT_TOKEN` through helm values so it
+changes without an image rebuild. This closes the loop on the
 *change → commit → build → undeploy → deploy* chore for the cases that still need a rebuild,
 and retires the hand-run `kubectl` undeploy/redeploy cycle (EXPECTATION.md complexity #9).
 
 Note that Phases 1 and 3 already remove *most* of the reason to redeploy at all: limits and
 delays become live-read config, so the rebuild chore stops applying to the changes you make
 most often. Phase 7 covers what genuinely still needs an image or a chart change.
+
+**Correction found while scoping, before writing any code:** `IA_AGENT_URL` doesn't actually need
+to move to helm values — ARCHITECTURE §3.3/CLAUDE.md's D26 already made it a live `Config` key
+(`config.env`), specifically so it changes without a pod restart. Only `IA_AGENT_TOKEN` (env-only
+by design, D26) and the informally-adopted `GIT_BRANCH` (not in the original plan at all, but a
+manual `kubectl set env` patch since D37/D55 that's caused three separate incidents — D55, D59,
+D68 — when forgotten) needed real values. Confirmed against the live pods' actual patched env
+(`kubectl get -o yaml`) rather than assumed, both because the plan doesn't specify exactly which
+containers need what and because CLAUDE.md's own account of the manual patches turned out to be
+right but worth double-checking: the scheduler carries both vars on every container (main + all
+four init containers, since `kubectl set env` without `-c` touches the whole pod spec), the worker
+only ever carried the token.
+
+**What landed** — new `agent/src/ia_agent/ops/jobs.py`: a `JOB_SPECS` registry (ten jobs) and
+`OpsJobStore`, a one-shot subprocess runner (`asyncio.create_subprocess_exec`, not
+`services/host.py`'s ConPTY — a job has a start and an end, no interactivity or resize to support)
+enforcing one job at a time, with history persisted to `%LOCALAPPDATA%\ia-agent\ops_jobs\` (D50's
+reasoning: a destructive action's outcome must survive an agent restart) and a job left `running`
+by a simulated agent crash reconciled to `interrupted` on the next load. Every `ia`/`prefect-k3s`
+invocation uses the same direct-venv-exe convention `services/registry.py` already established
+(`INSTA_AUTOMATE_DIR / ".venv" / "Scripts" / "ia.exe"`, not `uv run --project`). New agent-side
+setting `IA_OPS_GIT_BRANCH` (`vars.py`, env-only like `IA_AGENT_TOKEN` — D26's precedent) is the
+single source every `GIT_BRANCH`-sensitive step reads from, closing D55/D59's repeated root cause
+(a bare shell not having it set) rather than just moving the same manual step into a button.
+"Restart worker" is a three-step composite job (restart → wait for ready → `ia prefect deploy`)
+that fixes D38's work-pool-orphaning gap automatically instead of relying on someone noticing.
+New REST (factory-function pattern matching `api/services.py`): `GET /api/ops/specs` ·
+`GET /api/ops/jobs[?limit=]` · `GET /api/ops/jobs/{id}` · `GET /api/ops/jobs/{id}/logs?since=` ·
+`POST /api/ops/jobs` — desktop-token only, same D51 precedent as pairing's device-management
+routes. New WS channels `ops.jobs` / `ops.logs.{id}`, riding the existing single `EventBus`/`/ws`
+socket (confirmed via research: a "channel" is just a string tag on a published message, no new
+WS infrastructure needed — `services.logs.{name}`/`flowrun.logs`/`notifications`/
+`library.changes` all already share it this way).
+
+Cross-repo: `Helmcharts/Insta-Automate` gets its first `feat/control-center` branch. New
+`templates/_helpers.tpl` (the chart's first — none existed before) with two named templates
+(`insta-automate.agentEnv` for the scheduler, `insta-automate.workerEnv` for the worker) mirroring
+the two containers' actually-observed env shapes exactly rather than guessing one shared shape.
+`values.yaml` gains `agent.token`/`gitBranch`, both defaulting empty — the real token is never
+committed; the "Helm upgrade" job injects both via `--set` at deploy time, reading the token off
+this machine, matching the security posture already flagged for the Dockerfile secrets issue
+(Q10).
+
+Flutter: new Settings tab "Ops" (`features/settings/ops_tab.dart`) alongside Flows/Limits/Queue/
+Devices — same D54 reasoning as Devices/notifications, no new nav destination. Job buttons (from
+`GET /api/ops/specs`, so the list can never drift from what the agent actually runs), a
+`confirmOpsAction` dialog (`core/ops_confirm.dart`, mirroring `flow_switch_confirm.dart`'s
+`confirmFlowSwitch` shape) gating the five consequential jobs, a job-history sidebar, and
+`_OpsLogPanel` — replay-then-subscribe (D18's shape) adapted from `ServiceTerminal`'s pattern
+minus the resize/search/xterm machinery a linear job transcript has no use for.
+
+**Verified:** `agent/tests/test_ops.py` (45/45 — registry shape and secret redaction checked
+against the real `JOB_SPECS`, then step sequencing/failure short-circuiting/the one-job-at-a-time
+lock/disk persistence/crash reconciliation against synthetic Python subprocesses, then the same
+shape again over live REST + a real WS delivery), all 14 agent suites green. `helm template`/
+`helm lint` confirmed the chart renders correctly with and without `--set` overrides. `flutter
+analyze` clean, `flutter test` 41/41 (39 prior + 2 new in `ops_layout_test.dart` — needed a
+from-scratch offline `HttpClientAdapter` for the test, since nothing before this exercised a
+widget that calls `agentClientProvider` directly inside `flutter test`; `ServiceTerminal`'s
+equivalent call has never had a widget test either). Verified against the real running agent
+(restarted to pick up the new code, all three services confirmed `adopted` with uptime intact) —
+the real ten-job registry, an empty job list, and 401 rejection on an unauthenticated `POST` all
+confirmed live. **Deliberately not exercised live:** no ops job was actually started this
+session — same CP 5.2 precedent as `apply`/`delete`, real actions on the live cluster that nothing
+asked for; that's what your checkpoint test below is for.
+
+**Test (yours) — passed, after several rounds of live-found-and-fixed bugs:** running the panel
+for real immediately surfaced four genuine issues, all fixed the same session — a four-repo
+`my-modules` dependency conflict breaking `ia build` (D72), a window-sizing bug and a real `OpsTab`
+overflow at the 1024×700 floor (D72), a stale local Telegram session diverged from the K8s secret
+the pipeline actually uses (D73), and a `PATH` resolution gap in the ops job runner for
+venv-scoped bare commands (D74). `DB backup` and `Reset work pool` were run for real through the
+panel and succeeded; `Build image` was independently verified via direct CLI while root-causing
+the dependency conflict. Full account in DECISIONS.md's D72–D74.
 
 ### CP 7.2 — Insights 🟢
 Funnel charts, daily limit burn-down history, per-entity yield ranking, and a classify-accuracy

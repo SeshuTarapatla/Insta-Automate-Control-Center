@@ -5,6 +5,255 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-02 (continued) — CP 7.1, Ops panel: three design forks resolved with the user before writing code
+
+### D71 · One-shot jobs get plain `asyncio.create_subprocess_exec`, not the services' ConPTY; worker restart auto-chains its fix; the token never gets committed
+
+With Phase 6 accepted (D70), Phase 7's first checkpoint turns the manual `ia build`/`helm`/
+`kubectl` commands DECISIONS.md's D38/D55/D59/D68 show have repeatedly gone wrong into real app
+buttons. Research first (two Explore agents plus direct reads) established: `services/host.py`'s
+ConPTY is built for a long-lived, interactive, resizable process adopted across an agent restart —
+none of that applies to a one-shot admin command, so `ops/jobs.py` uses plain
+`asyncio.create_subprocess_exec` instead, no detached host process or pty needed. The single
+`EventBus`/`/ws` socket already treats a "channel" as just a string tag (confirmed: no per-channel
+WS routing exists, every subscriber gets everything), so `ops.jobs`/`ops.logs.{id}` needed no new
+WS infrastructure. `ia`/`prefect-k3s` aren't on the global PATH (only `helm`/`kubectl` are, via
+Rancher Desktop) — `services/registry.py`'s existing direct-venv-exe convention
+(`INSTA_AUTOMATE_DIR / ".venv" / "Scripts" / "ia.exe"`) is reused rather than `uv run --project`.
+
+**Three decisions confirmed with the user before writing any code:**
+1. **"Restart worker" auto-chains a deploy step** — a composite three-step job (restart → wait
+   ready → `ia prefect deploy`) rather than two separate buttons, closing D38's work-pool-orphaning
+   gap for good instead of relying on someone noticing and re-running the deploy by hand, the
+   pattern that bit D38, D55, and D68 independently.
+2. **Job history persists to disk** (`%LOCALAPPDATA%\ia-agent\ops_jobs\`), same D50 reasoning as
+   `NotificationStore` — a helm uninstall or db restore's outcome must survive an agent restart, not
+   just live in memory until the next one. A job left `running` by a simulated crash is reconciled
+   to `interrupted` on load, since the subprocess died with the agent and there is nothing left to
+   resume.
+3. **The real `IA_AGENT_TOKEN` is never committed to the Helmcharts repo.** `values.yaml` defaults
+   both `agent.token` and `gitBranch` to empty; the "Helm upgrade" job reads the real token off this
+   machine (`%LOCALAPPDATA%\ia-agent\token`) and injects both via `helm upgrade --set` at deploy
+   time — the same security posture already flagged for the Dockerfile plaintext-secrets issue
+   (Q10), applied proactively this time instead of after the fact.
+
+**A fourth correction, found while scoping rather than assumed:** the original plan text said to
+surface `IA_AGENT_URL` through helm values alongside `IA_AGENT_TOKEN`. Re-reading ARCHITECTURE
+§3.3/D26 first: `IA_AGENT_URL` is already a live `Config` key (`config.env`), specifically so it
+changes without a pod restart — only `IA_AGENT_TOKEN` (env-only by design) and the informally
+adopted `GIT_BRANCH` (not in the original plan at all, but responsible for three separate
+incidents once it became a manual patch) actually needed to move. Confirmed against the live pods'
+real patched env via `kubectl get deployment -o yaml` rather than trusting CLAUDE.md's own
+prose description of the patches: the scheduler carries both `IA_AGENT_TOKEN` and `GIT_BRANCH` on
+every container (`kubectl set env` without `-c` touches the whole pod spec, not just the one
+container someone had in mind), the worker only ever carried the token. Two small named Helm
+templates (`_helpers.tpl`, the chart's first — none existed before) mirror that exactly rather
+than guessing one shared shape for both deployments.
+
+**Every `GIT_BRANCH`-sensitive step (build, deploy, helm upgrade) now reads one agent-side
+setting** (`IA_OPS_GIT_BRANCH`) instead of trusting whoever's shell happened to have it exported —
+this is the actual fix for D55/D59's repeated root cause (a bare local shell silently deploying
+`main`), not just a convenience wrapper around the same failure mode.
+
+**Verified:** `agent/tests/test_ops.py` (45/45) — the real `JOB_SPECS` registry checked statically
+(ids, confirm flags, secret redaction in the helm-upgrade step's display argv) before being
+replaced with synthetic Python-subprocess jobs for step sequencing, failure short-circuiting
+(a failed step's later steps never run), the one-job-at-a-time lock, disk persistence across a
+fresh `OpsJobStore`, and the simulated-crash reconciliation — then the same shape again over live
+REST plus a real WS delivery, still never touching the real `ia`/`helm`/`kubectl`/`prefect-k3s`
+binaries. All 14 agent suites green. `helm template --set agent.token=... --set gitBranch=...`
+and `helm lint` confirmed the rendered chart matches the live pods' observed shape exactly.
+Flutter: `flutter analyze` clean, `flutter test` 41/41 — the 2 new `ops_layout_test.dart` cases
+needed a from-scratch offline `HttpClientAdapter` stand-in, a genuine gap found while writing the
+test: `_OpsLogPanel` calls `agentClientProvider` directly (same shape as `ServiceTerminal`'s
+replay call), and nothing in this codebase had ever widget-tested that path before — a real,
+unmocked network request was leaving a pending Dio timer at teardown until the adapter and
+`pumpAndSettle` (instead of a fixed-duration `pump`) fixed it.
+
+Verified against the real running agent — restarted to pick up the new code, all three supervised
+services confirmed `adopted` with uptime intact across it — `GET /api/ops/specs` returns the real
+ten-job registry, `GET /api/ops/jobs` starts empty, an unauthenticated `POST` is rejected.
+**Deliberately not exercised live**: no ops job was actually started this session, same CP 5.2
+precedent as `apply`/`delete` — these are real actions on the live cluster nothing asked for, left
+for the user's own checkpoint test (rule 4).
+
+---
+
+## 2026-08-02 (continued) — CP 7.1 live-tested for real: a four-repo dependency conflict, a genuine window-sizing bug, a real overflow, and a dead Telegram session
+
+### D72 · First real use of the Ops panel found three real bugs and one pre-existing credential problem — none of them hypothetical
+
+You tested CP 7.1 for real within minutes of it starting: ran "Build image" (failed), ran "DB
+backup" (failed differently), and flagged the log panel/history visibly running off the bottom of
+the window in both screenshots, plus asked for a copy button. All three code issues were real and
+got root-caused and fixed; the fourth (Telegram) is a real credential problem outside anything
+this session's code touches.
+
+**1. `ia build` failed on a genuine, four-repo dependency conflict — not anything CP 7.1 wrote.**
+uv's resolver treats an unpinned git URL and a `@rev`-pinned one for the same package as
+conflicting sources, not "compatible until proven otherwise." `wsl-bridge` has pinned `my-modules`
+to `94b308a` since D65 — but nobody had actually run `ia build` since then to notice that
+`Insta-Automate`'s own unpinned `my-modules` reference now conflicted with it. Pinning
+`Insta-Automate`'s side to match only moved the conflict: `prefect-k3s` and `tg-auth` (a direct
+runtime import in `docker.py`, not just a dev tool, and **not previously in CLAUDE.md's repo
+table at all** — found only by tracing the actual `uv lock` error) both had the same unpinned
+reference. Fixed the same way in all three: `Prefect-K3S` and `TG-Auth` each got their own new
+`feat/control-center` branch (neither existed before) with `my-modules` pinned to `94b308a`, and
+`Insta-Automate`'s `[tool.uv.sources]` points `prefect-k3s`/`tg-auth` at those branches explicitly
+— the same "point a feature branch at a feature branch for testing" pattern this project already
+uses for `GIT_BRANCH`, reverting to unpinned/main once those branches merge.
+
+**A second, sneakier layer**: even with every repo's `pyproject.toml` correctly aligned, `uv lock`
+kept resolving `wsl-bridge` to a stale pre-pin commit. Root cause: `uv lock` reuses a package's
+previously-locked resolution when that package's own source declaration hasn't changed, even
+across a full `uv cache clean` — `wsl-bridge`'s source entry in `Insta-Automate`'s
+`pyproject.toml` never changed (still bare, no rev), so `uv` had no signal to re-resolve it.
+Fixed locally with `uv lock --upgrade-package wsl-bridge`. This only mattered for the local `uv
+lock`/`uv sync` commands used to verify the fix — `ia build`'s actual Docker step
+(`uv pip install git+...`) does a fresh resolution every time with no lockfile involved, so it was
+never affected by this specific staleness, only by the real pyproject.toml conflicts above.
+
+**Verified for real, not just reasoned about**: `ia build` run twice — once reproducing the
+original conflict exactly, once succeeding end to end (`docker.io/library/insta-automate:
+3.6.27-python3.12` built and exported, ~8s) after every fix was committed and pushed to each
+repo's `feat/control-center`/GitHub (the Docker build clones fresh from GitHub, so a local-only
+fix would have kept failing there even after `uv lock` succeeded locally — checked deliberately
+rather than assumed, given D36/D39's exact "local commit isn't deployed" lesson).
+
+**2. `ia db backup` tried to prompt for a Telegram login code and aborted — a real, pre-existing
+credential problem, confirmed independent of the ops panel.** Reproduced the identical failure
+running `ia tl verify` directly from a plain shell with stdin explicitly closed
+(`< /dev/null`) — same "Please enter the code you received: / Aborted." Telethon's `client.start
+(phone=...)` only falls back to that interactive re-auth flow when the stored session itself is
+no longer recognized as authorized by Telegram's servers; `TELEGRAM_SESSION` is set as a genuine,
+correctly-shaped 353-character string (a real system environment variable this machine already
+has, not something `.env`-vs-agent-environment loading ever disagreed about — checked and ruled
+out). This needs a fresh interactive login (a code sent to your phone) that only you can complete
+— not something to script around. **Hardened anyway**: the ops job runner now explicitly passes
+`stdin=asyncio.subprocess.DEVNULL` rather than silently inheriting whatever stdin the agent
+process happens to have. It already failed fast here specifically because `ia-agent.exe` (a
+GUI-subsystem process, D20) has no console to inherit — relying on that accident was fragile; a
+future interactive prompt from a differently-launched agent could otherwise hang forever holding
+the one-job-at-a-time lock.
+
+**3. The window itself was taller than the visible screen — a real, separate bug from CP 7.1's
+own layout, exposed by CP 7.1 for the first time.** `main.dart` sized the window to
+`display.size.height` — `screen_retriever`'s full monitor bounds, taskbar included — not the
+usable work area. Every earlier tab's content was short enough that the difference never showed;
+Ops's denser layout (job buttons + log panel + history) was the first to actually reach that
+extra height and get clipped by the taskbar. Fixed using `display.visibleSize`/`visiblePosition`
+(the OS work-area rect, confirmed to exist in `screen_retriever_platform_interface` specifically
+for this purpose) instead of the full monitor bounds, for both the window's height and its Y
+position — falls back to the full bounds only if the platform channel ever returns null for
+either.
+
+**4. `OpsTab` had its own, separate, real overflow at the app's 1024×700 floor.** Not visible
+until testing at the actual size: ten real job buttons (one three-line description) plus the new
+copy-button header pushed the log/history row past the tab's available height by 19px — caught by
+`ops_layout_test.dart` immediately once the header was added, not `flutter analyze` (D19's
+precedent, again). Fixed the same way D45/D46 fixed an identical class of problem on the Live
+screen: cap the button area's height (`ConstrainedBox` + `SingleChildScrollView`, 190px) instead
+of letting the `Wrap` claim whatever height ten cards want, guaranteeing the log/history row below
+always gets the rest.
+
+**5. Copy button added to the log panel**, per direct request — a small header row with a
+`content_copy` icon button that copies every visible line's text to the clipboard, matching
+`ServiceTerminal`'s existing `_copyAll` pattern.
+
+**Verified:** `agent/tests/test_ops.py` still 45/45 after the `stdin=DEVNULL` change. Flutter:
+`flutter analyze` clean, `flutter test` 41/41 (the `ops_layout_test.dart` case that first caught
+the RenderFlex overflow, now passing after the fix). Both the agent (for `stdin=DEVNULL`) and the
+app (for the window-sizing/layout/copy-button fixes) were rebuilt and restarted — the three
+supervised services confirmed `adopted` with uptime intact across the agent restart, same
+precedent as every checkpoint since CP 4.4. `ia build` confirmed working end to end for real, live
+(see above) — this is the one non-destructive job actually exercised live this session, since the
+user's own test run is what surfaced the bug in the first place; still no destructive job run,
+same standing precedent.
+
+---
+
+## 2026-08-03 (continued) — D74 · "Reset work pool" failed on a real PATH gap in the ops job runner
+
+Reported live: `prefect-k3s reset-pool` failed with `FileNotFoundError: [WinError 2] The system
+cannot find the file specified` trying to run bare `["prefect", "work-pool", "create", ...]` via
+`subprocess.run`. Root cause: `prefect.exe` lives in the same `.venv\Scripts\` folder as
+`prefect-k3s.exe` (confirmed on disk) — `reset-pool`'s own code shells out to the bare `prefect`
+command name, which only resolves via `PATH`. A normal interactive invocation works because
+activating that venv prepends its `Scripts` folder to `PATH`; the ops job runner invokes
+`prefect-k3s.exe` by its full path directly, with no such prepend, so the agent's own inherited
+`PATH` (which has no reason to include a project-specific venv's `Scripts` folder) left `prefect`
+unresolvable. Fixed generally, not just for this one command: `_ia_step`/`_prefect_k3s_step` in
+`ops/jobs.py` now prepend their own venv's `Scripts` directory to the subprocess's `PATH`,
+mirroring what venv activation does — closes the same class of bug for any other bare-command
+shell-out any `ia`/`prefect-k3s` subcommand might do, not just this one instance.
+
+**Verified:** new `test_ops.py` checks (47/47 total) confirm both `_ia_step` and
+`_prefect_k3s_step` prepend the correct venv `Scripts` dir. Agent restarted (plain `taskkill`, not
+`schtasks` — confirmed all three supervised services stayed `adopted` with uptime intact, unlike
+D73's `schtasks` cycle) and `POST /api/ops/jobs {"kind":"reset_pool"}` now succeeds end to end for
+real: `No stale workers found in 'default-pool'.` / `Work pool 'default-pool' ready.`
+
+---
+
+## 2026-08-03 — The Telegram user session had two independent, undocumented gaps stacked on top of each other
+
+### D73 · `ia db backup` fixed for real: local env vars and the K8s secret are two separate, never-synced credential stores — and cycling the agent's own launcher has a stale-environment gotcha
+
+Following on from D72's "the session needs a fresh login" conclusion, the user correctly pushed
+back: the same `TELEGRAM_*` env var names are already used successfully by the live pipeline for
+notifications and (per D49/D50) scheduled db backups, so why would this need a fresh interactive
+login at all? Investigating properly rather than re-asserting the earlier conclusion found the
+real answer.
+
+**Gap 1 — two independent credential stores, no sync between them.** `tg_auth.controller
+.TelegramSecret.get()` (what the pipeline's Docker build bakes into pod env via `docker.py`'s
+`*TelegramSecret.get().model_dump_env()`) reads from a **Kubernetes Secret** (`tg-auth`, namespace
+`default`) — not from any local file or env var at all. `tg-auth login`'s only effect is
+`v1.patch_namespaced_secret(...)`; a `dump_env()` method exists in the same file that would write
+a local `.env`, but nothing in the CLI ever calls it — dead code, or never finished. Confirmed via
+hash comparison (never printing either secret) that the local Windows `TELEGRAM_SESSION` and the
+K8s secret's `TELEGRAM_SESSION` were genuinely different values, and independently verified via
+Telethon's `is_user_authorized()` (a pure check, no risk of triggering a code-send) that the K8s
+one is live-authorized and the local one is not. So "the pods have always worked" was true and
+irrelevant — they were never touching the credential that was actually broken. **Fixed by copying
+the K8s secret's current `TELEGRAM_SESSION`/`TELEGRAM_BOT_SESSION` into the local Windows User
+environment variables** (`[Environment]::SetEnvironmentVariable`, values piped directly from
+`kubectl` and never printed) — no interactive login needed after all, since a valid session already
+existed, just not where the local machine was looking for it.
+
+**Gap 2 — found only because the first restart attempt silently didn't work.** Killing just
+`ia-agent.exe` and letting D21's launcher (`pythonw.exe`, held in a job object, restarts on any
+non-zero exit) respawn it does **not** pick up a registry env var changed after the launcher
+itself last started — the respawned process inherits the launcher's own frozen environment, not a
+fresh read. Verified by hash-comparing the actual running process's `TELEGRAM_SESSION` (via
+`psutil.Process(pid).environ()`) against the K8s value at each step: identical-length garbage
+matched what looked like success until an explicit hash comparison caught that it was still the
+*old* value. Fixed by cycling the whole scheduled task (`schtasks /End /TN ia-agent` then
+`schtasks /Run /TN ia-agent`) rather than just the exe — a genuinely fresh process tree that does
+read current registry values.
+
+**A third thing found as a side effect, flagged rather than chased down**: cycling the task this
+way did **not** preserve the three supervised services as `adopted` the way CLAUDE.md documents
+("a supervised service survives the agent dying, any way — restart, crash, `taskkill /F` or
+`/F /T`"). Checked real OS process start times (`Get-Process | Select StartTime`), not just the
+agent's self-reported `uptime_s`: `adb`/`vl-server`/`wsl-bridge` all genuinely restarted within
+seconds of the task cycling, `adb` came back as `external` rather than `supervised`. No flow was
+actively running at the time (checked `GET /api/scheduler` immediately after — all `waiting`,
+last runs `COMPLETED`), so nothing was disrupted this time, but this is a real, previously
+unverified gap specific to `schtasks /End`+`/Run` (every other restart this whole project has used
+a plain `taskkill` of just the exe, which does preserve adoption). Left open — not part of CP 7.1,
+and chasing it now would be solving a problem nothing actually hit yet.
+
+**Verified for real:** `POST /api/ops/jobs {"kind":"db_backup"}` through the actual running agent
+(the real production path, not a hand-run CLI command) completed with `status: succeeded,
+exit_code: 0`, log showing a real Postgres export (6 tables) followed by `Uploading ... to Insta
+Backup channel` / `Upload complete. Backup successful.` — a real file landed in the real Telegram
+channel. This is now the second non-destructive ops job (after `ia build`, D72) actually exercised
+live this session, both because live use is what surfaced the bugs they're fixing, not because
+verification needed it.
+
+---
+
 ## 2026-08-02 (continued) — Session resume: D68's last open item closed by observation
 
 ### D70 · Real scrape runs confirmed completing successfully post-D68, no code change needed

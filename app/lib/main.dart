@@ -31,6 +31,17 @@ Future<void> main() async {
 
   final display = await screenRetriever.getPrimaryDisplay();
   final scale = (display.scaleFactor ?? 1).toDouble();
+  // `display.size`/`.position` are the full monitor bounds — taskbar
+  // included. Sizing the window to that (as this did until found live,
+  // CP 7.1 checkpoint testing) extends its bottom edge under the taskbar,
+  // clipping whatever's rendered there — the exact "content overflows off
+  // the bottom" report. `visibleSize`/`visiblePosition` are the work area
+  // the OS actually keeps clear of taskbars/docked toolbars on any edge,
+  // which is what "fill the exact space next to the mirror" (D69) always
+  // meant. Falls back to the full bounds only if the platform channel ever
+  // returns null for these (undocumented when that happens, if ever).
+  final visibleSize = display.visibleSize ?? display.size;
+  final visiblePosition = display.visiblePosition ?? Offset.zero;
   // Flush against the mirror, not a few px short of it — a gap there was
   // reported as wasted space too, not just the app's own width falling
   // short of the screen's right edge. The -5 corrects a small residual
@@ -39,10 +50,10 @@ Future<void> main() async {
   // not something further unit-conversion math explains — tuned by hand
   // against the real screen (D69) rather than guessed.
   final startX = _mirrorRightEdgePhysical / scale - 5;
-  final width = display.size.width - startX;
+  final width = visibleSize.width - startX;
 
   final windowOptions = WindowOptions(
-    size: Size(width < _minimumSize.width ? _minimumSize.width : width, display.size.height),
+    size: Size(width < _minimumSize.width ? _minimumSize.width : width, visibleSize.height),
     minimumSize: _minimumSize,
     backgroundColor: Colors.transparent,
     titleBarStyle: TitleBarStyle.hidden,
@@ -61,7 +72,7 @@ Future<void> main() async {
   // fill the exact space next to the mirror every time, and a remembered
   // size from a previous manual resize is exactly what left the screen's
   // right edge unused here (D69).
-  await windowManager.setPosition(Offset(startX, 0));
+  await windowManager.setPosition(Offset(startX, visiblePosition.dy));
   await Window.setEffect(effect: WindowEffect.mica, dark: true);
   await windowManager.show();
   await windowManager.focus();

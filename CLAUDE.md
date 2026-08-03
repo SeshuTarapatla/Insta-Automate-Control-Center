@@ -10,7 +10,11 @@ first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase
 parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3
 (Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
-pairing & notification rework) complete and accepted 2026-08-02**, CP 6.1 (Pairing + notification core) done, agent-only,
+pairing & notification rework) complete and accepted 2026-08-02**. **Phase 7 (Ops & insight) is
+open, CP 7.1 (Ops panel) built agent-only + cross-repo (`Helmcharts/Insta-Automate` on its own new
+`feat/control-center` branch), user-verified 🟢** — checkpoint test passed after several rounds of
+live-found-and-fixed bugs (D72–D74); see the dedicated paragraph below. Phase 6: CP 6.1 (Pairing +
+notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
 CP 6.3 (Desktop pairing & notification center) built, committed, and verified against the real
 agent with the pairing round trip backend-mocked (curl standing in for the phone) since CP 6.4
@@ -739,6 +743,112 @@ end to end.
 All five flow switches (`ENTITY_INGEST/SCAN/CLASSIFY/SCRAPE/FOLLOW`) were restored to **ON** on
 2026-07-31 when Phase 2 was accepted — the pipeline fires live flows on its normal schedule again.
 
+**Phase 7 (Ops & insight) is open, CP 7.1 (Ops panel) built, agent-only + cross-repo, 🟢, awaiting
+your checkpoint test.** Turns the manual shell commands DECISIONS.md's D38/D55/D59/D68 show have
+repeatedly gone wrong (a forgotten `GIT_BRANCH`, a worker restart that silently orphans the Prefect
+work pool) into buttons with streamed output — and fixes both recurring bugs at the source rather
+than just wrapping the same manual process. New `agent/src/ia_agent/ops/jobs.py`'s `JOB_SPECS`
+registry (ten jobs: build, deploy, db backup/restore, purge, reset-pool, helm upgrade/uninstall,
+restart scheduler/worker) and `OpsJobStore` — a one-shot subprocess runner (plain
+`asyncio.create_subprocess_exec`, not `services/host.py`'s ConPTY, since a job has a start and an
+end rather than being long-lived and interactive), one job at a time, history persisted to disk
+(`%LOCALAPPDATA%\ia-agent\ops_jobs\`, same D50 reasoning as notifications — a destructive action's
+outcome must survive an agent restart) and reconciled to `interrupted` if the agent itself restarts
+mid-job. Every `GIT_BRANCH`-sensitive step now reads one agent-side setting
+(`IA_OPS_GIT_BRANCH`, `vars.py`) instead of trusting whoever's shell happened to have it set — the
+actual fix for D55/D59's repeated root cause. "Restart worker" is a three-step composite job
+(restart → wait for ready → `ia prefect deploy`) that closes D38's gap automatically instead of
+relying on someone noticing and re-running the deploy by hand. New REST: `GET /api/ops/specs` ·
+`GET /api/ops/jobs[?limit=]` · `GET /api/ops/jobs/{id}` · `GET /api/ops/jobs/{id}/logs?since=` ·
+`POST /api/ops/jobs` (desktop-token only — same D51 precedent as pairing's device-management
+routes, since a phone has no business triggering a helm uninstall), new WS channels `ops.jobs` /
+`ops.logs.{id}`.
+
+**Cross-repo: `Helmcharts/Insta-Automate` gets its first `feat/control-center` branch** (none
+existed before this checkpoint). `IA_AGENT_TOKEN`/`GIT_BRANCH` move from manual `kubectl set env`
+patches (which a plain `helm upgrade`/reinstall silently drops — the exact gap D68's recovery had
+to work around) into real helm values, verified against the live pods' actual patched env
+(`kubectl get -o yaml`) rather than assumed: the scheduler carries both vars on every container,
+the worker only ever carried the token, so two small named templates (`templates/_helpers.tpl`)
+mirror that exactly. The real token is never committed — `values.yaml` defaults both to empty, and
+the "Helm upgrade" job injects the real values via `--set` at deploy time, reading the token off
+this machine, the same security posture already flagged for the Dockerfile secrets issue (Q10).
+
+**Verified:** `agent/tests/test_ops.py` (45/45 — registry shape, secret redaction, step
+sequencing, failure short-circuiting, the one-job-at-a-time lock, disk persistence including a
+simulated-crash reconciliation test, then the same shape again over live REST + a real WS
+delivery, all against synthetic Python subprocesses, never the real `ia`/`helm`/`kubectl`/
+`prefect-k3s` binaries), all 14 agent suites green. `helm template`/`helm lint` confirmed the
+chart renders correctly both with and without `--set` overrides. Flutter: `flutter analyze` clean,
+`flutter test` 41/41 (39 prior + 2 new in `ops_layout_test.dart`, which needed a from-scratch
+offline Dio adapter — nothing before this touched `agentClientProvider ` directly inside a widget
+test, since `ServiceTerminal`'s equivalent replay call has never had one either). Verified against
+the real running agent — restarted to pick up the new code (all three supervised services
+confirmed `adopted` with uptime intact across it) — `GET /api/ops/specs` returns the real
+ten-job registry, `GET /api/ops/jobs` starts empty, an unauthenticated `POST` is rejected.
+**Deliberately not exercised live:** no ops job was actually started this session — same CP 5.2
+precedent as `apply`/`delete`, these are real actions on the live cluster that nothing asked for.
+That's what the checkpoint test below is for.
+
+**Checkpoint test (rule 4, before commit):** open Settings → Ops, run "Deploy flows" or another
+non-destructive job for real and watch the log stream live, confirm it shows up in history
+afterward, and confirm the confirm-dialogs appear for the destructive actions (db restore, helm
+uninstall, purge, restart scheduler/worker) without necessarily going through with one.
+
+**You ran this test immediately and found three real bugs plus one pre-existing credential
+problem — all recorded in D72.** `ia build` failed on a genuine four-repo `my-modules` dependency
+conflict (fixed across `Insta-Automate`/`wsl-bridge`/`Prefect-K3S`/`TG-Auth`, the last one newly
+discovered and not previously in this file's repo table — see the "five repos in play" section
+above); the window itself was taller than the visible screen (`main.dart` used
+`display.size` — full monitor bounds — instead of `visibleSize`/`visiblePosition`, the OS work
+area; every earlier tab's content was just short enough never to reach the cut-off); `OpsTab`'s
+own button grid pushed the log panel into a real 19px overflow at the app's 1024×700 floor (capped
+and made independently scrollable, D45/D46's established pattern); and a copy button was added to
+the log panel per direct request. `ia db backup`'s Telegram prompt-and-abort is a **real,
+pre-existing, dead Telegram user session** — confirmed independent of the ops panel entirely
+(reproduces identically running `ia tl verify` from a plain shell with stdin closed) — needing an
+interactive re-login only you can complete; not something this session's code could fix, though
+the ops job runner now explicitly closes subprocess stdin so a future interactive prompt can never
+hang the one-job-at-a-time lock instead of failing fast. All fixes pushed to their respective
+`feat/control-center` branches, `ia build` re-verified working end to end for real afterward.
+
+**D73: the Telegram user-session problem turned out to be real but fixable, not a fresh-login
+situation.** Two independent gaps, both found by investigating rather than re-asserting the
+earlier "session is dead" conclusion once you pushed back on it: `tg-auth login` only ever writes
+a fresh session to a **Kubernetes Secret** (`tg-auth`), never to the local machine's `.env`/env
+vars — confirmed via hash comparison that the two had genuinely drifted apart, and via Telethon's
+`is_user_authorized()` that the K8s one was valid and the local one wasn't. Fixed by copying the
+K8s secret's session values into the local Windows env vars — no interactive login needed. Getting
+that fix to actually take effect surfaced a second gap: killing just `ia-agent.exe` lets D21's
+launcher respawn it with the *launcher's own* frozen environment, not a fresh registry read —
+cycling the whole scheduled task was needed instead. Doing that then surfaced a **third, flagged-
+but-not-fixed finding**: the three supervised services did not survive that specific restart path
+as `adopted` the way CLAUDE.md documents elsewhere — real process start times confirmed they
+genuinely restarted. No flow was running at the time, so nothing broke, but this is a real gap in
+that promise worth a closer look in a future session. `POST /api/ops/jobs {"kind":"db_backup"}`
+through the real agent now succeeds end to end — a real backup uploaded to the real Telegram
+channel. Full account in DECISIONS.md's D73.
+
+**D74: one more real bug, found retesting "Reset work pool" — a `PATH` gap in the ops job runner
+itself, not the surrounding pipeline.** `prefect-k3s reset-pool` shells out internally to a bare
+`prefect` command (`FileNotFoundError: [WinError 2]` when it couldn't resolve) — `prefect.exe`
+lives in the same venv `Scripts` folder as `prefect-k3s.exe` itself, so it only resolves in a
+normal terminal because activating that venv prepends the folder to `PATH`; the ops job runner
+invokes the exe by its full path directly, with no such prepend. Fixed generally in `ops/jobs.py`
+(`_ia_step`/`_prefect_k3s_step` now prepend their own venv's `Scripts` dir to the subprocess's
+`PATH`, the same thing activation does) rather than special-cased for just this one command, so
+any other bare shell-out anywhere in `ia`/`prefect-k3s` is covered too. Verified: `test_ops.py`
+47/47, agent restarted with a plain `taskkill` (confirmed all three services stayed `adopted` this
+time, unlike D73's `schtasks` cycle), `POST /api/ops/jobs {"kind":"reset_pool"}` now succeeds live
+end to end. Full account in DECISIONS.md's D74.
+
+**CP 7.1's checkpoint test passed** after this full live-bug-fixing pass (D72–D74) — `DB backup`
+and `Reset work pool` were run for real through the actual ops panel/REST path and succeeded;
+`Build image` was independently verified end to end via direct CLI while root-causing the
+`my-modules` conflict (the same command the panel's job runs, not re-triggered through the panel
+itself afterward). The five confirm-gated destructive/consequential jobs were never run, by
+design, same standing precedent as CP 5.2's `apply`/`delete`. Committed.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after
@@ -800,7 +910,10 @@ It ships as **two parts, both in this repo**:
 | `D:\Coding\Helmcharts\Insta-Automate` | helm chart: `server.yaml` (scheduler) + `worker.yaml` |
 
 Supporting: `D:\Coding\my-modules` (logger, postgres, kubernetes, scrcpy, win32, inet),
-`D:\Coding\Prefect-K3S` (`prefect-k3s` CLI and the base image).
+`D:\Coding\Prefect-K3S` (`prefect-k3s` CLI and the base image), `D:\Coding\TG-Auth` (Telegram
+session helper, a direct runtime import in `Insta-Automate`'s own `docker.py` — found live during
+CP 7.1, D72, not previously documented here). Both now carry a `feat/control-center` branch
+(D72's `my-modules` pin fix), same feature-branch-only discipline as the five repos above.
 
 ---
 

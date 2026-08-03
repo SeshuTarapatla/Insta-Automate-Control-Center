@@ -6,6 +6,15 @@ HOST = "0.0.0.0"
 PORT = 8787
 
 INSTA_AUTOMATE_DIR = Path(r"D:\Coding\Insta-Automate")
+HELMCHARTS_DIR = Path(r"D:\Coding\Helmcharts\Insta-Automate")
+PREFECT_K3S_DIR = Path(r"D:\Coding\Prefect-K3S")
+
+# The branch every ops job (build/deploy/helm upgrade) targets — one place to
+# change instead of a value someone's shell needs to remember to set, which is
+# the actual root cause behind D55/D59's repeated "deployed from main by
+# accident" incidents. Flip to "" once the control center is accepted and
+# these repos merge to main (see CLAUDE.md rule 3).
+IA_OPS_GIT_BRANCH = os.environ.get("IA_OPS_GIT_BRANCH", "feat/control-center")
 
 
 def _android_serial() -> str:
@@ -74,3 +83,9 @@ PAIRING_DEVICES_PATH = AGENT_DATA_DIR / "pairing.json"
 # anyway), an unread "limit reached" or "scan complete" notification is
 # exactly the kind of state a restart must not silently drop.
 NOTIFICATIONS_PATH = AGENT_DATA_DIR / "notifications.json"
+
+# Ops job history (PLAN CP 7.1) — same D50 reasoning as notifications: a
+# helm uninstall or db restore's outcome must survive an agent restart, not
+# just live in memory until the next one.
+OPS_JOBS_DIR = AGENT_DATA_DIR / "ops_jobs"
+OPS_JOBS_KEEP = 50

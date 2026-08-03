@@ -7,6 +7,7 @@ import 'config_controller.dart';
 import 'config_file_bar.dart';
 import 'devices_tab.dart';
 import 'limits_tab.dart';
+import 'ops_tab.dart';
 import 'queue_tab.dart';
 import 'switches_tab.dart';
 
@@ -34,7 +35,7 @@ class SettingsPage extends ConsumerWidget {
         child: Focus(
           autofocus: true,
           child: DefaultTabController(
-            length: 4,
+            length: 5,
             child: Column(
               children: [
                 Padding(
@@ -49,6 +50,7 @@ class SettingsPage extends ConsumerWidget {
                       Tab(text: 'Limits'),
                       Tab(text: 'Queue'),
                       Tab(text: 'Devices'),
+                      Tab(text: 'Ops'),
                     ],
                   ),
                 ),
@@ -59,6 +61,7 @@ class SettingsPage extends ConsumerWidget {
                       LimitsTab(config: config),
                       const QueueTab(),
                       const DevicesTab(),
+                      const OpsTab(),
                     ],
                   ),
                 ),

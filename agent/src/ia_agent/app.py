@@ -12,6 +12,7 @@ from ia_agent.api.health import router as health_router
 from ia_agent.api.images import create_images_router
 from ia_agent.api.library import create_library_router
 from ia_agent.api.notify import create_notify_router
+from ia_agent.api.ops import create_ops_router
 from ia_agent.api.pair import create_pairing_router
 from ia_agent.api.queue import router as queue_router
 from ia_agent.api.scheduler import create_scheduler_router
@@ -26,6 +27,7 @@ from ia_agent.library.counts import LibraryCounts
 from ia_agent.library.watcher import watch_library
 from ia_agent.logging import logger
 from ia_agent.notifications import NotificationStore
+from ia_agent.ops.jobs import OpsJobStore
 from ia_agent.pairing import PairingStore
 from ia_agent.scheduler import SchedulerMirror
 from ia_agent.services.registry import build_specs
@@ -42,6 +44,7 @@ def create_app() -> FastAPI:
     library_counts = LibraryCounts()
     pairing_store = PairingStore()
     notification_store = NotificationStore(bus)
+    ops_job_store = OpsJobStore(bus, token)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -85,5 +88,6 @@ def create_app() -> FastAPI:
     app.include_router(create_device_router())
     app.include_router(create_pairing_router(pairing_store, token, bus))
     app.include_router(create_notify_router(notification_store))
+    app.include_router(create_ops_router(ops_job_store, token))
     app.include_router(create_ws_router(bus, token, pairing_store))
     return app
