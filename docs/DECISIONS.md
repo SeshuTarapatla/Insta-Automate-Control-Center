@@ -5,6 +5,69 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-03 — Closing out what's pending post-Phase-7
+
+CP 7.3's checkpoint test is accepted as complete by your own explicit call (you'd already run an
+initial pass; you're not planning to go back through the rest, future gaps become ordinary bug
+fixes instead). Open questions Q2/Q9/Q10/Q11 are left exactly as-is — no workflow change — and Q5
+(Force run) is confirmed working as expected, closing it out alongside the others already marked
+✅ in PLAN.md. Phase 8 (Hardening: firewall automation, TLS/SPKI pinning, agent self-update, crash
+reporting, secret rotation) is explicitly out of scope — everything here is local-only, so the
+hardening concerns it addresses don't apply. Of the two flagged-but-unfixed gaps from the CP
+7.1–7.3 sessions, D76's duplicate (below) was judged significant enough to fix; D73's restart-path
+gap was judged a narrow edge case not worth code changes — see its own entry for why, and the note
+added to `CLAUDE.md`'s CP 2.6 paragraph recording the caveat.
+
+### D81 · The D76 bug also lived in CP 5.4's per-entity dialog — fixed the same way, `scraped`/`followed` dropped entirely
+
+D76 (CP 7.2) fixed `insights.py`'s whole-library funnel and per-entity ranking, but flagged rather
+than fixed the identical bug in `library/entity_view.py::fetch()` — the Library screen's
+per-entity yield dialog, CP 5.4, already-accepted code, out of that session's ask. Same root cause:
+`profile_scrape` writes its `user` row *before* the four skip checks (PUBLIC/NO_POSTS/FMIN/FMAX),
+so `count(*) from "user" where root = :root` counts every profile whose stats were read, not just
+real scrapes — inflating `scraped`, and `followed_est` (derived from it as
+`scraped − in_scraped_folder − in_follow_queued_folder`) inherited the same inflation.
+
+Judged worth fixing now (unlike D73 below): this is a live, user-visible accuracy bug in a feature
+actually used to judge an entity's yield, not a rare edge case, and the fix pattern was already
+established by D76 — no new design work. Same conclusion applies here as it did for `ranking()`:
+`Scrape.scraped`/`Follow.followed` are global daily counters with no entity attached, so there is
+no accurate per-entity source for either number without a pipeline schema change (the same
+cross-repo cost D49 already declined for real follow-tracking). Rather than relabel or partially
+fix it, `entity_view.fetch()` now matches `ranking()` exactly: `scraped`, `in_scraped_folder`,
+`in_follow_queued_folder`, and `followed_est` are gone from the response entirely, leaving only the
+real per-entity `scanned`/`private`/`female`/`male`. `library.py`'s route no longer passes
+`LibraryCounts` into `fetch()` since nothing in it needs folder counts anymore. The Flutter dialog
+(`entity_yield_dialog.dart`) drops the "Scraped" and "Followed (est.)" funnel bars and adds a one-
+line note pointing at the Insights screen for real whole-library totals; `EntityYield`
+(`entity_yield_models.dart`) drops the four fields to match.
+
+**Verified:** `agent/tests/test_entity_view.py` rewritten (13/13 — a `"user"` table is still seeded
+in the fixture specifically to prove `fetch()` no longer reads it), all 15 agent suites green
+(541/541). `flutter analyze` clean, `flutter test` 48/48 (`entity_yield_layout_test.dart`'s two
+cases updated to the smaller `EntityYield` constructor, no new/removed cases). Verified against the
+real running agent and Postgres — restarted via a plain `taskkill /F` (all three supervised
+services confirmed still `origin: "adopted"`, `restart_count: 0`, uptime intact across it, matching
+D74's finding rather than D73's): `GET /api/library/entity/sejjjalll/yield` before the restart
+still showed the old `scraped: 365, followed_est: 365` shape (confirming the old code was live and
+the bug was real), and after the restart returns only
+`{scanned: 2529, private: 1544, female: 1044, male: 500}` — no `scraped`/`followed_est` key at all.
+
+### D73-addendum · Restart-path gap judged low-significance, documented rather than fixed
+
+Re-assessed alongside D81 above, at your explicit ask to weigh whether it's "very important." The
+gap only reproduces when cycling the *entire* `ia-agent` scheduled task (`schtasks`) — the specific
+maintenance action D73 needed to force the launcher to re-read fresh environment variables, not
+something that happens during normal operation. Every more common restart path — killing
+`ia-agent.exe` directly, `taskkill /F`, `/F /T`, restarting from the app itself — was re-verified
+working correctly both at the time (D74) and again live during D81's own verification above (all
+three services stayed `adopted` across a plain `taskkill /F`). Conclusion: this is a documentation-
+accuracy gap in CLAUDE.md's blanket "survives the agent dying, any way" claim, not a code bug worth
+active fix effort — a caveat naming the one path where it doesn't hold is enough. Left uninvestigated
+for *why* `schtasks` cycling differs; revisit if it turns out to matter more than expected.
+
+---
+
 ## 2026-08-03 (continued) — CP 7.3 (Polish), built, awaiting your checkpoint test
 
 ### D80 · Five real implementation snags, none of them design questions

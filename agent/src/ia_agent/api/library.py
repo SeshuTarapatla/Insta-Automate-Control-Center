@@ -111,7 +111,7 @@ def create_library_router(counts: LibraryCounts) -> APIRouter:
     async def get_entity_yield(root: str) -> dict:
         """CP 5.4 — one entity's funnel across every stage. 404 when `root`
         isn't a known `Entity.id`, same as any other not-found path here."""
-        result = await asyncio.to_thread(entity_view.fetch, root, counts)
+        result = await asyncio.to_thread(entity_view.fetch, root)
         if result is None:
             raise HTTPException(status_code=404, detail=f"unknown entity: {root}")
         return result

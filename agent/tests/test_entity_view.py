@@ -1,11 +1,16 @@
-"""Entity-view funnel (CP 5.4) — `entity_view.fetch()` against a scratch
-SQLite engine standing in for Postgres (raw `text()` SQL only, no ORM models,
-so the same statements run against either dialect — see D?? for why
-`sum(CASE WHEN ...)` was used instead of Postgres's `FILTER` clause) plus a
-real `LibraryCounts` seeded from a scratch `IA_DIR`, then the same thing
-again over the live REST surface with `entity_view.postgres.get_engine`
+"""Entity-view funnel (CP 5.4, D81-corrected) — `entity_view.fetch()` against a
+scratch SQLite engine standing in for Postgres (raw `text()` SQL only, no ORM
+models, so the same statements run against either dialect), then the same
+thing again over the live REST surface with `entity_view.postgres.get_engine`
 monkeypatched to the same fixture engine. Never touches the real Postgres
 database or the real `IA_DIR`.
+
+D81: `scraped`/`followed_est` are gone from this module entirely — the same
+`count(*) from "user"` inflation bug D76 found and fixed in `insights.py`'s
+`ranking()` lived here too (unfixed, since CP 5.4 was already-accepted code
+out of that session's ask). Fixed now the same way: no per-entity source
+exists for either number, so neither is reported. The fixture keeps a
+`"user"` table only to prove `fetch()` no longer reads it.
 """
 import asyncio
 import shutil
@@ -16,14 +21,10 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from PIL import Image
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
 import ia_agent.library.entity_view as entity_view
-import ia_agent.library.folders as folders
-from ia_agent.library.counts import LibraryCounts
-from ia_agent.library.folders import LibraryFolder
 
 OK = []
 
@@ -34,27 +35,6 @@ def check(label, condition, detail=""):
 
 
 SCRATCH = Path(tempfile.mkdtemp(prefix="ia-agent-test-entity-view-"))
-FAKE_IA_DIR = SCRATCH / "ia_dir"
-FAKE_IA_DIR.mkdir(parents=True)
-
-folders.IA_DIR = FAKE_IA_DIR
-folders.FOLDERS = {
-    "entities": LibraryFolder("entities", FAKE_IA_DIR / "entities", flat=True),
-    "scanned": LibraryFolder("scanned", FAKE_IA_DIR / "scanned", flat=False),
-    "gender_valid": LibraryFolder("gender_valid", FAKE_IA_DIR / "gender_valid", flat=False),
-    "gender_invalid": LibraryFolder("gender_invalid", FAKE_IA_DIR / "gender_invalid", flat=False),
-    "scrape_queued": LibraryFolder("scrape_queued", FAKE_IA_DIR / "scrape_queued", flat=False),
-    "scraped": LibraryFolder("scraped", FAKE_IA_DIR / "scraped", flat=False),
-    "follow_queued": LibraryFolder("follow_queued", FAKE_IA_DIR / "follow_queued", flat=False),
-}
-
-
-def make_jpg(rel_path: str) -> Path:
-    path = FAKE_IA_DIR / rel_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (10, 10), (10, 20, 30)).save(path, "JPEG")
-    return path
-
 
 # ------------------------------------------------------------ fixture engine
 
@@ -69,14 +49,15 @@ with ENGINE.begin() as conn:
         "status TEXT, added_on TEXT, updated_on TEXT)"
     ))
     conn.execute(text("CREATE TABLE scanned (id TEXT PRIMARY KEY, root TEXT, access TEXT, gender TEXT)"))
+    # Kept only to prove fetch() no longer reads it (see check 1 below) —
+    # this is exactly the table whose count(*) used to inflate "scraped".
     conn.execute(text('CREATE TABLE "user" (id TEXT PRIMARY KEY, root TEXT)'))
 
-    # "alice": a full funnel — 10 scanned, 6 private, 3 female (the only ones
-    # ever gender-classified — access=PUBLIC rows never reach the classifier),
-    # 2 scraped. One of the two scraped users is still sitting in scraped/
-    # (not yet reviewed), the other has been promoted to follow_queued/ and
-    # already processed by entity_follow (gone from disk on both sides) — so
-    # followed_est should read 1, not 2.
+    # "alice": a full scan funnel — 10 scanned, 6 private, 3 female (the only
+    # ones ever gender-classified — access=PUBLIC rows never reach the
+    # classifier), 2 male. Two "user" rows exist for alice (pre-skip-check
+    # writes profile_scrape makes regardless of outcome) — deliberately not
+    # reflected anywhere in fetch()'s result.
     conn.execute(
         text("INSERT INTO entity VALUES (:id, :url, 'PROFILE', 'PRIVATE', 'COMPLETED', '2026-07-01T00:00:00', '2026-07-02T00:00:00')"),
         {"id": "alice", "url": "https://www.instagram.com/alice"},
@@ -91,53 +72,33 @@ with ENGINE.begin() as conn:
     conn.execute(text("INSERT INTO \"user\" VALUES ('alice_u1', 'alice')"))
     conn.execute(text("INSERT INTO \"user\" VALUES ('alice_u2', 'alice')"))
 
-    # "bob": scanned but nothing scraped yet — scraped/followed should both be 0.
+    # "bob": scanned but nothing else — scan-side counts should be 0 beyond
+    # its one row.
     conn.execute(
         text("INSERT INTO entity VALUES ('bob', 'https://www.instagram.com/bob', 'PROFILE', 'PRIVATE', 'QUEUED', '2026-07-03T00:00:00', '2026-07-03T00:00:00')")
     )
     conn.execute(text("INSERT INTO scanned VALUES ('bob_x', 'bob', 'PRIVATE', 'FEMALE')"))
 
-make_jpg("scraped/alice/alice_u1.jpg")  # still awaiting human review
-
-
-counts = LibraryCounts()
-counts.seed()
-
 
 def real_checks() -> None:
-    print("\n1. a known root returns the full DB-backed funnel, folded with real folder counts")
-    result = entity_view.fetch("alice", counts, engine=ENGINE)
+    print("\n1. a known root returns the scan-side funnel only — no scraped/followed_est")
+    result = entity_view.fetch("alice", engine=ENGINE)
     check("found", result is not None)
     check("url/type/access/status carried through", result["url"] == "https://www.instagram.com/alice" and result["type"] == "PROFILE" and result["status"] == "COMPLETED", str(result))
     check("scanned = 10", result["scanned"] == 10, str(result["scanned"]))
     check("private = 6 (public rows excluded)", result["private"] == 6, str(result["private"]))
     check("female = 3", result["female"] == 3, str(result["female"]))
     check("male = 2", result["male"] == 2, str(result["male"]))
-    check("scraped = 2 (real user rows)", result["scraped"] == 2, str(result["scraped"]))
-    check("in_scraped_folder = 1 (alice_u1.jpg on disk)", result["in_scraped_folder"] == 1, str(result["in_scraped_folder"]))
-    check("in_follow_queued_folder = 0 (nothing there)", result["in_follow_queued_folder"] == 0)
-    check("followed_est = 1 (2 scraped - 1 still pending review)", result["followed_est"] == 1, str(result["followed_est"]))
+    check("no scraped key", "scraped" not in result, str(result))
+    check("no followed_est key", "followed_est" not in result, str(result))
+    check("no in_scraped_folder/in_follow_queued_folder keys", "in_scraped_folder" not in result and "in_follow_queued_folder" not in result, str(result))
 
-    print("\n2. an entity with nothing scraped yet reads all-zero for that half of the funnel")
-    bob = entity_view.fetch("bob", counts, engine=ENGINE)
+    print("\n2. an entity with nothing beyond one scan row reads correctly")
+    bob = entity_view.fetch("bob", engine=ENGINE)
     check("scanned = 1, private = 1, female = 1", bob["scanned"] == 1 and bob["private"] == 1 and bob["female"] == 1, str(bob))
-    check("scraped = 0, followed_est = 0", bob["scraped"] == 0 and bob["followed_est"] == 0, str(bob))
 
     print("\n3. an unknown root returns None, not an exception")
-    check("ghost is None", entity_view.fetch("ghost", counts, engine=ENGINE) is None)
-
-    print("\n4. followed_est never goes negative even if folder counts somehow exceed scraped")
-    # A root with 1 scraped user but 2 files still sitting in scraped/ — an
-    # inconsistent state that should never happen live, but the formula must
-    # not report a negative "followed" if it ever does.
-    with ENGINE.begin() as conn:
-        conn.execute(text("INSERT INTO entity VALUES ('carol', 'https://www.instagram.com/carol', 'PROFILE', 'PRIVATE', 'QUEUED', '2026-07-04T00:00:00', '2026-07-04T00:00:00')"))
-        conn.execute(text("INSERT INTO \"user\" VALUES ('carol_u1', 'carol')"))
-    make_jpg("scraped/carol/a.jpg")
-    make_jpg("scraped/carol/b.jpg")
-    counts.touch("scraped", "carol")
-    carol = entity_view.fetch("carol", counts, engine=ENGINE)
-    check("followed_est clamped at 0, not -1", carol["followed_est"] == 0, str(carol["followed_est"]))
+    check("ghost is None", entity_view.fetch("ghost", engine=ENGINE) is None)
 
 
 real_checks()
@@ -168,11 +129,12 @@ async def live_checks() -> None:
             except httpx.HTTPError:
                 await asyncio.sleep(0.2)
 
-        print("\n5. GET /api/library/entity/{root}/yield, over REST")
+        print("\n4. GET /api/library/entity/{root}/yield, over REST")
         response = await client.get("/api/library/entity/alice/yield")
-        check("200 with the funnel", response.status_code == 200 and response.json()["scraped"] == 2, response.text)
+        body = response.json() if response.status_code == 200 else {}
+        check("200 with the scan-side funnel, no scraped key", response.status_code == 200 and body.get("scanned") == 10 and "scraped" not in body, response.text)
 
-        print("\n6. an unknown root is a 404 over REST, not a 500")
+        print("\n5. an unknown root is a 404 over REST, not a 500")
         missing = await client.get("/api/library/entity/ghost/yield")
         check("404", missing.status_code == 404, str(missing.status_code))
 

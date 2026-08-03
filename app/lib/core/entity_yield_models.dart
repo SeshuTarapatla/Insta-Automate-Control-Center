@@ -1,9 +1,16 @@
-/// One entity's progress across every pipeline stage (PLAN CP 5.4),
-/// `GET /api/library/entity/{root}/yield`. `scanned`/`private`/`female`/
-/// `male`/`scraped` are real Postgres counts; `followedEst` is an
-/// approximation (`scraped − still in scraped/ − still in follow_queued/`)
-/// since no per-entity "followed" record exists anywhere — see
-/// `entity_view.py`'s module docstring for why.
+/// One entity's progress across the scan-side pipeline stages (PLAN CP 5.4,
+/// D81-corrected), `GET /api/library/entity/{root}/yield`.
+/// `scanned`/`private`/`female`/`male` are real Postgres counts.
+///
+/// **`scraped`/`followed` are deliberately not here.** The first version
+/// counted `user`-table rows as "scraped" and derived a "followed" estimate
+/// from that — but `profile_scrape` writes that row before its own skip
+/// checks, so it counts every profile read, not just real scrapes (the same
+/// bug `insights.py`'s `ranking()` had, D76). Neither number has an accurate
+/// per-entity source (the real success signal, `Scrape.scraped`/
+/// `Follow.followed`, is a global daily counter with no entity attached), so
+/// — matching the Insights Ranking tab's own precedent — this funnel stops
+/// at `female` rather than show an inflated or approximated number.
 class EntityYield {
   const EntityYield({
     required this.root,
@@ -17,10 +24,6 @@ class EntityYield {
     required this.private,
     required this.female,
     required this.male,
-    required this.scraped,
-    required this.inScrapedFolder,
-    required this.inFollowQueuedFolder,
-    required this.followedEst,
   });
 
   final String root;
@@ -34,10 +37,6 @@ class EntityYield {
   final int private;
   final int female;
   final int male;
-  final int scraped;
-  final int inScrapedFolder;
-  final int inFollowQueuedFolder;
-  final int followedEst;
 
   factory EntityYield.fromJson(Map<String, dynamic> json) => EntityYield(
     root: json['root'] as String,
@@ -51,9 +50,5 @@ class EntityYield {
     private: json['private'] as int,
     female: json['female'] as int,
     male: json['male'] as int,
-    scraped: json['scraped'] as int,
-    inScrapedFolder: json['in_scraped_folder'] as int,
-    inFollowQueuedFolder: json['in_follow_queued_folder'] as int,
-    followedEst: json['followed_est'] as int,
   );
 }

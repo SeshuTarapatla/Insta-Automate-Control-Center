@@ -1,29 +1,27 @@
 """Per-entity yield funnel (PLAN CP 5.4) — one root entity's progress through
-the pipeline stages, read live from Postgres plus the folder counts CP 5.1
-already tracks.
+the pipeline stages, read live from Postgres.
 
 `scanned`/`private`/`female`/`male` come straight from `scanned` rows keyed
-by `root`, and `scraped` from `user` rows keyed by `root` — real per-entity
-data with an existing index-free equality filter (fine at today's volume:
-measured well under 100ms against the live 155k/21k-row tables).
+by `root` — real per-entity data with an existing index-free equality filter
+(fine at today's volume: measured well under 100ms against the live
+155k/21k-row tables).
 
-**`followed` has no equivalent source.** `entity_follow` sends the request
-and unlinks the image with no DB row ever written for it — the only
-persisted signal is a global daily counter (`Follow.followed`), not
-per-entity. Inventing a real one means a pipeline schema change, out of
-scope for a checkpoint marked agent+app only. Approximated instead as
-`scraped − (still in scraped/ + still in follow_queued/)`, using
-`LibraryCounts`' live per-root numbers: every scraped user starts in
-`scraped/`, gets promoted to `follow_queued/` on human review, and
-disappears from both once `entity_follow` actually processes it — so
-whatever's still sitting in either folder hasn't been followed yet, and
-what's left over has (or was silently dropped during review, which this
-can't distinguish and says so in `CLAUDE.md`/`DECISIONS.md`, not to the
-user inline)."""
+**D81-corrected (see DECISIONS.md): no `scraped`/`followed` here either.**
+The first version counted `user` rows as "scraped" per entity and derived
+`followed_est` from that — but `profile_scrape` writes that `user` row
+*before* its own skip checks (PUBLIC/NO_POSTS/FMIN/FMAX), so it counts every
+profile whose stats were read, not just the ones that produced a real
+scraped image. `ia_agent/insights.py`'s `ranking()` hit the identical bug
+(D76) and was fixed by dropping scraped/followed from the per-entity view
+entirely, since the only accurate success signal (`Scrape.scraped`/
+`Follow.followed`) is a **global daily counter with no entity attached** —
+there is no accurate per-entity source for either number without a pipeline
+schema change (out of scope, same as D49's "followed" tracking). This module
+now matches that precedent exactly rather than showing an approximation
+built on an inflated base."""
 from sqlalchemy import Engine, text
 
 from ia_agent.integrations import postgres
-from ia_agent.library.counts import LibraryCounts
 
 _SCAN_COUNTS_SQL = text(
     "SELECT "
@@ -36,10 +34,9 @@ _SCAN_COUNTS_SQL = text(
 _ENTITY_SQL = text(
     "SELECT url, type, access, status, added_on, updated_on FROM entity WHERE id = :root"
 )
-_SCRAPED_COUNT_SQL = text('SELECT count(*) FROM "user" WHERE root = :root')
 
 
-def fetch(root: str, counts: LibraryCounts, *, engine: Engine | None = None) -> dict | None:
+def fetch(root: str, *, engine: Engine | None = None) -> dict | None:
     """`None` when `root` isn't a known `Entity.id` — the caller 404s."""
     engine = engine or postgres.get_engine()
     with engine.connect() as connection:
@@ -47,11 +44,6 @@ def fetch(root: str, counts: LibraryCounts, *, engine: Engine | None = None) -> 
         if entity is None:
             return None
         scan = connection.execute(_SCAN_COUNTS_SQL, {"root": root}).mappings().one()
-        scraped = connection.execute(_SCRAPED_COUNT_SQL, {"root": root}).scalar() or 0
-
-    in_scraped_folder = counts.count_for("scraped", root)
-    in_follow_queued_folder = counts.count_for("follow_queued", root)
-    followed_est = max(0, scraped - in_scraped_folder - in_follow_queued_folder)
 
     def _iso(value) -> str | None:
         return value.isoformat() if hasattr(value, "isoformat") else value
@@ -68,8 +60,4 @@ def fetch(root: str, counts: LibraryCounts, *, engine: Engine | None = None) -> 
         "private": scan["private"] or 0,
         "female": scan["female"] or 0,
         "male": scan["male"] or 0,
-        "scraped": scraped,
-        "in_scraped_folder": in_scraped_folder,
-        "in_follow_queued_folder": in_follow_queued_folder,
-        "followed_est": followed_est,
     }

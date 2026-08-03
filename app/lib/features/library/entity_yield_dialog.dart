@@ -47,9 +47,7 @@ class _EntityYieldBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // scanned is always the widest stage — every later stage is a subset of
-    // an earlier one, except followedEst, which is an approximation clamped
-    // at 0 but not at scraped, so it also gets clamped against this max.
+    // scanned is always the widest stage — every later stage is a subset of it.
     final maxCount = data.scanned == 0 ? 1 : data.scanned;
 
     return SingleChildScrollView(
@@ -93,14 +91,11 @@ class _EntityYieldBody extends StatelessWidget {
                 ? 'of ${data.private} private — ${data.male} classified male instead'
                 : null,
           ),
-          FunnelStage(label: 'Scraped', count: data.scraped, maxCount: maxCount),
-          FunnelStage(
-            label: 'Followed (est.)',
-            count: data.followedEst,
-            maxCount: maxCount,
-            caption:
-                '≈ scraped, minus ${data.inScrapedFolder} still awaiting review and '
-                '${data.inFollowQueuedFolder} still queued to follow',
+          const SizedBox(height: 8),
+          Text(
+            'Scraped/followed counts aren\'t shown here — no accurate per-entity '
+            'source exists (see the Insights screen for real whole-library totals).',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),

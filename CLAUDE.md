@@ -10,9 +10,20 @@ first time — D40 through D46, all recorded below and in DECISIONS.md). **Phase
 parity) complete and accepted 2026-08-01** — CP 5.1 (Library API), CP 5.2 (Mutations), CP 5.3
 (Library UI) and CP 5.4 (Entity view), every checkpoint PLAN.md scoped for this phase (CP 5.1/5.2
 agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs below. **Phase 6 (Mobile
-pairing & notification rework) complete and accepted 2026-08-02**. **Phase 7 (Ops & insight) is
-open, CP 7.1 (Ops panel) built agent-only + cross-repo (`Helmcharts/Insta-Automate` on its own new
-`feat/control-center` branch), user-verified 🟢** — checkpoint test passed after several rounds of
+pairing & notification rework) complete and accepted 2026-08-02**. **Phase 7 (Ops & insight)
+complete and accepted 2026-08-03** — CP 7.1, CP 7.2, and CP 7.3 (the phase's only scoped
+checkpoints) are all closed; CP 7.3's checkpoint test was accepted as complete by your own
+explicit call rather than a full pass (see its own paragraph below), and with that the whole
+project is at its planned-complete state — **Phase 8 (Hardening) is explicitly out of scope**
+(local-only setup, so firewall/TLS/self-update/crash-reporting/secret-rotation don't apply), and
+the open questions still without a ✅ in PLAN.md (Q2, Q9, Q10, Q11) were closed 2026-08-03 with "no
+change, keep current behavior" rather than left pending. Two flagged-but-unfixed gaps from the
+CP 7.1–7.3 sessions were triaged the same day: D76's duplicate bug (CP 5.4's per-entity dialog had
+the identical inflated-scraped-count issue Insights fixed) was judged significant and fixed as
+**D81**; D73's service-restart gap was judged a narrow edge case and documented rather than
+code-fixed (see the CP 2.6 paragraph below). **CP 7.1 (Ops panel)** was built agent-only +
+cross-repo (`Helmcharts/Insta-Automate` on its own new `feat/control-center` branch), user-verified
+🟢 — checkpoint test passed after several rounds of
 live-found-and-fixed bugs (D72–D74); see the dedicated paragraph below. **CP 7.2 (Insights) built
 agent-only, 🟢, user-verified — checkpoint test passed after three rounds of live-found-and-fixed
 issues (D75–D78)** — funnel/ranking/burn-down landed as one checkpoint on data that needed no new
@@ -109,6 +120,11 @@ outright without a separate CP 2.6 verification pass. The
 the agent, which starts the three services from their `autostart` switches (now on). What CP 2.5
 measured — supervised services die with the agent — is closed by CP 2.6: the pseudo-console now
 lives in a detached service-host process, so a service survives the agent dying any way (D23).
+**Caveat added 2026-08-03 (D73-addendum):** this holds for every restart path tested — a clean
+exit, `taskkill /F`, `taskkill /F /T`, and restarting from the app — but not for cycling the entire
+`ia-agent` scheduled task via `schtasks` (D73), which genuinely restarts all three services instead
+of adopting them. That path is rare (only needed to force the launcher to re-read fresh environment
+variables) and was judged not worth a code fix; this note is the fix.
 **Phase 3, CP 3.1–3.4** (Trigger delays & conditions; CP 3.1–3.3 in `Insta-Automate` on
 `feat/control-center`, CP 3.4 in this repo's agent) landed first. `Limit` in `models/meta.py` is generalised
 into typed `Config` (`Limit = Config` alias, no call sites changed), carrying every key from
@@ -537,6 +553,18 @@ calls, riding `entity_follow`'s already-scheduled `db_backup()` → Telegram cha
 a cross-repo `Insta-Automate` change, and you judged "followed" a metric you may not use enough to
 justify it. The approximation ships as the permanent answer unless that changes.
 
+**Addendum, 2026-08-03 (D81): the "scraped"/"followed_est" stages above were removed entirely,
+not just re-approximated.** They had the identical `count(*) from "user"` inflation bug CP 7.2's
+`insights.py` was later found to have (D76) — `entity_view.fetch()` was never revisited when that
+was fixed, since Phase 5 was already-accepted code. Fixed the same way `ranking()` was: no accurate
+per-entity source exists for either number (the real success signal is a global daily counter with
+no entity attached), so `fetch()` now returns only `scanned`/`private`/`female`/`male`, and the
+dialog drops the "Scraped"/"Followed (est.)" bars in favor of a note pointing at Insights for real
+whole-library totals. Verified against the real agent/Postgres: `sejjjalll` went from
+`scraped: 365, followed_est: 365` (confirmed still live pre-fix, proving the bug was real) to just
+`scanned: 2529, private: 1544, female: 1044, male: 500` post-restart. `flutter test` 48/48, all 15
+agent suites green (541/541). Full account in DECISIONS.md's D81.
+
 **Phase 5 accepted 2026-08-01** — CP 5.4 was the last item PLAN.md scoped for this phase, and you
 accepted the phase outright straight after reviewing the "followed" approximation tradeoff above,
 the same way Phase 2 was accepted without a separate final verification pass.
@@ -911,10 +939,12 @@ scraped/followed total in the Funnel tab. Those counters have no entity attached
 Ranking **drops scraped/followed entirely** rather than show something inaccurate (your own call,
 over relabeling it as "attempted") — Ranking now shows only `scanned`/`private`/`female`, all
 genuinely accurate per-entity Postgres counts, and clicking a row still opens CP 5.4's existing
-per-entity `showEntityYieldDialog`. **The identical bug still lives in that dialog's own
-`entity_view.fetch()`** (same `count(*) from "user"` source) — found while fixing this module,
-not yet fixed itself since it's Phase 5's already-accepted code and wasn't in this session's ask;
-flagged for you rather than changed silently.
+per-entity `showEntityYieldDialog`. **The identical bug also lived in that dialog's own
+`entity_view.fetch()`** (same `count(*) from "user"` source) — found while fixing this module, not
+fixed at the time since it's Phase 5's already-accepted code and wasn't in this session's ask,
+flagged instead of changed silently. **Fixed 2026-08-03, D81** — same treatment as `ranking()`
+above, `scraped`/`followed_est` dropped from `entity_view.fetch()` entirely. See the CP 5.4
+addendum above and DECISIONS.md's D81.
 
 **Verified:** `agent/tests/test_insights.py` rewritten (22/22) — the fixture deliberately seeds
 `user`-table rows with no arithmetic relationship to the real day-counter rows, so a regression
@@ -1005,6 +1035,20 @@ firing once and not on a second launch, "?" opening the shortcut list from anywh
 whether it eats a literal "?" typed into a search box, the one thing that specifically needs a
 second look since it's the app's first app-wide keyboard binding — and Overview's section headers
 jumping to the right tab. See D79/D80 for full detail.
+
+**CP 7.3's checkpoint test accepted as complete, 2026-08-03 — your explicit call, not a full pass.**
+You're not going back through the remaining items above; any that turn out to matter become
+ordinary future bug fixes rather than a blocking gate on Phase 7. **Phase 7 is accepted** on this
+basis — CP 7.1/7.2/7.3 are its only scoped checkpoints and all three are now closed.
+
+**Open questions closed out the same session, no code changes:** Q2 (scan cooldown), Q9 (laptop
+locked/away), Q10 (secret rotation) and Q11 (firewall automation) are left exactly as today's
+behavior — explicitly not changing anything, not merely deferred. **Q5 (force run) confirmed
+working as expected** — CP 3.5's implementation (bypasses limits/switch, never a no-work gate) is
+the accepted answer; PLAN.md just never marked it ✅ the way Q1/Q3/Q4/Q6/Q7/Q8 are. **Phase 8
+(Hardening) is out of scope entirely** — everything here is local-only, so the concerns it exists
+to address (firewall, TLS/SPKI pinning, agent self-update, crash reporting, secret rotation) don't
+apply. See DECISIONS.md's 2026-08-03 "Closing out what's pending post-Phase-7" entry.
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the

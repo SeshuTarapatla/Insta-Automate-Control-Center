@@ -11,7 +11,8 @@ import 'package:ia_control_center/features/library/library_controller.dart';
 /// so the real risk is a long entity root in the title row squeezing the
 /// "open on Instagram" button, and large counts/percentages/captions
 /// widening the funnel's count+percentage row past what's left after the
-/// bar's own padding.
+/// bar's own padding. D81 dropped the scraped/followed_est stages (and
+/// their fields) from the model entirely — see `entity_yield_models.dart`.
 void main() {
   testWidgets('EntityYield dialog lays out without overflow: a 60-char root, huge counts, long captions', (
     tester,
@@ -29,10 +30,6 @@ void main() {
       private: 98765,
       female: 54321,
       male: 44444,
-      scraped: 12345,
-      inScrapedFolder: 9999,
-      inFollowQueuedFolder: 8888,
-      followedEst: 1234,
     );
 
     tester.view.physicalSize = const Size(1024, 768);
@@ -81,10 +78,6 @@ void main() {
       private: 0,
       female: 0,
       male: 0,
-      scraped: 0,
-      inScrapedFolder: 0,
-      inFollowQueuedFolder: 0,
-      followedEst: 0,
     );
 
     tester.view.physicalSize = const Size(1024, 768);
