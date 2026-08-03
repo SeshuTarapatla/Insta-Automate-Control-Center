@@ -39,6 +39,7 @@ Thumbs.db
 .env
 .env.local
 *.token
+.claude
 
 # Note: pubspec.lock (app/) and uv.lock (agent/) are intentionally
 # NOT ignored — both must be committed for an application (not a package).
