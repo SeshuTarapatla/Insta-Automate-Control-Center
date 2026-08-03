@@ -10,6 +10,7 @@ from ia_agent.api.events import create_events_router
 from ia_agent.api.flowruns import create_flowruns_router
 from ia_agent.api.health import router as health_router
 from ia_agent.api.images import create_images_router
+from ia_agent.api.insights import create_insights_router
 from ia_agent.api.library import create_library_router
 from ia_agent.api.notify import create_notify_router
 from ia_agent.api.ops import create_ops_router
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(create_events_router(event_store))
     app.include_router(create_images_router())
     app.include_router(create_library_router(library_counts))
+    app.include_router(create_insights_router())
     app.include_router(create_device_router())
     app.include_router(create_pairing_router(pairing_store, token, bus))
     app.include_router(create_notify_router(notification_store))

@@ -5,6 +5,198 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-03 (continued) — Two rounds of live UI feedback on CP 7.2, checkpoint test passed
+
+### D78 · The Funnel tab's flat, all-normalized-to-the-top bars replaced with a real narrowing funnel showing both conversion numbers per stage
+
+You correctly identified a real visualization flaw, not a data bug this time: every stage's bar was
+scaled against `scanned` (the top-of-funnel count), so a deep stage's percentage barely moves even
+when its *actual* conversion from the stage right before it changes a lot — "2% of scanned" looks
+the same whether Followed just had a bad conversion off Scraped or always did.
+
+**Fixed with a real funnel shape, not a fancier bar** (new `features/insights/funnel_chart.dart`):
+each stage is a trapezoid whose top edge equals the *previous* stage's width and whose bottom edge
+is its own, so the shape reads as one continuous silhouette narrowing stage-by-stage — a
+`CustomPainter` draws it directly rather than five independently-scaled `FunnelStage` bars (which
+stays exactly as-is for the Library's per-entity dialog, its only remaining consumer). Every stage
+is labeled with **both** conversion numbers side by side — "X% of \[previous stage\] · Y% of
+total" — since either one alone hides something real: "% of total" answers "how much of the
+original pool made it this far" but flattens out for a stage several filters deep; "% of previous"
+answers "how much of *this* filter's input survived it" but says nothing about overall scale. A
+non-zero stage is floored to a minimum visible width so a genuinely thin tail (Followed at a few
+percent) doesn't taper away to an invisible point. No new categorical palette or legend needed —
+one hue, one series, per the dataviz skill's own sequential-magnitude guidance — and every value is
+already a direct label, so no hover tooltip was added on top of it.
+
+**A real overflow caught before it shipped** (not by `flutter analyze`, D19's precedent again): a
+caption's `overflow: TextOverflow.ellipsis` with no `maxLines` doesn't actually truncate anything —
+without a line limit, `Text` just wraps instead, which pushed a caption-bearing stage's label past
+its fixed segment height. Fixed with `maxLines: 1` on every text line in the label, and the segment
+height increased to fit the worst case (three real lines: name+count, conversion, an optional
+caption) instead of a guessed number.
+
+**Verified:** `flutter analyze` clean, `flutter test` 47/47 (`insights_layout_test.dart`'s existing
+huge-counts/all-zero cases exercised the new chart directly). Confirmed live — this was the
+checkpoint test passing.
+
+### D77 · The Ranking table rebuilt by hand after two rounds of feedback — `DataTable` can't make one column absorb extra width while the rest stay fixed
+
+Two real, sequential UI bugs in the Ranking tab, both found by you actually looking at it at the
+app's real opening size, neither visible from source alone:
+
+1. **Female was cut off requiring a horizontal scroll despite visible empty space.** Root cause:
+   Flutter's `DataTable` shows a checkbox column automatically whenever any row sets
+   `onSelectChanged` (used here only to open the entity dialog on tap, not to track selection) —
+   pure wasted width — plus its default `columnSpacing`/`horizontalMargin` (56px/24px) are
+   generous. First fix: `showCheckboxColumn: false` and tightened spacing.
+2. **That wasn't enough, and forcing the table to the window's full width made it worse** — a
+   `ConstrainedBox(minWidth: ...)` around the table produced huge, roughly-even gaps between every
+   column instead of "squeeze columns closer." Root cause: `DataTable` builds on a `Table` whose
+   columns behave like `FlexColumnWidth` once given more width than their intrinsic content needs
+   — extra space distributes *between every column*, not as trailing space after the last one.
+   There is no public `DataColumn` API to make one column flexible and the rest fixed.
+
+**Fixed by dropping `DataTable` for this table entirely** and hand-building it with `Row`s: Entity
+is the only column wrapped in `Expanded` (it's the one column with genuinely variable-length
+content), Type/Access/Scanned/Private/Female stay fixed-width `SizedBox`es. Sortable headers
+(`_HeaderCell`, tap to sort, arrow icon on the active column) replicate `DataColumn.onSort`'s
+behavior by hand since the column widget is gone. The table no longer needs its own horizontal
+scroller at all — every column now genuinely fits any width the window can produce.
+
+**A real overflow caught by the layout test, not `flutter analyze`:** the header's sort arrow icon
+pushed "Scanned" past its 90px column at the huge-counts test's text metrics — widened the three
+metric columns to 120px, wide enough for the longest label plus its arrow.
+
+**Verified:** `flutter analyze` clean, `flutter test` 47/47. Confirmed live across three rounds
+(you flagged the cutoff, then the ugly gaps, then confirmed the fixed-Entity-flexible layout was
+right).
+
+---
+
+## 2026-08-03 (continued) — Your own checkpoint test caught a real accuracy bug in D75's numbers
+
+### D76 · `scraped`/`followed_est` were built on the wrong Postgres signal — fixed with real, not estimated, totals for the whole-library view; dropped entirely from the per-entity one
+
+Testing D75 immediately, you flagged the "Followed (est.)" number as implausible — it was landing
+within a few percent of "Scraped" itself, when your own sense of the pipeline says real follows
+are a small fraction of real scrapes. You were right, and the mechanism was findable in
+`Insta-Automate`, not a guess: `profile_scrape` (`tasks/ia.py:440-442`) writes the `User` Postgres
+row via `user.update(session)` **before** its four skip checks (PUBLIC, NO_POSTS, FMIN, FMAX) —
+so `count(*) from "user" WHERE root=...`, what both `entity_view.fetch()` (CP 5.4) and D75's
+`ranking()` called "scraped," counts every profile whose stats were *read*, not the ones that
+produced a real scraped image. `followed_est`'s subtraction (`scraped − still-pending-in-folders`)
+inherits that inflation directly, so it converges toward the same wrong number `scraped` already
+was, not toward the real follow count.
+
+**You separately caught the same bug from the other direction**, comparing tabs directly: the
+Daily-limits chart's real day counters clearly showed Scrape (100–400/day) far outweighing Follow
+(40–60/day), yet the Funnel tab showed both at the same ~14% of scanned — an internal
+contradiction between two tabs reading what should have been the same underlying reality.
+
+**The real signal already existed and needed no new instrumentation**: `Scrape.scraped`/
+`Follow.followed` (`Insta-Automate/models/scrape.py`, `follow.py`) only increment when
+`profile_scrape`/`profile_follow` actually succeed (`entity_scrape.py:66`, `entity_follow.py:64`)
+— the exact counters already driving the Daily-limits chart correctly. Their limitation: they are
+**global per-day counts with no entity attached**, so they can produce a real whole-library total
+(summed across every day) but nothing broken down per entity.
+
+**Resolved with you before writing code, following your own framing** ("scanned/private/female
+are accurate, scrape/follow already have a daily count, add them up — isn't this simple"):
+- `funnel()` (whole-library, `GET /api/insights/funnel`) now reports **real, non-estimated**
+  `scraped`/`followed` — `SUM(scrape.scraped)`/`SUM(follow.followed)` across every day, entirely
+  independent of `ranking()`'s per-entity data. No more "(est.)" — it's a real number now.
+- `ranking()` (per-entity, `GET /api/insights/ranking`) **drops scraped/followed entirely** —
+  offered as an option (relabel as "profiles read" instead) and explicitly declined: no accurate
+  per-entity source exists for either number today, so neither is shown there. Only
+  `scanned`/`private`/`female`/`male` remain, all genuinely accurate per-entity Postgres counts.
+- The Library screen's own CP 5.4 per-entity funnel dialog (`entity_view.fetch()`) has the
+  **identical bug** in its own `scraped`/`followed_est` — same `count(*) from "user"` source,
+  same inflation — surfaced by fixing this module but not yet fixed itself, since it's Phase 5's
+  already-accepted code and changing it wasn't asked for this session. Flagged for you rather than
+  changed silently.
+
+**Verified:** `agent/tests/test_insights.py` rewritten (22/22) — the fixture now deliberately
+seeds 5 `user`-table rows for one entity with **no arithmetic relationship** to that entity's real
+`scrape`/`follow` day-counter rows, so a regression back to the old formula fails loudly instead of
+coincidentally matching. All 15 agent suites green. `flutter analyze` clean, `flutter test` 47/47.
+Verified against the real running agent and Postgres after restart (services confirmed `adopted`,
+uptime intact): **scraped: 12,455, followed: 3,608 — a real ~29% rate**, matching your own stated
+sense of the pipeline, replacing the previous ~99% inflated estimate (21,936 vs 21,756).
+
+---
+
+## 2026-08-03 — CP 7.2, Insights: classify-accuracy scoped out before writing code
+
+### D75 · Classify-accuracy sampling dropped from CP 7.2; funnel/ranking/burn-down built as one checkpoint on real, already-persisted data
+
+Before writing any code, one real gap was flagged: PLAN.md's CP 7.2 bundles four views, and
+classify-accuracy sampling ("show N random verdicts with their images, mark disagreements") has no
+data to sample from — `classify.access`/`classify.gender` events only ever live in the agent's
+in-memory `EventStore` ring (CP 4.2), capped and wiped on every restart, so there is no persisted
+verdict history today. Building it would mean adding new persistence that only starts accumulating
+from whenever it ships, with nothing to show for a while after. Asked before scoping it in or out
+rather than guessing — the user judged it not worth building right now (**Rejected**: build
+persistence now and ship with an empty/thin sampling view). Matches
+[[feedback-scope-over-cross-repo]]'s standing preference for a cheap real answer over new
+machinery for a niche feature, extended here to "no machinery at all, drop the feature" rather than
+a lesser local approximation, since there's no cheap approximation available for this one.
+
+The other three views turned out to need **no new instrumentation at all**, so they shipped
+together as originally planned:
+
+- **Daily limit burn-down** — `Scan`/`Scrape`/`Follow` (`Insta-Automate`'s `insta_automate.models`)
+  are already one Postgres row *per calendar day*, kept forever, not overwritten — real multi-day
+  history already existed and just needed a query. Confirmed live: `entity-follow` genuinely hit
+  its 60/day cap on five of the last seven real days.
+- **Whole-library funnel and per-entity ranking** — both are CP 5.4's per-entity `entity_view.fetch()`
+  query widened to every entity via one bulk `GROUP BY` (`ia_agent/insights.py::ranking()`) instead
+  of looping the per-entity query once per entity — same numbers, one round trip. `funnel()` is
+  `ranking()` summed; the ranking table's rows are decoded client-side with the *existing*
+  `EntityYield` model (`app/lib/core/entity_yield_models.dart`) since the agent returns the exact
+  same per-entity shape, rather than adding a near-duplicate model. Clicking a ranking row reuses
+  CP 5.4's `showEntityYieldDialog` unchanged.
+
+Built as one checkpoint/commit (not split into CP 7.2a/b/c), per direct confirmation — the three
+views share one Postgres round-trip shape and one visual language (`FunnelStage`, made public and
+shared between the Library entity dialog and the new whole-library funnel, rather than duplicated),
+so splitting them would have been checkpoint overhead without a real seam to split along.
+
+**A real layout bug caught before it shipped, not by `flutter analyze` (D19's precedent again):** a
+first draft of the ranking table nested a vertical `SingleChildScrollView` around a horizontal one
+so the table could scroll both ways inside a fixed-height `Card`. The outer vertical scroller hands
+its child an *unbounded* height in the scroll direction — exactly what a horizontal scroller then
+needs bounded for its own cross axis — a real "unbounded constraint" class bug, not yet exercised
+by `flutter test` at the time it was caught (found on inspection, fixed before the layout test was
+even written). Fixed by dropping the fixed-height `Card`/vertical-scroller pair entirely: the whole
+tab is one `ListView` (search row + table), and only the table itself scrolls horizontally — the
+table's own rows just grow the page's scroll content instead of needing a second scroll axis.
+
+The burn-down charts are five single-series bar charts (Scan profiles/reels/posts, Scrape,
+Follow), each its own small multiple rather than one multi-series chart — chosen from the dataviz
+skill's own form guidance ("compare magnitude, day to day → bar, sequential one hue") and its
+series-count ladder: three of the five caps (`PROFILES=10`, `REELS=30`, `SCRAPE=300`) are different
+orders of magnitude, so one shared y-axis across them would misrepresent scale, and small multiples
+sidesteps that without needing a second axis or a categorical palette at all — each chart has
+exactly one series, so the categorical CVD-pairing checks don't apply, and the existing `FunnelStage`
+accent hue (`colorScheme.primary`) carries straight over for visual consistency. Each cap renders as
+a dashed threshold line with one direct label ("cap"), deliberately distinct from the solid hairline
+gridlines per the skill's mark spec.
+
+**Verified:** `agent/tests/test_insights.py` (19/19 — bulk ranking excludes entities with zero
+activity, `funnel()` sums `ranking()` exactly, `burndown()` returns real oldest-first multi-day
+history and clamps an out-of-range `days=`, then the same shape again over live REST), all 15 agent
+suites green (560 checks). `flutter analyze` clean, `flutter test` 47/47 (41 prior + 6 new in
+`insights_layout_test.dart` — a 60-char root with six-figure counts, an all-zero funnel, 90 days of
+burn-down history, and both tabs' empty states). Verified against the real running agent (restarted
+to pick up the new code; all three supervised services confirmed `adopted` with uptime intact
+across it, same precedent as every checkpoint since CP 4.4) against the real Postgres database and
+`IA_DIR`: 443 entities, 157,091 total scanned, `sejjjalll`'s ranking row matching CP 5.4's own
+previously-verified numbers exactly (2529 scanned → 1544 private → 1044 female, 500 male → 365
+scraped → 365 followed_est), and real burn-down history showing genuine gaps (Phase 2's flow
+switches were off) and real cap hits (`follow: 60` on five of seven recent days).
+
+---
+
 ## 2026-08-02 (continued) — CP 7.1, Ops panel: three design forks resolved with the user before writing code
 
 ### D71 · One-shot jobs get plain `asyncio.create_subprocess_exec`, not the services' ConPTY; worker restart auto-chains its fix; the token never gets committed

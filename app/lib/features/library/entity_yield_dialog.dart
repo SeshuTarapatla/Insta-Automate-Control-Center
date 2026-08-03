@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/entity_yield_models.dart';
 import '../../core/file_opener.dart';
+import '../../core/funnel_stage.dart';
 import 'library_controller.dart';
 
 /// CP 5.4 — one entity across every stage at once. Opened from the Library
@@ -82,9 +83,9 @@ class _EntityYieldBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          _FunnelStage(label: 'Scanned', count: data.scanned, maxCount: maxCount),
-          _FunnelStage(label: 'Private', count: data.private, maxCount: maxCount),
-          _FunnelStage(
+          FunnelStage(label: 'Scanned', count: data.scanned, maxCount: maxCount),
+          FunnelStage(label: 'Private', count: data.private, maxCount: maxCount),
+          FunnelStage(
             label: 'Female',
             count: data.female,
             maxCount: maxCount,
@@ -92,8 +93,8 @@ class _EntityYieldBody extends StatelessWidget {
                 ? 'of ${data.private} private — ${data.male} classified male instead'
                 : null,
           ),
-          _FunnelStage(label: 'Scraped', count: data.scraped, maxCount: maxCount),
-          _FunnelStage(
+          FunnelStage(label: 'Scraped', count: data.scraped, maxCount: maxCount),
+          FunnelStage(
             label: 'Followed (est.)',
             count: data.followedEst,
             maxCount: maxCount,
@@ -101,65 +102,6 @@ class _EntityYieldBody extends StatelessWidget {
                 '≈ scraped, minus ${data.inScrapedFolder} still awaiting review and '
                 '${data.inFollowQueuedFolder} still queued to follow',
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One bar: a fixed-height track plus a fill proportional to `count/maxCount`
-/// — the same hue throughout (this is one metric across stages, not several
-/// series, so there is nothing for color to distinguish), magnitude carried
-/// entirely by length. A direct count + percentage label sits above each bar
-/// rather than inside it, since several of these bars are too thin at the
-/// tail end of the funnel to hold text.
-class _FunnelStage extends StatelessWidget {
-  const _FunnelStage({required this.label, required this.count, required this.maxCount, this.caption});
-
-  final String label;
-  final int count;
-  final int maxCount;
-  final String? caption;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final fraction = maxCount == 0 ? 0.0 : (count / maxCount).clamp(0.0, 1.0);
-    final pct = maxCount == 0 ? 0.0 : (count / maxCount * 100);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-              Text('$count', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 6),
-              Text(
-                '(${pct.toStringAsFixed(0)}%)',
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LayoutBuilder(
-              builder: (context, constraints) => Stack(
-                children: [
-                  Container(height: 10, width: constraints.maxWidth, color: scheme.surfaceContainerHighest),
-                  Container(height: 10, width: constraints.maxWidth * fraction, color: scheme.primary),
-                ],
-              ),
-            ),
-          ),
-          if (caption != null) ...[
-            const SizedBox(height: 3),
-            Text(caption!, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-          ],
         ],
       ),
     );

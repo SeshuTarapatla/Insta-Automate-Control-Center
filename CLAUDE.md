@@ -13,7 +13,18 @@ agent-only 🟢, CP 5.3/5.4 user-verified 🟢) — see the dedicated paragraphs
 pairing & notification rework) complete and accepted 2026-08-02**. **Phase 7 (Ops & insight) is
 open, CP 7.1 (Ops panel) built agent-only + cross-repo (`Helmcharts/Insta-Automate` on its own new
 `feat/control-center` branch), user-verified 🟢** — checkpoint test passed after several rounds of
-live-found-and-fixed bugs (D72–D74); see the dedicated paragraph below. Phase 6: CP 6.1 (Pairing +
+live-found-and-fixed bugs (D72–D74); see the dedicated paragraph below. **CP 7.2 (Insights) built
+agent-only, 🟢, user-verified — checkpoint test passed after three rounds of live-found-and-fixed
+issues (D75–D78)** — funnel/ranking/burn-down landed as one checkpoint on data that needed no new
+instrumentation at all; classify-accuracy sampling was scoped out before writing any code (no
+persisted verdict history exists to sample from) — D75. Your own checkpoint test then caught a
+real accuracy bug in the first version's scraped/followed numbers (a Postgres row written before
+the pipeline's own skip checks, inflating both), fixed with real day-counter totals for the
+aggregate view and dropped entirely from the per-entity one — D76. Two more rounds of UI feedback
+followed: the Ranking table rebuilt by hand since `DataTable` can't make one column absorb extra
+width while the rest stay fixed (D77), and the Funnel tab's flat bars replaced with a real
+narrowing funnel showing both "% of previous stage" and "% of total" per stage (D78) — see the
+dedicated paragraph below. Phase 6: CP 6.1 (Pairing +
 notification core) done, agent-only,
 🟢, CP 6.2 (Notifier facade) done, cross-repo `Insta-Automate` on `feat/control-center`, 🟡,
 CP 6.3 (Desktop pairing & notification center) built, committed, and verified against the real
@@ -848,6 +859,84 @@ and `Reset work pool` were run for real through the actual ops panel/REST path a
 `my-modules` conflict (the same command the panel's job runs, not re-triggered through the panel
 itself afterward). The five confirm-gated destructive/consequential jobs were never run, by
 design, same standing precedent as CP 5.2's `apply`/`delete`. Committed.
+
+**CP 7.2 (Insights) built, agent-only, 🟢, awaiting your checkpoint test.** Before writing any
+code, one real gap was flagged and checked with you rather than guessed: classify-accuracy
+sampling ("show N random verdicts with their images, mark disagreements") has no data to sample
+from — `classify.access`/`classify.gender` events only ever live in the agent's in-memory
+`EventStore` ring (CP 4.2), capped and wiped on every restart. Building it means adding new
+persistence that only starts accumulating from whenever it ships. You judged it not worth building
+right now, so it's dropped from this checkpoint's scope entirely — see D75. The other three views
+needed **no new instrumentation at all**: `Scan`/`Scrape`/`Follow` are already one Postgres row per
+calendar day, kept forever, so real multi-day burn-down history already existed; the whole-library
+funnel and per-entity ranking are CP 5.4's per-entity `entity_view.fetch()` widened to every entity
+via one bulk `GROUP BY` query (`ia_agent/insights.py`) instead of looping it per entity. New REST:
+`GET /api/insights/funnel` · `GET /api/insights/ranking` · `GET /api/insights/burndown?days=`.
+Flutter: the Insights nav destination (a placeholder since CP 0.3) is now
+`app/lib/features/insights/` — three tabs (Funnel, Ranking, Daily limits). `FunnelStage` (CP 5.4's
+per-entity funnel bar) was made public and shared with the new aggregate funnel rather than
+duplicated. Daily limits is five single-series `fl_chart` bar charts (Scan profiles/reels/posts,
+Scrape, Follow) rather than one shared chart — the dataviz skill's own guidance (small multiples
+over a shared/dual axis when magnitudes differ by an order or more, which three of these five caps
+do) — each with a dashed, directly-labeled cap line and the existing `FunnelStage` accent hue
+carried over for visual consistency.
+
+**A real layout bug caught before it ever ran, not by `flutter analyze` (D19's precedent again):**
+a first draft nested a vertical `SingleChildScrollView` around a horizontal one so the ranking table
+could scroll both ways inside a fixed-height card — the outer hands the inner an unbounded height in
+the scroll direction, exactly what a horizontal scroller needs bounded for its own cross axis.
+Fixed by dropping the fixed-height card entirely: the whole tab is one `ListView` (search row +
+table), and only the table scrolls horizontally.
+
+**Your own checkpoint test immediately caught a real accuracy bug — D76.** The first version's
+"scraped"/"followed_est" (both per-entity ranking and the whole-library funnel) came from
+`count(*) from "user"` in Postgres — but `profile_scrape` (`Insta-Automate/tasks/ia.py`) writes
+that row *before* its own skip checks (PUBLIC, NO_POSTS, FMIN, FMAX), so it counts every profile
+whose stats were read, not just the ones that produced a real scraped image. `followed_est`
+inherited the same inflation, landing within a few percent of the (already-inflated) "scraped"
+number instead of reflecting real follows — you caught it two ways at once: the estimate didn't
+match your own sense of the pipeline, and it directly contradicted the Daily-limits chart's own
+accurate counters (which correctly show Follow as a small fraction of Scrape). Fixed using
+`Scrape.scraped`/`Follow.followed` — the same real, success-only day counters already driving the
+Daily-limits chart — summed across every day for a **real, non-estimated** whole-library
+scraped/followed total in the Funnel tab. Those counters have no entity attached, so per-entity
+Ranking **drops scraped/followed entirely** rather than show something inaccurate (your own call,
+over relabeling it as "attempted") — Ranking now shows only `scanned`/`private`/`female`, all
+genuinely accurate per-entity Postgres counts, and clicking a row still opens CP 5.4's existing
+per-entity `showEntityYieldDialog`. **The identical bug still lives in that dialog's own
+`entity_view.fetch()`** (same `count(*) from "user"` source) — found while fixing this module,
+not yet fixed itself since it's Phase 5's already-accepted code and wasn't in this session's ask;
+flagged for you rather than changed silently.
+
+**Verified:** `agent/tests/test_insights.py` rewritten (22/22) — the fixture deliberately seeds
+`user`-table rows with no arithmetic relationship to the real day-counter rows, so a regression
+back to the old formula fails loudly. All 15 agent suites green. `flutter analyze` clean,
+`flutter test` 47/47 (41 prior + 6 new in `insights_layout_test.dart`). Verified against the real
+running agent and Postgres (restarted twice — once per correction — services confirmed `adopted`
+with uptime intact both times): **scraped: 12,455, followed: 3,608 — a real ~29% rate**, matching
+your own stated sense of the pipeline, replacing the previous ~99%-inflated estimate. Full account
+in DECISIONS.md's D75/D76.
+
+**Two more rounds of live UI feedback, same session — D77/D78.** The Ranking table needed two
+passes: Flutter's `DataTable` shows a checkbox column by default whenever rows set
+`onSelectChanged` (used here only to open the entity dialog, not to track selection) — removed via
+`showCheckboxColumn: false` plus tighter spacing, but forcing the table to the window's full width
+afterward made it *worse* (huge, even gaps between every column, not "squeeze them closer") because
+`DataTable`'s columns behave like `FlexColumnWidth` once stretched — there's no public API to make
+one column flexible and the rest fixed. Rebuilt by hand instead: Entity is the only `Expanded`
+column, the rest are fixed-width, sortable headers replicated manually. Separately, the Funnel
+tab's bars — every stage scaled against `scanned` — made a deep stage's percentage barely move even
+when its real conversion changed a lot; replaced with an actual narrowing funnel
+(`features/insights/funnel_chart.dart`, a `CustomPainter` trapezoid whose top edge matches the
+*previous* stage's width) labeling **both** "% of previous stage" and "% of total" per stage, since
+either number alone hides something real. `FunnelStage` (the flat bar widget) is untouched and
+still used by the Library's per-entity dialog. Full account in DECISIONS.md's D77/D78.
+
+**Checkpoint test (yours) — passed.** Funnel tab shows a real narrowing funnel with both
+conversion numbers per stage; Ranking tab lists real entities with Scanned/Private/Female sized to
+fit the window without a horizontal scroll or ugly gaps, sorts, filters, and clicking a row opens
+the same per-entity dialog the Library screen uses; Daily limits tab shows five real charts with
+each flow's current cap as a dashed line and working day-range chips. Committed.
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the

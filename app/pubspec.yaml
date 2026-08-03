@@ -45,6 +45,7 @@ dependencies:
   ffi: ^2.2.0
   xterm: ^4.0.0
   qr_flutter: ^4.1.0
+  fl_chart: ^0.69.0
 
 dev_dependencies:
   flutter_test:

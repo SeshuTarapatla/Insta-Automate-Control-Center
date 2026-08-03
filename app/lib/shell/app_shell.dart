@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/flows/flows_page.dart';
+import '../features/insights/insights_page.dart';
 import '../features/library/library_page.dart';
 import '../features/live/live_page.dart';
 import '../features/placeholder_page.dart';
@@ -13,6 +14,7 @@ const _flowsIndex = 1;
 const _liveIndex = 2;
 const _servicesIndex = 3;
 const _libraryIndex = 4;
+const _insightsIndex = 5;
 const _settingsIndex = 6;
 
 class _Destination {
@@ -75,6 +77,7 @@ class _AppShellState extends State<AppShell> {
                     _liveIndex => const LivePage(),
                     _servicesIndex => const ServicesPage(),
                     _libraryIndex => const LibraryPage(),
+                    _insightsIndex => const InsightsPage(),
                     _settingsIndex => const SettingsPage(),
                     _ => PlaceholderPage(title: _destinations[_selected].label),
                   },

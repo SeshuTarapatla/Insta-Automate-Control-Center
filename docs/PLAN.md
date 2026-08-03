@@ -1092,10 +1092,70 @@ venv-scoped bare commands (D74). `DB backup` and `Reset work pool` were run for 
 panel and succeeded; `Build image` was independently verified via direct CLI while root-causing
 the dependency conflict. Full account in DECISIONS.md's D72–D74.
 
-### CP 7.2 — Insights 🟢
-Funnel charts, daily limit burn-down history, per-entity yield ranking, and a classify-accuracy
-sampling view (show N random verdicts with their images and let you mark disagreements — that is
-how you find out the prompt has drifted).
+### CP 7.2 — Insights 🟢 ✅ done, agent-only, user-verified
+Funnel charts, daily limit burn-down history, and per-entity yield ranking. Classify-accuracy
+sampling (show N random verdicts with their images and let you mark disagreements) was scoped out
+before writing any code — no persisted verdict history exists to sample from (`EventStore` is an
+in-memory, capped, restart-wiped ring), and building new persistence for a feature judged not
+worth it yet was rejected directly. See D75.
+
+**What landed** — new `ia_agent/insights.py`: `ranking()` originally widened CP 5.4's per-entity
+`entity_view.fetch()` to every entity via one bulk `GROUP BY` query; `burndown(days=)` reads real
+multi-day history straight out of `Scan`/`Scrape`/`Follow` (already one Postgres row *per calendar
+day*, kept forever — no new instrumentation needed) plus the *current* value of each day-capped
+limit. New REST: `GET /api/insights/funnel` · `GET /api/insights/ranking` ·
+`GET /api/insights/burndown?days=`. Flutter: the Insights nav destination (a placeholder since CP
+0.3) is now `app/lib/features/insights/` — three tabs (Funnel, Ranking, Daily limits) reusing
+`FunnelStage` (made public, shared with the Library entity dialog) for the aggregate funnel, a
+sortable/filterable `DataTable` for ranking, and five single-series `fl_chart` bar charts (one per
+day-capped metric — small multiples, not one shared axis, since the caps span very different
+magnitudes) with a dashed, directly-labeled cap line.
+
+**Corrected same day (D76) — your own checkpoint test caught a real accuracy bug.** The first
+version's `ranking()`/`funnel()` counted "scraped" as `count(*) from "user"` — but
+`profile_scrape` writes that Postgres row *before* its own skip checks (PUBLIC/NO_POSTS/FMIN/FMAX),
+so it counts every profile whose stats were read, not just real scrape successes. `followed_est`
+inherited the inflation and landed within a few percent of "scraped" itself, contradicting the
+Daily-limits chart's own accurate counters. Fixed: `funnel()` now sums `Scrape.scraped`/
+`Follow.followed` — the same real, success-only day counters already driving the Daily-limits
+chart — for a **real, non-estimated** whole-library total; those counters have no entity attached,
+so per-entity `ranking()` **drops scraped/followed entirely** (your explicit choice, over
+relabeling) rather than show an inaccurate number, keeping only real per-entity
+`scanned`/`private`/`female`/`male`. Clicking a ranking row still opens CP 5.4's existing
+`showEntityYieldDialog` — which has the **identical, still-unfixed** bug in its own
+`entity_view.fetch()`, flagged rather than changed (Phase 5 is already-accepted code, out of this
+session's ask).
+
+**Verified:** `agent/tests/test_insights.py` rewritten (22/22 — fixture deliberately gives the old
+`user`-table signal no arithmetic relationship to the real day-counters, so a regression fails
+loudly), all 15 agent suites green. `flutter analyze` clean, `flutter test` 47/47 (41 prior + 6 new
+in `insights_layout_test.dart`). Verified against the real running agent and Postgres/`IA_DIR`
+(restarted twice, services confirmed `adopted` both times): **scraped: 12,455, followed: 3,608 — a
+real ~29% rate**, replacing the previous ~99%-inflated estimate. Full account in DECISIONS.md's
+D75/D76.
+
+**Two more rounds of live UI feedback (D77/D78).** The Ranking table needed rebuilding by hand:
+`DataTable` shows an unwanted checkbox column whenever rows use `onSelectChanged`, and — once that
+was removed and the table was stretched to the window's full width — its columns turned out to
+behave like `FlexColumnWidth`, spreading extra space evenly across every column instead of leaving
+it as trailing space. There is no public `DataColumn` API to make one column absorb the surplus
+while the rest stay fixed, so the table was rebuilt with plain `Row`s: Entity is the only
+`Expanded` column, Type/Access/Scanned/Private/Female stay fixed-width, and sortable headers were
+replicated by hand. Separately, the Funnel tab's bars — every stage scaled against `scanned` — made
+a deep stage's percentage barely move even when its real conversion changed a lot; replaced with an
+actual narrowing funnel (new `features/insights/funnel_chart.dart`, a `CustomPainter` trapezoid
+whose top edge matches the *previous* stage's width), labeling both "% of previous stage" and "% of
+total" per stage. `FunnelStage` (the flat bar widget) is untouched — still the Library's per-entity
+dialog's own widget.
+
+**Verified:** `flutter analyze` clean, `flutter test` 47/47 throughout both rounds.
+
+**Checkpoint test (yours) — passed.** Funnel tab shows a real narrowing funnel with both
+conversion numbers per stage; Ranking tab lists real entities with Scanned/Private/Female sized to
+the window with no horizontal scroll or ugly gaps, sorts, filters, and clicking a row opens the
+same per-entity dialog the Library screen uses; Daily limits tab shows five real charts with each
+flow's current cap as a dashed line and working day-range chips. Full account in DECISIONS.md's
+D75–D78.
 
 ### CP 7.3 — Polish 🟢
 Theming, tray icon, global hotkey, empty/error/loading states everywhere, first-run onboarding,
