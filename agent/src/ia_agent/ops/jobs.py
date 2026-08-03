@@ -33,7 +33,16 @@ from ia_agent.vars import (
 
 IA_EXE = INSTA_AUTOMATE_DIR / ".venv" / "Scripts" / "ia.exe"
 PREFECT_K3S_EXE = PREFECT_K3S_DIR / ".venv" / "Scripts" / "prefect-k3s.exe"
-KUBECTL = shutil.which("kubectl") or "kubectl"
+# `shutil.which` on Windows synthesizes the extension from `PATHEXT`, which is
+# `.EXE` (uppercase) by default - a different literal string than the real
+# on-disk `kubectl.exe`. Rancher Desktop's kubectl is itself a version-manager
+# wrapper that inspects its own invoked path to decide whether to proxy
+# straight through to the real kubectl or expose its own management
+# subcommands (`bins`/`get`/`version`/...) - invoked with the wrong-cased
+# path it silently falls into the latter mode and every subcommand this
+# module needs (`rollout restart`, `rollout status`) comes back "unknown
+# command" instead of running. `normcase` restores the real casing.
+KUBECTL = os.path.normcase(shutil.which("kubectl") or "kubectl")
 HELM = shutil.which("helm") or "helm"
 
 

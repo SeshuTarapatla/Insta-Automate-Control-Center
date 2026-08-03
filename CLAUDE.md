@@ -1050,6 +1050,37 @@ the accepted answer; PLAN.md just never marked it ✅ the way Q1/Q3/Q4/Q6/Q7/Q8 
 to address (firewall, TLS/SPKI pinning, agent self-update, crash reporting, secret rotation) don't
 apply. See DECISIONS.md's 2026-08-03 "Closing out what's pending post-Phase-7" entry.
 
+**Post-acceptance bug-fixing pass, same day, 2026-08-03 — first of an ongoing one-at-a-time
+series, no longer tied to any PLAN.md checkpoint.** Your own live screenshot caught a real
+under-count: the Live screen's per-run counter read `processed: 16` against the log's own
+"Processed: 18" for the same `entity-scrape` run. Root cause (D82): `profile_scrape`/
+`profile_follow` in `Insta-Automate/tasks/ia.py` share an identical device-open retry loop whose
+"Profile not found" branch (a deactivated/deleted account) returns `False` with **no `emit()` call
+at all** — the only early-return path in either function missing one, and the two profiles that hit
+it that run left zero trace for `run_summary.dart`'s live per-item tally to count. Folded in the
+same fix, from a second gap you flagged off the same screenshot: `scrape.started`/`follow.attempt`
+only ever fired *after* the profile page loaded, so a still-opening (or about-to-fail) profile's
+"attempting…" card never appeared on the Live screen even though the log already said "Follow
+triggered." Both fixed together: the started/attempt emit now fires the instant the attempt is
+triggered, and the not-found path gets the same `scrape.skipped`/`follow.result` emit every other
+skip/failure branch already has. No Flutter change needed — `ScrapeSurface`/`FollowSurface` already
+render an in-progress state for any subject with a `started`/`attempt` event and no resolution yet.
+
+**Deploying that fix surfaced a second, unrelated bug (D83): the ops panel's `restart_scheduler`/
+`restart_worker` jobs had never actually worked.** `ops/jobs.py`'s `KUBECTL = shutil.which("kubectl")`
+resolves via Windows' `PATHEXT` to the wrong-cased `kubectl.EXE`, and Rancher Desktop's `kubectl.exe`
+is itself a version-manager wrapper that silently changes behavior based on that exact casing —
+invoked wrong-cased it exposes its own management subcommands instead of proxying to the real
+kubectl, so `rollout restart`/`rollout status` came back "unknown command" instead of running.
+Fixed with `os.path.normcase()` on the resolved path. Verified live, twice: `restart_worker` failed
+reproducibly with the bug present, then succeeded end to end (rollout restart → rollout status →
+`ia prefect deploy`, all 6 flows re-registered) once the agent was restarted to load the fix — the
+same job run that deployed D82 to the real worker pod. The worker pod's actually-loaded
+`profile_scrape` source was inspected directly via `kubectl exec` to confirm the real code (not just
+a healthy rollout) matched D82's fix, D39's precedent again. **You retested live and confirmed a
+real not-found profile now shows SKIPPED with the NOT_FOUND reason.** Full account in DECISIONS.md's
+D82/D83.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

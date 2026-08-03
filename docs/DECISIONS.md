@@ -5,6 +5,87 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-03 — Live bug-fixing pass: missing not-found events, kubectl wrapper casing
+
+A new post-acceptance bug-fixing session (Phase 7 is done; these are ordinary bugs found live, not
+checkpoint work) — first of what you expect to be several, one at a time.
+
+### D82 · `profile_scrape`/`profile_follow` emit nothing at all for a "Profile not found" profile
+
+**Found:** your own live screenshot — the run log showed 18 profiles processed
+("Scrape complete. Processed: 18, Scraped: 10") but the Live screen's own counter read
+`processed: 16`. Two profiles in that run hit `@{id}: Profile not found` (a deactivated/deleted
+Instagram account) — a case genuinely different from D64/D68's PRIVATE/PUBLIC/UNAVAILABLE checks,
+since the profile page never loads at all here.
+
+**Root cause:** `tasks/ia.py`'s device-open retry loop (identical in both `profile_scrape` and
+`profile_follow`) returns `False` from inside the loop, before either function's own
+`scrape.started`/`follow.attempt` emit — the only early-return branch in either function with no
+`emit()` call at all. `run_summary.dart`'s `_liveCounters` tallies `entity-scrape` as
+`scrape.done`/`scrape.skipped` events and `entity-follow` as `follow.result` verdicts, purely from
+the per-item event stream (D40/D41) — a profile that emits nothing is invisible to it, even though
+the flow's own `processed` counter increments unconditionally for every queued file.
+
+**Chosen:** move `scrape.started`/`follow.attempt` to fire the instant the attempt is triggered
+(before `device.open_entity`), not after the page loads — matching the log line's own "Scrape/
+Follow triggered" timing — and add the missing `scrape.skipped` (`reason: "NOT_FOUND"`) /
+`follow.result` (`verdict: "FAILED", reason: "NOT_FOUND"`) emit on the not-found path, matching the
+shape every sibling skip/failure branch already uses.
+
+**Also folds in a second, related gap you flagged from the same screenshot:** the Live screen's
+"attempting…" card for a triggered profile only ever appeared once the profile page had already
+loaded — a profile stuck retrying (or one that's about to hit the not-found path) showed nothing on
+the display side even though the log already said "Follow triggered." Moving the emit earlier fixes
+both at once: every triggered attempt now shows up immediately, and the not-found case's resolution
+event has an existing card to resolve instead of never having appeared.
+
+**No Flutter change needed** — `ScrapeSurface`/`FollowSurface` already group events by subject and
+render an "attempting…"/in-progress state whenever a `started`/`attempt` event exists without a
+resolution yet (checked before writing any pipeline code, not assumed).
+
+**Verified:** import sanity check (no test suite in `Insta-Automate`, same precedent as every prior
+checkpoint there). Deployed live via the ops panel's own jobs (see D83 below for why that took two
+tries) — `ia build` succeeded, `restart_worker` succeeded (rollout restart → rollout status →
+`ia prefect deploy`, all 6 deployments re-registered), and the worker pod's actually-loaded
+`profile_scrape` source was inspected directly via `kubectl exec` + `inspect.getsource` to confirm
+the real deployed code has both the moved emit and the new `NOT_FOUND` branch (D39's lesson — a
+healthy deploy doesn't prove the right code loaded). **You retested live and confirmed a real
+not-found profile now shows SKIPPED with the NOT_FOUND reason on the Live screen.**
+
+### D83 · Ops `restart_scheduler`/`restart_worker` jobs never actually worked — `shutil.which()`'s casing trips Rancher Desktop's kubectl wrapper
+
+**Found:** deploying D82 above via the ops panel's "Restart worker" job — it failed instantly with
+`Error: unknown command "rollout" for "kubectl.EXE"`. Neither `restart_scheduler` nor
+`restart_worker` had ever actually been run end-to-end before this (CP 7.1's checkpoint test only
+exercised `db_backup`/`reset_pool`; every real worker/scheduler restart up through D74 was done via
+a manual shell `kubectl` command, never through the ops panel's own job).
+
+**Root cause:** `ops/jobs.py`'s `KUBECTL = shutil.which("kubectl") or "kubectl"` resolves via
+`PATHEXT` (`.EXE`, uppercase by Windows default) to `...\kubectl.EXE` — a different literal string
+than the real on-disk `kubectl.exe`. Rancher Desktop's `kubectl.exe` is itself a version-manager
+wrapper (`kuberlr`-style: caches multiple real kubectl binaries, picks the one matching the cluster's
+server version) that inspects its own invoked path/casing to decide whether to proxy straight
+through to the real kubectl or expose its own management subcommands (`bins`/`get`/`version`/...).
+Invoked with the wrong-cased path it silently falls into the latter mode — confirmed directly by
+invoking the identical file both ways: `kubectl.EXE rollout restart ...` → wrapper's own "unknown
+command" error; `kubectl.exe rollout restart ...` → real kubectl's own `rollout` error output. Only
+`_kubectl_step`-based jobs were affected — `build`/`deploy`/`db_backup`/`reset_pool` all shell out
+via `_ia_step`/`_prefect_k3s_step` instead, never touching `KUBECTL`.
+
+**Chosen:** `KUBECTL = os.path.normcase(shutil.which("kubectl") or "kubectl")` — `normcase` lowercases
+the whole path on Windows, restoring the real casing regardless of what `PATHEXT` happens to supply.
+**Rejected:** hardcoding the real kubectl path, or special-casing Rancher Desktop's wrapper somehow
+— `normcase` is a one-line, generically-correct fix for the actual cause (a `shutil.which` casing
+quirk), not a workaround aimed at this one wrapper's particular behavior.
+
+**Verified:** `test_ops.py` 47/47 unaffected. Live, twice: `restart_worker` reproducibly failed with
+the bug present, then — after restarting the agent to load the fix (a plain `taskkill /F`, all three
+supervised services confirmed still `adopted` with uptime intact across it) — succeeded cleanly
+end to end (`kubectl rollout restart` → `kubectl rollout status` → `ia prefect deploy`, all 6 flows
+re-registered), which is also what deployed D82 above to the real worker pod.
+
+---
+
 ## 2026-08-03 — Closing out what's pending post-Phase-7
 
 CP 7.3's checkpoint test is accepted as complete by your own explicit call (you'd already run an
