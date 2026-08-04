@@ -38,13 +38,14 @@ working. Then re-architect the three screens whose shape actively hides informat
 
 | # | Doc | What it is |
 |---|---|---|
+| 0 | **[OBSERVED.md](OBSERVED.md)** | ⭐ What the app **actually looks like** — measured, with committed [screenshots](screens/). Corrects four things the source-only audit got wrong. Read this first. |
 | 1 | **[AUDIT.md](AUDIT.md)** | Current-state debt, with file:line evidence for every claim. The "why". |
 | 2 | **[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)** | Token architecture, typography, motion doctrine, accessibility floor. The "how". |
 | 3 | **[THEMES.md](THEMES.md)** | Six shipping themes with real values, plus the backlog roadmap for the rest of the inspiration list. |
 | 4 | **[COMPONENTS.md](COMPONENTS.md)** | The shared `ui/` vocabulary every screen is rebuilt from. |
 | 5 | **[SCREENS.md](SCREENS.md)** | Per-screen re-architecture with wireframes. The "what". |
 | 6 | **[PLAN_V2.md](PLAN_V2.md)** | Thirteen checkpoints, each a commit boundary with a manual test. |
-| 7 | **[VISUAL_INPUTS.md](VISUAL_INPUTS.md)** | Screenshots and answers needed from the user. **Two open questions in here need answering.** |
+| 7 | **[VISUAL_INPUTS.md](VISUAL_INPUTS.md)** | Mostly resolved by the observation pass. **Two open questions still need the user's answer.** |
 
 ---
 
@@ -57,7 +58,9 @@ working. Then re-architect the three screens whose shape actively hides informat
 | Bundle Inter + JetBrains Mono as assets; **not** `google_fonts` | DESIGN_SYSTEM §2 |
 | Six themes ship: Classic · Command Deck · Nocturne · Mica · Daylight · Swiss | THEMES §1–6 |
 | Bento is a **layout pattern** (Overview), not a theme; Glassmorphism is served by Mica; Neumorphism/Claymorphism/Skeuomorphism/Brutalism are argued against, not merely deferred | THEMES §10 |
-| Flows becomes a **vertical** pipeline; Live becomes a **vertical** split — both because the production window is tall and narrow | SCREENS preamble, §2, §3 |
+| Flows becomes a **vertical** pipeline (the screen wastes ~55% of its height; wide nodes hold everything in one row) | SCREENS §2, OBSERVED §7 |
+| Live keeps a **horizontal** split, made resizable — ⚠️ reversed after observation | SCREENS §3, OBSERVED §7 |
+| Library grid gets a **per-folder cell aspect ratio** — 40–82% of every cell is wasted today | SCREENS §5a-0, OBSERVED §3 |
 | `fl_chart` stays on `^0.69.0` through v2.0.0 | PLAN_V2, "what v2 does not do" |
 | Default theme on first launch stays Classic | THEMES §1 — *but see VISUAL_INPUTS question B* |
 
@@ -98,9 +101,10 @@ at risk of being "cleaned up" by accident:
 Start with **[PLAN_V2.md](PLAN_V2.md)** and work one checkpoint at a time. Suggested
 opening prompt:
 
-> Read `docs/v2/README.md` and everything it links. We're on `feat/v2-ui-overhaul`.
-> Implement checkpoint **V2.1** from `docs/v2/PLAN_V2.md`. Stop at its checkpoint test and
-> hand over — don't commit until I've run it.
+> Read `docs/v2/README.md` and everything it links, and look at the screenshots in
+> `docs/v2/screens/`. We're on `feat/v2-ui-overhaul`. Implement checkpoint **V2.1** from
+> `docs/v2/PLAN_V2.md`. Stop at its checkpoint test and hand over — don't commit until I've
+> run it.
 
 Project rules from `CLAUDE.md` apply unchanged. The three that matter most here:
 

@@ -18,10 +18,15 @@
 > already served by an existing endpoint. If a checkpoint seems to need an agent change, it
 > almost certainly doesn't — stop and re-check.
 >
-> **Two questions in [docs/v2/VISUAL_INPUTS.md](docs/v2/VISUAL_INPUTS.md) need the user's
-> answer** (the Library double-click behaviour, and the default theme on first launch), and
-> the vertical-layout decisions for Flows and Live are bets on a window aspect ratio that
-> has never been observed — confirm with a screenshot before checkpoint V2.5.
+> **The app has been observed** — rule 5 was lifted for one session on 2026-08-04 (D97) and
+> every screen was captured against the live agent. See
+> [docs/v2/OBSERVED.md](docs/v2/OBSERVED.md) and the committed screenshots in
+> `docs/v2/screens/`; that pass corrected three planning errors, including a Library grid
+> defect invisible from source. **Rule 5 is back in force by default.**
+>
+> **Two questions in [docs/v2/VISUAL_INPUTS.md](docs/v2/VISUAL_INPUTS.md) still need the
+> user's answer**: the Library double-click behaviour, and the default theme on first
+> launch.
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3

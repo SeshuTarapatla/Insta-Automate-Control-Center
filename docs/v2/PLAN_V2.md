@@ -232,7 +232,7 @@ off) and confirm it changes. The curation counts match Library.
 **Goal:** [SCREENS.md](SCREENS.md) §3.
 
 - Header ribbon absorbing `RunSummary`; elapsed timer; `AnimatedCounter`s.
-- Vertical `ResizableSplit`, expand-a-pane.
+- **Horizontal** `ResizableSplit` (⚠️ the vertical proposal was reversed — OBSERVED §7), expand-a-pane.
 - Log console: level `AppSelect`, search, sticky errors preserved.
 - Surface card widths computed rather than the three hardcoded per-flow values.
 - The scrape before→after morph (ARCHITECTURE §9, finally).
@@ -255,8 +255,10 @@ widths work where the old hardcoded 420 was tuned only for scrape.
 
 ## V2.9 — Library browse
 
-**Goal:** [SCREENS.md](SCREENS.md) §5a.
+**Goal:** [SCREENS.md](SCREENS.md) §5a-0 and §5a.
 
+- **Per-folder grid cell aspect ratio first** (SCREENS §5a-0) — the highest-impact single
+  fix in the Library, wasting 40–82% of every cell today.
 - Stage-grouped folder rail with the ⚑ review markers; `ResizableSplit` rails.
 - Single toolbar row with actions always visible (disabled, not hidden).
 - Skeleton loading; `plural()` helper; `NumericText` counts.
@@ -377,7 +379,7 @@ confirm the app goes still.
 |---|---|
 | V2.3 is a 90-file mechanical change with real regression potential | The ten existing layout tests are the net; run them after every file batch, not just at the end. Split by feature directory if needed. |
 | Daylight/Swiss expose dark-mode assumptions that never had to be tokens | V2.4's checkpoint test walks every screen in Daylight specifically, for exactly this. |
-| The real window is tall and narrow, and I have never seen it | [VISUAL_INPUTS.md](VISUAL_INPUTS.md) — get the screenshots before V2.5. Several layout choices (vertical pipeline, stacked Live split) are bets on that aspect ratio. |
+| ~~The real window is tall and narrow, and I have never seen it~~ | ✅ **Closed** — the app was observed 2026-08-04 (D97). The window is landscape, 1253 × 1013 logical; the affected sections are corrected. See [OBSERVED.md](OBSERVED.md). |
 | Review mode writes to real curation data | Nothing written until Apply; existing endpoint; existing confirm dialog; `Esc`-writes-nothing tested explicitly. |
 | Scope creep across 13 checkpoints | The scope boundary at the top: no agent, pipeline, helm or mobile changes. If a checkpoint seems to need one, stop and ask. |
 | A theme's contrast fails after a hand-tweak | `theme_contrast_test.dart` runs in every checkpoint's gate, not just V2.4's. |

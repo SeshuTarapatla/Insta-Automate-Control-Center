@@ -355,13 +355,13 @@ searchHitBackground #FFF8C5   searchHitBackgroundCurrent #FFD8B5   searchHitFore
 panelBackground #FFFFFF       headerBackground #F6F8FA
 ```
 
-Note this is a real behavioural change for `ServiceTerminal`: the supervised services emit
-ANSI color assuming a dark background. Most emit sparse color (status words, log levels)
-and read fine, but **this needs a live check** — see [VISUAL_INPUTS.md](VISUAL_INPUTS.md).
-If a service turns out to emit dark-on-dark ANSI that becomes illegible on white, the
-fallback is to keep the terminal pane dark in light themes (a legitimate choice — VS Code
-and many IDEs do exactly this) by pointing `terminal` at `TerminalPalette.dark` for
-Daylight/Swiss too.
+✅ **Checked live and cleared** (2026-08-04, OBSERVED §6). `screens/04-services.png` shows
+real `adb` output streaming: grey `—` agent lines and plain white log text, essentially
+monochrome, with no dark-on-dark ANSI anywhere. `TerminalPalette.light` will render it fine.
+
+The "always dark terminal" override in §9 stays as a user preference — some people simply
+prefer a dark terminal in a light app, as VS Code does — but it is no longer needed as a
+correctness fallback.
 
 ---
 

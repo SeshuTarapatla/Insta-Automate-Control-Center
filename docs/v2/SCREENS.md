@@ -3,12 +3,27 @@
 What each screen becomes, and why. Read [AUDIT.md](AUDIT.md) for the problems these solve
 and [COMPONENTS.md](COMPONENTS.md) for the vocabulary used throughout.
 
-**The design target is a tall, medium-width window.** `main.dart` sizes the app to fill the
-space right of the scrcpy mirror — roughly **1250 × 1400 logical px** on this machine.
-That is unusual: taller than it is wide. Several decisions below (the vertical flow
-pipeline, the Live screen's stacked split) exist specifically because of it, and are marked
-as such. A screenshot at the real size is the single highest-value input the user can
-provide — see [VISUAL_INPUTS.md](VISUAL_INPUTS.md).
+> ⚠️ **Corrected 2026-08-04 after seeing the app run — read [OBSERVED.md](OBSERVED.md)
+> and look at [screens/](screens/) before implementing anything here.**
+>
+> The measured window is **1253 × 1013 logical** (content area ≈ **1168 × 973**) on a
+> 2560 × 1600 monitor at 150% scaling, with the scrcpy mirror taking 443 logical px on the
+> left. That is **landscape, ≈ 1.24 : 1** — not "tall and narrow" as this document
+> originally assumed.
+>
+> Two sections below are affected: **§2 (Flows pipeline) stands**, on the better reasoning
+> in OBSERVED §7, and **§3 (Live) is reversed — the split stays horizontal.** The Live
+> section is amended inline.
+>
+> The observation pass also found a defect invisible from source: the Library grid uses one
+> cell aspect ratio for folders holding two very different image shapes, wasting 40–82% of
+> every cell (OBSERVED §3). That is now the top Library fix, ahead of review mode.
+
+**The design target is a landscape, medium-width window** — ≈ 1168 × 973 logical of content.
+The dominant problem across every screen is **unused horizontal space**: Flows leaves ~55%
+of the screen empty, Settings' switch rows have ~1100px between label and control, Library
+spends 38% of its width on two navigation rails. Using that width is the single
+highest-leverage change in the redesign.
 
 ---
 
@@ -150,10 +165,18 @@ strict pipeline with real backlog queues between stages. The entire logic of
 queues. The screen renders it as five disconnected cards in a `Wrap`, and shows none of the
 queues — they live on a different tab, in the Library folder rail.
 
-**Vertical**, not horizontal — because the production window is tall and narrow
-(preamble). A horizontal five-stage diagram would either wrap awkwardly or shrink each
-node past usefulness; vertically, each node gets the full width and the connectors read
-naturally as flow.
+**Vertical**, not horizontal — but for the reason in OBSERVED §7, not the one originally
+given. The screen currently wastes ~55% of its height (`screens/02-flows.png`), and at
+1168 logical px wide each node can be a **horizontal strip** carrying status dot, name,
+state, inline gate reason, today's counters and actions **all in one row** — which is
+exactly the "use the horizontal space" fix the whole redesign turns on. Budget: 5 nodes ×
+~120px + 4 edges × ~55px = **820px** in a 973px content height, leaving room for one node
+to expand.
+
+This also fixes what `screens/02-flows.png` shows most starkly: **four of the five cards
+today render an identical amber hourglass above the identical words "Waiting on
+condition"** (OBSERVED §4). Only Follow differs. The node's inline gate reason is what
+makes the five genuinely distinguishable at a glance.
 
 ```
 ╭─────────────────────────────────────────────────────────────╮
@@ -247,11 +270,19 @@ warn that follow/classify will need different values (`live_page.dart:179-190`).
 
 **The fixed width is the core problem.** The surfaces' cards already wrap to fill whatever
 width they're given (D44), so a fixed column caps how much can ever be shown, and it was
-tuned for one of five flows.
+tuned for one of five flows. `screens/03-live.png` shows the consequence: for
+entity-ingest the 420px column was **~95% empty** — one small card in a 413 × 950 space.
 
-**Restructured as a vertical split** — again because the window is tall and narrow. Both
-panes get the full width: the visualization gets many more cards per row than 420px ever
-allowed, and log lines get the width they benefit from (which was D45's whole point).
+> ⚠️ **Reversed after observation.** This section originally proposed stacking the panes
+> vertically, justified by the "tall and narrow" error. At the real 1168 × 973 a vertical
+> split gives each pane ~470px of height — too short for a log console (~12 lines) and too
+> short for portrait result cards.
+
+**The split stays horizontal**, so both panes keep the full 973px height, which is what a
+log stream and a column of portrait cards both want. What changes is that it becomes a
+`ResizableSplit` (`persistKey: 'live.split'`, ~45/55 default) instead of a hardcoded 420px,
+and the surfaces compute their card widths from the width they're actually given rather
+than the three hardcoded per-flow constants.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -286,7 +317,11 @@ allowed, and log lines get the width they benefit from (which was D45's whole po
   in it today. Highlights matches and shows `n of m` with `Enter`/`Shift+Enter` to step.
 - **`⤢ expand`** maximises either pane to fill the screen — the "just show me the images"
   and "just show me the logs" modes, both one click away.
-- The split is a `ResizableSplit` with `persistKey: 'live.split'`, initial 55/45.
+- **Structured output renders as `MonoText`** — `screens/03-live.png` shows a JSON blob from
+  the ingest flow rendered in the body proportional font, which reads as broken.
+- **`DeviceBar`'s mirror button needs scope in its label.** `screens/03-live.png` has two
+  bare `Stop` buttons inches apart in the same header — the flow's and the mirror's
+  (OBSERVED §8). The mirror's should read `Stop mirror`.
 
 ### Surfaces
 
@@ -337,6 +372,28 @@ Structure is already right (master/detail) — this is mostly polish plus the te
 steps, and ARCHITECTURE §9 naming it explicitly. It's currently three fixed columns, plain
 `ListTile` rails, a two-row toolbar that hides its own primary actions until something is
 selected, and no way to see an image large enough to judge it.
+
+### 5a-0. ⚠️ Per-folder grid cell aspect ratio — do this first
+
+**The highest-impact single fix in the Library, found by observation (OBSERVED §3), not
+visible in source.** The grid's cells are near-square, but the seven folders hold two very
+different image shapes:
+
+| Folders | Real shape | Waste per cell today |
+|---|---|---|
+| `entities`, `scraped`, `follow_queued` | 1080 × 2246 / ~2000 — **portrait 1 : 2.08** | ~40%, letterboxed left/right |
+| `scanned`, `gender_valid`, `gender_invalid`, `scrape_queued` | 1080 × 198 — **strip 5.45 : 1** | **~82%**, letterboxed top/bottom |
+
+Compare `screens/05-library.png` with `screens/08-library-rowcrops.png`. In the row-crop
+folder only **9 cells** fit the grid pane; matched to the content shape the same area holds
+roughly **40**. On a 6,635-image backlog that is a 4× difference in review throughput.
+
+Fix: a `folder → aspectRatio` map on the client, driving
+`SliverGridDelegateWithFixedCrossAxisCount.childAspectRatio`. The shapes are documented in
+CLAUDE.md's `IA_DIR` table. **Keep `BoxFit.contain`** — D41's letterbox-don't-crop rule is
+correct; the container just has to match the content. No agent change.
+
+Land this before review mode: it's a small change with comparable payoff.
 
 ### 5a. Browse layout
 

@@ -5,6 +5,67 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — v2 planning corrected by actually looking at the app
+
+### D97 · Rule 5 lifted for one session; three planning errors found by observation
+
+**Asked:** the user explicitly lifted rule 5 ("the user drives the app, never you") for this
+session — "lets ignore the rule that you cant see the app or screen … ask for it once do the job" —
+so the v2 plan could be checked against the real thing rather than inferred from source. Rule 5
+remains in force by default; this was a scoped, one-session exception.
+
+**Method:** `flutter clean` → dart-MCP `launch_app` on device `windows` (debug) → Win32
+`SetCursorPos`/`mouse_event` clicks at logical client coordinates → `Graphics.CopyFromScreen` per
+screen. `flutter_driver` was unavailable (the app never calls `enableFlutterDriverExtension()`),
+and `launch_app` returns the `flutter run` host pid rather than the window-owning child
+`ia_control_center.exe` — both noted in `docs/v2/OBSERVED.md` for repeatability. Only navigation
+was clicked; no switch, trigger, apply, delete or ops job was touched. Nine screenshots committed
+under `docs/v2/screens/`.
+
+**Three errors found, all now corrected in the v2 docs:**
+
+**1. The window is landscape, not tall and narrow.** Measured 2560 × 1600 at 150% scaling, mirror
+taking 443 logical px, giving the app **1253 × 1013 logical** (content ≈ 1168 × 973) — about
+1.24 : 1. D95 had inferred "~1250 × 1400, taller than wide" from `main.dart`'s geometry math
+without accounting for the work area's real height at 150%. **Consequence:** Flows' vertical
+pipeline *stands*, but on different reasoning (the screen wastes ~55% of its height, and at 1168px
+wide each node becomes a horizontal strip holding everything in one row); Live's vertical split is
+**reversed** — at 973px of content height a vertical split gives each pane ~470px, too short for
+both a log console and portrait cards. Live keeps a horizontal split, made resizable.
+
+**2. The Library grid uses one cell aspect ratio for two very different image shapes** — invisible
+from source, and arguably the worst visual defect in the app. Cells are near-square; `entities`/
+`scraped`/`follow_queued` hold 1 : 2.08 portraits (~40% of each cell wasted, letterboxed
+left/right) while `scanned`/`gender_valid`/`gender_invalid`/`scrape_queued` hold 5.45 : 1 row crops
+(**~82% wasted**, letterboxed top/bottom). In the row-crop folder only 9 cells fit the grid pane
+where a matched shape holds ~40 — a 4× throughput difference on a 6,635-image backlog. D41's
+`BoxFit.contain` choice is right and stays; the container just has to match the content. Now the
+top Library fix, ahead of review mode.
+
+**3. The dominant problem is horizontal emptiness, not density.** Flows leaves ~55% of the screen
+black; Settings' switch rows have ~1100 logical px between label and control; Library spends 38% of
+its width on two navigation rails; Live's fixed 420px visualization column was ~95% empty. The
+original audit read the app as cluttered — it is the opposite.
+
+**Two further findings worth recording.** Four of the five Flow cards render an *identical* amber
+hourglass above the *identical* words "Waiting on condition", so the screen whose purpose is
+showing what the pipeline is doing communicates almost nothing without hovering each ⓘ in turn —
+worse than the source-only audit predicted. And Services' detail pane turned out to already be the
+app's best design (an uppercase-micro-label metric strip, self-explaining switch cards, a framed
+terminal with search/copy); it is promoted to a shared `MetricStrip` component rather than a new
+treatment being invented.
+
+**One open question closed by observation:** the light-theme terminal palette is safe — real `adb`
+output is essentially monochrome, with no dark-on-dark ANSI. The "always dark" override stays as a
+preference, not a fallback.
+
+**Cost:** none to the plan's shape — thirteen checkpoints stand, and the scope boundary (everything
+inside `app/`, no agent changes) is unaffected. Adding a `driver_main.dart` entrypoint with
+`enableFlutterDriverExtension()` would make any future observation pass far more precise than
+coordinate clicking, and is worth doing if this recurs.
+
+---
+
 ## 2026-08-04 (continued) — v2.0.0 UI/UX overhaul: planned, not yet built
 
 ### D94 · Own token layer on Material 3, not a component framework
@@ -71,6 +132,10 @@ as tuned to `entity-scrape` only, with a warning that follow/classify will need 
 **Flagged as a bet, not a certainty:** I have never seen the app render (rule 5), so the aspect
 ratio is inferred from arithmetic in `main.dart`, not observed. `docs/v2/VISUAL_INPUTS.md` asks for
 one screenshot that confirms or kills all three vertical decisions before V2.5 begins.
+
+> **⚠️ Amended same day by D97 — the bet was half wrong.** The window is landscape
+> (1253 × 1013 logical), not tall and narrow. Flows' vertical pipeline survives on better
+> reasoning; Live's vertical split is reversed. See D97.
 
 ### D96 · Design-language triage — three styles argued against, not deferred
 

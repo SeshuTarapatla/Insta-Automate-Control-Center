@@ -1,130 +1,75 @@
-# v2 — Visual inputs needed from you
+# v2 — Visual inputs
 
-Rule 5 means I never drive the app, so I have **never seen it render**. Everything in
-[AUDIT.md](AUDIT.md) and [SCREENS.md](SCREENS.md) was derived by reading source, which is
-reliable for structure and constraints and completely blind to how it actually looks.
-
-Three of the v2 design decisions are outright **bets on an aspect ratio I've inferred from
-arithmetic in `main.dart`** — the vertical Flows pipeline, the stacked Live split, and the
-Overview bento grid's column count. Screenshot **#1 alone** confirms or kills all three.
-
-Nothing here blocks checkpoints V2.1–V2.4 (the foundation and theme work). **Get #1–#3 in
-before V2.5**, when screen layout work starts.
+> ✅ **Mostly resolved 2026-08-04.** The user lifted rule 5 for one session, and the app was
+> built fresh, launched, and driven through every screen against the live agent and real
+> pipeline data. Findings are in [OBSERVED.md](OBSERVED.md); the screenshots are committed
+> in [screens/](screens/).
+>
+> Everything this document originally asked for in Tiers 1 and 2 has been captured. What
+> remains below is the part no screenshot can answer.
 
 ---
 
-## Tier 1 — get these first (blocks V2.5 onward)
+## Answered by the observation pass
 
-### 1. The whole screen, as you actually use it ⭐ highest value
+| Original ask | Answer |
+|---|---|
+| Monitor resolution and scaling | **2560 × 1600 @ 150%** |
+| The real window size | **1253 × 1013 logical**, content ≈ **1168 × 973** — landscape, not tall/narrow. Corrected in OBSERVED §1 and patched through SCREENS.md |
+| All seven screens at real size | `screens/01`–`07` |
+| Library at real zoom, with real thumbnails | `screens/05-library.png` (portrait) and `screens/08-library-rowcrops.png` (strips) — which surfaced the per-folder aspect-ratio defect, OBSERVED §3 |
+| Services terminal with real ANSI | `screens/04-services.png` — output is monochrome, so the light terminal palette is safe (THEMES §8) |
+| Live mid-run | `screens/03-live.png` — entity-ingest, real run. The 420px column was ~95% empty |
+| Insights, all tabs | `screens/06-insights.png` |
 
-The scrcpy mirror **and** the control center side by side, full desktop, nothing cropped.
+## Still worth capturing later
 
-`main.dart` computes the window as "fill everything right of the mirror" and I've inferred
-~1250 × 1400 logical px from the geometry math there, but I don't know the monitor
-resolution, the real scale factor, or how much room the mirror actually takes. If the app
-is wider or shorter than I think, the vertical-pipeline and stacked-split decisions need
-revisiting **before** they're built rather than after.
-
-Please also just tell me: **monitor resolution and Windows scaling %** (Settings → System →
-Display). That's a one-line answer that removes most of the guesswork on its own.
-
-### 2. All seven screens, at the real window size
-
-Overview · Flows · Live · Services · Library · Insights · Settings.
-
-Default state is fine — I want to see how each screen actually fills that shape, where the
-dead space is, and where things are cramped. The audit predicts specific problems
-(Overview scrolling for two screens, the Live right column being narrow, the Library
-toolbar taking two rows); these confirm or correct them.
-
-### 3. Settings, all five tabs
-
-Flows · Limits · Queue · Devices · Ops. The Limits tab especially — it's a `Wrap` of
-`LimitCard`s whose count and arrangement I can't predict from source, and it's one of the
-denser screens.
+- **Live during a real `entity-scrape` run.** The capture caught entity-ingest, which
+  produces one small card. Scrape produces ~20 portrait composites and is what the card
+  widths must actually be tuned against. Not blocking — grab it whenever a scrape happens
+  to be running, before **V2.8**.
+- **Notification center, open, with real notifications.** Not captured; it's a popover that
+  needs a click on the bell. Before **V2.5**.
 
 ---
 
-## Tier 2 — get these before the screen they affect
+## What screenshots cannot answer — these still need you
 
-### 4. Live, mid-run, with real data — for **V2.8**
+### 1. ⭐ Any app whose look you want this to have
 
-Ideally during an `entity-scrape` run, since that's the flow the current 420px column was
-tuned against. If you can catch a second flow (scan or classify) too, that's better —
-their card widths differ (320 / 420) and I want to see how both actually sit.
+The single most useful thing you can still give me. Screenshots of anything — Grafana,
+Linear, Raycast, a game launcher, a synth UI, a website, a poster, one of the design
+inspirations you listed.
 
-What I'm looking for: whether the images are readable at the sizes they render, how much
-of the right column is card versus gutter, and how the log console reads next to them.
+[THEMES.md](THEMES.md) proposes six themes reasoned from what a control center needs. What
+you personally find good-looking is not derivable from source or from screenshots of the
+current app. If two of the six are close and one isn't, knowing that before **V2.4** saves
+building the wrong one.
 
-### 5. Library, at each zoom level — for **V2.9 / V2.10**
+### 2. What currently annoys you
 
-Small, Medium and Large, in a folder with real thumbnails (`scrape_queued` or
-`gender_valid`). Review mode's entire premise is that a 1080×2246 profile page is
-unjudgeable at thumbnail size — I'd like to see exactly how unjudgeable, so I can size the
-review image correctly.
+Not a screenshot — a list. "X always takes two clicks", "I can never find Y", "the Z number
+is meaningless to me."
 
-Also: **roughly how long does reviewing a batch of ~50 take you today, and what's the
-actual sequence of clicks?** That's more useful than any screenshot for getting the
-keyboard map right.
+The audit found structural problems by reading code and the observation pass found visual
+ones by looking. Neither can find **friction**, and friction is what an overhaul should be
+aimed at. If any of it contradicts [SCREENS.md](SCREENS.md), your version wins.
 
-### 6. Services, with the terminal streaming — for **V2.4 and V2.11**
+### 3. How you actually review a batch today
 
-Any service, mid-output, with visible ANSI color if you can catch it.
-
-This one has a **specific decision riding on it**: Daylight and Swiss are light themes, and
-[THEMES.md](THEMES.md) §8 introduces a light terminal palette for them. If the services
-emit dark-on-dark ANSI, that palette produces unreadable output and the right answer is to
-keep the terminal dark in light themes (which VS Code and most IDEs do). I need to see real
-output to call it.
-
-### 7. Insights, all three tabs — for **V2.11**
-
-Funnel · Ranking · Daily limits. The funnel's `CustomPainter` trapezoid (D78) and the
-hand-built ranking table (D77) both survive v2 intact, so I want to see what I'm preserving
-rather than redesign around a mental model of it.
-
-### 8. Notification center, open — for **V2.5**
-
-With a few real notifications in it. It's a `CompositedTransformFollower` popover and I
-can't picture its real proportions against the title bar.
+Roughly how long does reviewing ~50 images take, and what's the real sequence of clicks?
+This shapes review mode's keyboard map (SCREENS §5b) more than any screenshot can — it's
+the difference between designing for what I think the job is and what it actually is.
 
 ---
 
-## Tier 3 — helpful, not blocking
-
-### 9. Any app whose look you want this to have
-
-The single most useful thing you can give me beyond screenshots of our own app. Screenshots
-of anything — Grafana, Linear, Raycast, a game launcher, a synth UI, a website, a poster.
-
-I've proposed six themes ([THEMES.md](THEMES.md)) from a reading of what a control center
-needs, but "what you actually find good-looking" is not something I can derive. If two of
-the six are close and one isn't, knowing that early saves building the wrong one.
-
-### 10. Anything that currently annoys you
-
-Not a screenshot — just a list. "The X always takes two clicks", "I can never find Y",
-"the Z number is meaningless to me." The audit found structural problems by reading code;
-it cannot find *friction*, and friction is what an overhaul should be aimed at.
-
-If any of it contradicts something in [SCREENS.md](SCREENS.md), your version wins.
-
----
-
-## How to give them to me
-
-Drop the files anywhere and paste the paths, or attach them. `d:\Coding\` or the scratchpad
-both work. Named by screen (`overview.png`, `live-scrape.png`) saves a round trip.
-
----
-
-## Two questions that need an answer, not a screenshot
+## Two decisions that need your answer
 
 ### A. Double-click in the Library grid
 
-Today double-click **copies the image id** (`library_tile.dart:84`). SCREENS §5c proposes
-it opens a **lightbox** instead, with copy-id moving to the right-click menu where it
-already exists.
+Today double-click **copies the image id** (`library_tile.dart:84`). SCREENS §5c proposes it
+opens a **lightbox** instead, with copy-id moving to the right-click menu where it already
+exists.
 
 Flagged rather than assumed because it changes an interaction you use daily, and the
 library's selection mechanics are a recorded preference of yours (D48). **Do you use
@@ -133,6 +78,22 @@ double-click-to-copy?** If yes, the lightbox gets a different key and nothing ch
 ### B. The default theme on first launch
 
 The plan keeps **Classic** as the default so nothing changes for you until you choose
-otherwise. If you'd rather v2.0.0 open in **Command Deck** — which is the one designed for
-how this app is actually used — say so and it becomes the default, with Classic still one
-click away.
+otherwise. If you'd rather v2.0.0 open in **Command Deck** — the one designed for how this
+app is actually used — say so and it becomes the default, with Classic still one click away.
+
+---
+
+## Repeating the capture
+
+Rule 5 remains in force by default; it was lifted for one session by explicit request. If
+you want another pass, say so and the method in OBSERVED §"How these were captured" makes it
+about five minutes: `flutter clean` → dart-MCP `launch_app` on `windows` → Win32 clicks at
+logical `x = 40, y = 65 + 64n` for the nav rail → `Graphics.CopyFromScreen` per screen.
+
+Two gotchas worth remembering:
+
+- `launch_app` returns the **`flutter run` host pid**, not the window's. The real window
+  belongs to a child `ia_control_center.exe` — find it with `Get-Process`.
+- `flutter_driver` is unavailable: the app never calls `enableFlutterDriverExtension()`.
+  Adding a `driver_main.dart` entrypoint would make future passes far more precise than
+  coordinate clicking, and is worth doing if this happens more than once.
