@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
-import '../../core/async_state_view.dart';
+import '../../ui/feedback.dart';
 import '../../core/file_opener.dart';
 import 'config_controller.dart';
 import 'config_file_bar.dart';

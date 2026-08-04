@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/status.dart';
+import 'service_status_kind.dart';
 import 'services_controller.dart';
-import 'status_dot.dart';
 
 /// One service in the left-hand list: enough to triage at a glance (state,
 /// uptime, restarts, probe latency), with the detail pane holding everything
@@ -48,7 +49,7 @@ class ServiceTile extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  StatusDot(state: status.state),
+                  StatusDot(kind: status.state.statusKind, pulsing: status.state.isTransient),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

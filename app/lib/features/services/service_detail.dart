@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/status.dart';
+import 'service_status_kind.dart';
 import 'service_terminal.dart';
 import 'services_controller.dart';
-import 'status_dot.dart';
 
 /// The terminal never shrinks below this, however cramped the window: a pane
 /// squeezed to a couple of rows is worse than one you have to scroll to.
@@ -201,7 +202,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
             children: [
               Row(
                 children: [
-                  StatusDot(state: status.state, size: 12),
+                  StatusDot(kind: status.state.statusKind, pulsing: status.state.isTransient, size: 12),
                   const SizedBox(width: 10),
                   // Flexible, not fixed: at the 1024 px minimum window the
                   // action buttons leave this row little to work with, and the

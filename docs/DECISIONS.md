@@ -5,6 +5,70 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — V2.2 component library implemented
+
+### D100 · `app/lib/ui/` built against the tokens; only two pre-existing widgets actually moved
+
+**Built:** all twelve files COMPONENTS.md specifies — `surfaces.dart` (`AppPanel`/`AppCard`/
+`AppWell`/`AppOverlay`), `text.dart` (`AppText`/`MonoText`/`NumericText`/`AnimatedCounter`),
+`status.dart` (`StatusKind`/`StatusDot`/`StatusChip`/`CountBadge`/`OutcomeBadge`),
+`buttons.dart` (`AppButton`/`IconAction`/`ButtonGroup`), `page.dart` (`AppPage`/`PageHeader`/
+`SectionHeader`/`Toolbar`), `fields.dart` (`AppTextField`/`SearchField`/`AppSelect`/
+`AppSwitch`), `layout.dart` (`ResizableSplit`/`Gap`/`AppDivider`/`MetricRow`/`KeyValueList`),
+`feedback.dart`, `overlays.dart` (`AppDialog`/`AppTooltip`/`AppMenu`/`AppSnack`), `data.dart`
+(`AppTable`/`AppTableColumn`/`Sparkline`), `motion.dart` (`FadeSlideIn`/`AnimatedReveal`/
+`PageTransition`, on `flutter_animate`), `icons.dart` (`AppIcon`/`AppIcons`, on
+`phosphor_flutter`). `ui/command/` (the command palette) is explicitly out — that's V2.12's
+scope per PLAN_V2.md, not this checkpoint's directory listing in COMPONENTS.md §0.
+
+**Only `StatusDot` and the async-state trio actually moved, per PLAN_V2's own bullet list —
+`OutcomeBadge`'s real call sites stay untouched.** COMPONENTS.md §3 says `OutcomeBadge` "keeps
+its name and call sites — only its `BadgeTone` enum and hardcoded colors are replaced," which
+reads like a V2.2 migration, but PLAN_V2.md's actual V2.2 checklist only names two moves:
+`core/async_state_view.dart` → `ui/feedback.dart` and `features/services/status_dot.dart` →
+`ui/status.dart`. Built `ui/status.dart`'s `OutcomeBadge`/`StatusKind` as the *target* shape,
+left `features/live/surfaces/surface_common.dart`'s original `OutcomeBadge`/`BadgeTone`
+completely untouched — V2.3's 90-file migration is what actually redirects the five surface
+files. This matches the checkpoint's stated goal ("used by nothing yet") for every genuinely
+new component, while still doing the two real moves the plan calls out by name.
+
+**`StatusDot` generalised from `ServiceState` to `StatusKind` + an explicit `pulsing` bool** —
+its transient-state pulse (AUDIT's "do not undo" list) is unchanged, just no longer tied to one
+domain model. The two real call sites (`service_tile.dart`, `service_detail.dart`) needed a
+small bridge, added as `features/services/service_status_kind.dart` (`ServiceState.statusKind`)
+rather than teaching `core/service_models.dart` about `ui/status.dart`'s `StatusKind` — `ui/`
+sits between `core/` and `features/` per COMPONENTS.md §0's own directory note, so `core/`
+importing `ui/` would invert that layering. A feature-level bridge file was the correct home.
+
+**`AppTokensX.tokens` needed the same fallback `AppPalette` already had, discovered by the
+`ui/` tests themselves.** The dozen `theme.tokens.type.mono` reads V2.1 added compile fine
+everywhere, but calling `.tokens` from a genuinely bare `ThemeData()` (no `AppTokens`
+registered) still null-checks. Already fixed in V2.1 (`AppTokensX.tokens` falls back to
+`buildClassicTokens()`) — V2.2 is what actually exercised that path for the first time, via its
+own test harness (`test/ui/test_harness.dart`) which — unlike the ten pre-existing layout
+tests — renders through the real `buildTheme(buildClassicTokens())` rather than a bare
+`ThemeData()`, since these are exactly the widgets that read `theme.tokens`.
+
+**One real test-authoring bug, not a component bug, caught by the tests themselves:**
+`find.byType(MouseRegion).first` intermittently resolved to an unrelated ancestor `MouseRegion`
+inserted by the Material/Overlay chain rather than `ResizableSplit`'s own drag handle — its
+computed drag offset landed inside the *second* pane instead of on the handle, failing three
+tests with a bad hit-test warning. Fixed by giving the handle's `GestureDetector` a real
+`ValueKey('resizable_split_handle:$persistKey')` and asserting against the rendered pane's
+actual `Size` (`tester.getSize`) rather than scanning every `SizedBox` in the tree by width
+heuristics, which was fragile for the same underlying reason.
+
+**Verified:** `flutter analyze` clean, `flutter test` **118/118** (52 prior, unchanged — the
+two "moves" needed zero test edits since no test directly imported either old file — + 66 new
+in `test/ui/`, including the two real-assertion cases PLAN_V2.md names: `ResizableSplit`'s
+minimum-clamp/persistence/keyboard-nudge behaviour, and `AppTable`'s exact D77 invariant — one
+`width: null` column absorbs all leftover width, fixed columns never grow). `flutter build
+windows --debug` succeeds. Built and started for you — this checkpoint's test is a code review
+per PLAN_V2.md ("nothing user-visible changed... skim `ui/` and say whether the vocabulary
+matches how you think about the app"), not a click-through.
+
+---
+
 ## 2026-08-04 (continued) — V2.1 token foundation implemented
 
 ### D99 · Token layer built; the mono-font swap is the one intentional visible change

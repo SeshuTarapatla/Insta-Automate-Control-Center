@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/async_state_view.dart';
+import '../../ui/feedback.dart';
 import '../../core/dependency_models.dart';
 import 'dependencies_controller.dart';
 import 'services_controller.dart';

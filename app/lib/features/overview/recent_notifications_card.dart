@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/async_state_view.dart';
+import '../../ui/feedback.dart';
 import '../notifications/notification_center.dart';
 import '../notifications/notification_controller.dart';
 
