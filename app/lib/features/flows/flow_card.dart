@@ -42,6 +42,7 @@ String _subtitleFor(_StatusKind kind, FlowState state) => switch (kind) {
   _StatusKind.running => switch (state.gate.reason) {
     'message' => 'Running · triggered by message',
     'forced' => 'Running · forced',
+    'reduce_reserve' => 'Running · reducing to reserve',
     _ => 'Running',
   },
   _StatusKind.dayPaused => 'Paused for the day',
@@ -139,15 +140,6 @@ class FlowCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _runNow(BuildContext context, WidgetRef ref) async {
-    await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'skip_wait');
-    if (context.mounted) {
-      AppSnackBar.show(context, '${flowTitle[state.flow]}: ${_runNowLabel()} sent');
-    }
-  }
-
-  String _runNowLabel() => state.phase == 'waiting' ? 'Skip wait' : 'Run now';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(flowsTickProvider);
@@ -161,7 +153,7 @@ class FlowCard extends ConsumerWidget {
     final lastRun = state.lastRun;
     // Optimistic feedback only - the agent's queue/heartbeat round trip is
     // fast, but the worker actually picking up the run can lag a few
-    // seconds, long enough for an impatient second click on Force run.
+    // seconds, long enough for an impatient second click on Trigger now.
     final pending = ref.read(pendingCommandProvider.notifier).isPending(state.flow);
 
     return SizedBox(
@@ -236,10 +228,15 @@ class FlowCard extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              SizedBox(
-                height: 36,
-                child: pending
-                    ? Row(
+              // Sized to content, not a fixed height — this row can now wrap
+              // to two lines (entity-follow can show 4 buttons at once), and
+              // a fixed height here silently clipped the second row instead
+              // of growing for it (caught live: "Reduce reserve" rendered
+              // unclickable, overlapping the "Last run" line below it).
+              pending
+                  ? SizedBox(
+                      height: 36,
+                      child: Row(
                         children: [
                           SizedBox(
                             width: 14,
@@ -256,28 +253,36 @@ class FlowCard extends ConsumerWidget {
                             ),
                           ),
                         ],
-                      )
-                    : Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton(
-                            onPressed: () => _runNow(context, ref),
-                            child: Text(_runNowLabel()),
-                          ),
-                          OutlinedButton(
-                            onPressed: () => forceRunFlow(context, ref, state),
-                            child: const Text('Force run'),
-                          ),
-                          if (state.phase == 'running' && state.lastRun != null)
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
-                              onPressed: () => stopFlowRun(context, ref, state),
-                              child: const Text('Stop'),
-                            ),
-                        ],
                       ),
-              ),
+                    )
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        // A manual trigger only ever means "run it now,
+                        // regardless of its condition" — "Run now"/"Skip
+                        // wait" was a softer nudge that only ended an
+                        // in-progress wait early without bypassing the gate,
+                        // which could still do nothing at all; removed per
+                        // your own framing, since that distinction never
+                        // matched how you actually use this button.
+                        OutlinedButton(
+                          onPressed: () => forceRunFlow(context, ref, state),
+                          child: const Text('Trigger now'),
+                        ),
+                        if (state.flow == 'entity-follow')
+                          OutlinedButton(
+                            onPressed: () => reduceReserveFlow(context, ref, state),
+                            child: const Text('Reduce reserve'),
+                          ),
+                        if (state.phase == 'running' && state.lastRun != null)
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+                            onPressed: () => stopFlowRun(context, ref, state),
+                            child: const Text('Stop'),
+                          ),
+                      ],
+                    ),
               const SizedBox(height: 10),
               Row(
                 children: [

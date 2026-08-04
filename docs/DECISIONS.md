@@ -5,6 +5,203 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — Mobile's button row: back to evenly-spaced, per your correction
+
+### D89 · The full-width-row split (D87) over-corrected — one evenly-spaced row again, ellipsis instead
+
+**Asked:** with "Run now" gone (D88), mobile's `FlowDetailScreen` was down to at most Trigger now +
+Reduce reserve + Stop — D87's fix for the wrapping-text problem (pulling Reduce reserve into its
+own full-width row below) no longer read as necessary now that there's real room, and looked more
+stacked/uneven than the original side-by-side design ever did with two buttons. Requested: go back
+to one evenly-spaced row for every button, on every flow, including when Stop appears — and if a
+label doesn't fit, truncate it rather than wrap or stack.
+
+**Chosen:** merged back into a single `Row` of `Expanded` buttons (Trigger now, + Reduce reserve
+for entity-follow, + Stop while running), every label wrapped in `maxLines: 1,
+overflow: TextOverflow.ellipsis` — the actual fix for D87's original complaint (a label wrapping
+onto two lines, taller than its siblings) rather than routing around it with a layout split. A
+three-way even share is tighter than D87's dedicated full-width row, so ellipsis is what keeps a
+tight share from ever growing uneven again, per your explicit instruction.
+
+**Verified:** `flutter analyze` clean (the one pre-existing, unrelated `thumbnail_cache.dart` lint,
+untouched). No test suite exists in this repo (CP 6.4's own precedent) — verified by re-reading the
+rendered widget tree logic. Rebuilt and reinstalled on the adb-connected test phone; not
+opened/tapped by Claude.
+
+**You tested this live afterward and confirmed it works** — closes the whole D86–D89 arc (Reduce
+reserve itself, the two live-caught bugs, the Trigger now rename, and this layout correction) as
+checkpoint-tested, not just built. Committed the same session.
+
+---
+
+## 2026-08-04 (continued) — "Run now"/"Skip wait" removed; "Force run" renamed to "Trigger now"
+
+### D88 · A manual trigger only ever means "run it now, regardless of condition" — one button, not two
+
+**Asked:** "Run now"/"Skip wait" (ends an in-progress wait early, re-evaluating the gate now instead
+of at the deadline, but doesn't bypass the switch/daily-limit/condition — could still do nothing at
+all) and "Force run" (bypasses everything) had coexisted since CP 3.5. Your framing: when you reach
+for a manual trigger you already know you're doing it manually, and you always want it to actually
+run — the softer, "might still not do anything" distinction never matched how you use these
+buttons. Requested: remove "Run now"/"Skip wait" entirely, keep only "Force run" renamed to
+"Trigger now", on both clients.
+
+**Chosen — a pure UI change, zero backend logic changes.** `force_run`'s existing bypass-everything
+semantics already are exactly "always run regardless of condition" — nothing about the trigger
+mechanism needed to change, only which buttons exist and what they're called. The wire command
+stays `force_run` and `gate.reason` stays `"forced"` (renaming those would ripple through
+`Insta-Automate`'s log messages, `entity_follow`'s tail messaging, and both clients' `gate.reason`
+switch statements for zero user-visible benefit) — only the **displayed** text changed: button
+label, confirm-dialog title/button, snackbar text, and (for consistency) the gate detail string the
+pipeline itself generates (`_trigger_gate()` in `controllers/prefect.py`), which said "triggered via
+Force run, bypassing the gate" verbatim and would otherwise have kept saying the old name right
+next to the new button.
+
+**Desktop:** `flow_card.dart` lost `_runNow`/`_runNowLabel` and the "Run now" button entirely;
+"Force run" → "Trigger now" (button, and `forceRunFlow`'s dialog in `core/force_run.dart` — function
+name kept, since renaming it would be pure churn for a label-only change). `live_page.dart`'s header
+button got the same rename. Mobile: `flow_actions.dart` lost `runNow`/`runNowLabel`; `forceRun`'s
+dialog copy renamed the same way. `flow_detail_screen.dart`'s button row lost its first slot — since
+that row was deliberately equal-width (D67) for a set of similar-length labels, and D87 had already
+split Reduce reserve into its own full-width row below it, the remaining row is just Trigger now (+
+Stop when running), which needed no further layout rework.
+
+**Verified:** `flutter analyze` clean both apps (mobile's one pre-existing, unrelated
+`thumbnail_cache.dart` lint, untouched). Desktop `flutter test` 52/52 — updated the D87 regression
+fixture and the "command pending hides the trigger button" assertion to the new label rather than
+leaving them silently checking for text that no longer exists. No test suite exists in the mobile
+repo (CP 6.4's own precedent). Backend: `Insta-Automate` pushed, rebuilt, scheduler pod restarted
+(worker untouched — `_trigger_gate` is scheduler-side only, never runs in a flow body), confirmed
+via `kubectl exec` against the scheduler pod's loaded `prefect.py`. Both apps rebuilt and
+reinstalled/restarted; neither client's Trigger now button was clicked/tapped by Claude.
+
+---
+
+## 2026-08-04 (continued) — "Reduce reserve": a drain-to-backpressure-target manual trigger for entity-follow
+
+### D86 · A second entity-follow trigger that stops on pool size, not on FOLLOW_BATCH successes
+
+**Asked:** entity-follow's batch stop condition (`FOLLOW_BATCH`, 5 successful follows) doesn't
+match what actually gates entity-scrape — `scraped/ + follow_queued/` against
+`FOLLOW × SCRAPE_RESERVE_FACTOR` (180 by default). Every image processed gets `unlink()`'d
+regardless of outcome (success, already-requested, not-found), so a batch of 5 real follows can
+leave the pool barely smaller if most of the batch were skips, or a lot smaller if all 5 hit real
+follows on the first try — there was no way to say "just get the pool back under the reserve,
+whatever that takes" short of guessing how many times to hit Force run. Requested: a second,
+distinct manual trigger, **"Reduce reserve"**, that keeps entity-follow processing the queue —
+successes and skips alike — until the pool actually reaches the reserve target.
+
+**Chosen — bypasses the daily FOLLOW limit, like Force run does.** Asked directly rather than
+guessed, since it's a real Instagram-rate-limit-safety tradeoff: backpressure and the daily follow
+cap are most likely to be hit on the same bad day, and only bypassing the cap lets this trigger
+reliably finish what it's asked to do. **Rejected:** stopping early if the daily limit is hit
+before the target — safer, but would leave the exact worst-case day (both gates hit at once)
+unresolved by the one tool built to resolve it.
+
+**Naming, iterated live with the user rather than picked once:** "Drain to reserve" → "Clear
+backpressure"/"Catch up to reserve"/"Unblock scrape" → narrowed to a "remove excess" framing →
+**"Reduce reserve"**, the user's own final wording, used verbatim as both the button label and the
+wire command name (`reduce_reserve`).
+
+**Implementation — one new command riding the existing generic channel, not a new mechanism.**
+`agent/src/ia_agent/scheduler.py::KNOWN_COMMANDS` gained one entry; the REST route and both
+Flutter clients' `sendCommand`/`_sendCommand` are already fully generic (any flow/command string),
+so no plumbing changes were needed there — only new call sites (buttons + confirm dialogs) and one
+new `gate.reason` case in each subtitle switch. In `Insta-Automate`, `entity_follow_trigger()`
+(`controllers/prefect.py`) now consumes `reduce_reserve` alongside `force_run` each iteration and
+folds it into the existing `force` bool (`force = force_run or reduce_reserve`), so the daily-limit
+bypass inside `entity_follow()` falls out for free — `reduce_reserve` itself only changes the
+*stop condition*: `flows/entity_follow.py` now computes `pool_count`/`reserve_target` once at
+flow start and swaps `followed >= n` for `pool_count > reserve_target` in both the outer `for` and
+inner `while`, decrementing `pool_count` by 1 after each `image.unlink()` (cheaper and just as
+correct as re-globbing per image — entity-scrape's own trigger is gated off by the same
+backpressure check while the pool is above target, so nothing else grows `scraped/` mid-drain, and
+a human promotion `scraped/ → follow_queued/` doesn't change the sum either). `wait_until()`/
+`wait_day_change()` both got `reduce_reserve` added to their existing `force_run` peek, so a
+queued command wakes an in-progress wait immediately, matching `force_run`'s behavior exactly.
+
+**Verified:** a throwaway script (`scratchpad/check_reduce_reserve.py`, matching this repo's
+established no-test-suite precedent) calls the real `entity_follow.fn(...)` directly — bypassing
+the Prefect engine entirely via Prefect's own `.fn` escape hatch, so no API/orchestration context
+is needed — against a scratch directory with every heavy dependency (Postgres, device, Telegram,
+the agent, `db_backup`, `rm_empty_subdirs`) monkeypatched to fakes, never touching the real
+`IA_DIR`. 7/7 checks: normal batch mode unaffected (stops at `n` regardless of pool size), reduce
+mode stops at *exactly* the target regardless of the success/skip mix scripted into
+`profile_follow`, and both an at-target and a below-target pool are correct no-ops. Agent:
+`agent/tests/test_scheduler.py` extended to 25/25 (one new check — `reduce_reserve` is accepted,
+not 400'd); all ten other agent suites re-run clean, no regressions. Desktop: `flutter analyze`
+clean, `flutter test` 51/51, `flutter build windows --debug` succeeds — built and started for you
+per rule 5, not clicked by Claude. Mobile: `flutter analyze` clean (the one pre-existing
+`thumbnail_cache.dart` lint, untouched, same as D84/D85), built a real debug APK and installed it
+on the adb-connected test phone — **not** navigated or tapped through afterward, per the
+established mobile-reinstall precedent of leaving on-device interaction to the user. One real risk
+flagged rather than assumed away: mobile's `FlowDetailScreen` button row can now hold up to 4
+`Expanded` buttons at once (Run now/Skip wait, Force run, Reduce reserve, Stop) on a phone-width
+screen — worth a look on the real device before calling this done. Neither `Insta-Automate` nor
+either Flutter client's Reduce reserve action was actually triggered against live data — same
+standing precedent as CP 5.2/CP 7.1 for a real, consequential action.
+
+**Deployment:** `Insta-Automate`'s `feat/control-center` branch pushed, `ia build`'d, and rolled
+out to both the scheduler and worker pods (the worker needed a real rebuild + restart, not just a
+rollout, since `entity_follow()`'s signature changed — D39/D82's established gap between "rolled
+out" and "actually running the new code"), confirmed via `kubectl exec` against the worker pod's
+loaded `entity_follow.py`. Standing redeploy permission used, not asked again.
+
+---
+
+## 2026-08-04 (continued) — D86's own checkpoint test caught two real bugs plus one deploy gap
+
+### D87 · The agent itself was never restarted; a fixed-height box silently clipped a second button row on desktop; mobile's equal-width row didn't scale to a longer label
+
+**Asked implicitly — you tried the feature live within minutes of D86 landing** and hit it from
+both ends: mobile's Reduce reserve button answered `unknown command: reduce_reserve`, and
+desktop's FlowCard rendered the button unclickable, overlapping the "Last run" line below it.
+
+**Bug 1 — the running `ia-agent.exe` never picked up its own code change.** D86's deploy section
+carefully rebuilt and restarted both `Insta-Automate` pods, but never touched the agent process
+itself — the one place `KNOWN_COMMANDS` actually lives. This is the exact "the code changed, the
+running process didn't" gap CP 4.4 first hit and every checkpoint since has had to remember (D21's
+own launcher exists because of it) — this session forgot it applies to the agent's *own* source,
+not just the pipeline's. **Fixed** with a plain `taskkill /F /IM ia-agent.exe` (not the `schtasks`
+cycle D73 showed loses service adoption) — the launcher respawned it in seconds, all three
+supervised services confirmed still `adopted` across the restart. Verified `reduce_reserve` is now
+accepted by queuing it against `entity-scan`, a flow whose trigger loop never consumes that
+command name — proves the whitelist without triggering anything real.
+
+**Bug 2 — desktop's button row sat in a `SizedBox(height: 36)` sized for exactly one row.**
+Four buttons at once (Run now, Force run, Reduce reserve, Stop) wrap the `Wrap` to a second row,
+but a `Wrap` given a *tight* height constraint doesn't throw the way `Row`/`Column` overflow does
+— it just paints the second row outside its allotted box. Every existing `flows_layout_test.dart`
+case asserts `tester.takeException()` is null, which is exactly why none of them caught this: there
+was nothing to catch. **Fixed** by sizing the row to its content instead of a fixed height — a
+`Column` sizes to whatever its children need, so nothing else had to change. **Verified as a real
+regression, not assumed**: deliberately reintroduced the fixed-height wrapper, confirmed the new
+test (`entity-follow with all four buttons at once`, asserting the "Last run" text's real
+`dy` sits at or below the last button's, not just `takeException()`) fails against it
+(`254.0 < 338.0`, a real overlap), then confirmed it passes again once reverted to the fix.
+`flutter test` 52/52 (51 prior + 1 new).
+
+**Bug 3 (a UX regression, not a crash) — mobile's equal-width `Row` of `Expanded` buttons doesn't
+scale to a longer fourth label.** That design was deliberate (D67: "every button shares the row's
+width equally… so Run now and Force run always render the same size as each other") for a set of
+short, similar-length labels — "Reduce reserve" wrapped onto two lines at a third/quarter share,
+rendering taller than its siblings. **Fixed** by splitting into two rows instead of switching to a
+`Wrap` (which would have made every button's width inconsistent, not just the new one): the
+original equal-width row stays exactly as before (Run now, Force run, Stop), and Reduce reserve —
+a heavier, rarer, follow-only action that bypasses the daily limit anyway — gets a full-width row
+of its own below, visually distinct from the routine actions rather than squeezed in as a peer.
+`flutter analyze` clean (the one pre-existing `thumbnail_cache.dart` lint, untouched); no test
+suite exists in this repo (CP 6.4's own precedent) so verified by re-reading the rendered widget
+tree logic rather than a test.
+
+**Deployed:** desktop rebuilt, all five running instances from earlier sessions killed and a
+single fresh one started (accumulated clutter, not a bug — cleaned up so you're not looking at a
+stale window). Mobile rebuilt and reinstalled on the adb-connected test phone. Neither app's Reduce
+reserve button was clicked/tapped by Claude — same standing precedent as D86, now doubly relevant
+since the underlying command is confirmed live and would actually fire a real drain.
+
+---
+
 ## 2026-08-04 — Live-flow result cards: click opens the subject, right-click/long-press opens the root
 
 ### D85 · Click-to-open-profile added to all five Live-flow result surfaces, on both clients

@@ -103,7 +103,7 @@ class _LivePageState extends ConsumerState<LivePage> {
                   ],
                 ),
               ),
-              // Force run / Stop the selected flow right from here — the
+              // Trigger now / Stop the selected flow right from here — the
               // point of these living in the header (not just on the Flows
               // screen) is not having to switch tabs when the goal is
               // simply "trigger this and watch its logs," or "something's
@@ -126,8 +126,16 @@ class _LivePageState extends ConsumerState<LivePage> {
                         ),
                       OutlinedButton(
                         onPressed: () => forceRunFlow(context, ref, state),
-                        child: const Text('Force run'),
+                        child: const Text('Trigger now'),
                       ),
+                      if (state.flow == 'entity-follow')
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: OutlinedButton(
+                            onPressed: () => reduceReserveFlow(context, ref, state),
+                            child: const Text('Reduce reserve'),
+                          ),
+                        ),
                     ],
                   ),
                 )

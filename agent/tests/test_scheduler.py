@@ -136,6 +136,13 @@ async def live_checks() -> None:
             "queued": True, "flow": "entity-scrape", "command": "skip_wait"
         }, str(queued))
 
+        reduce_queued = (await client.post(
+            "/api/scheduler/entity-follow/command", json={"command": "reduce_reserve"}
+        )).json()
+        check("reduce_reserve is a known command too", reduce_queued == {
+            "queued": True, "flow": "entity-follow", "command": "reduce_reserve"
+        }, str(reduce_queued))
+
         drained = (await client.post("/api/scheduler/heartbeat", json=sample_state())).json()
         check("the next heartbeat drains it", drained["commands"] and drained["commands"][0]["command"] == "skip_wait",
               str(drained))

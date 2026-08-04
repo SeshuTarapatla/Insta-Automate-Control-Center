@@ -313,7 +313,10 @@ to `/api/scheduler/heartbeat` every ~2 s and the **response body carries queued 
 One endpoint, bidirectional, no inbound networking, no polling files.
 
 Commands: `run_now`, `force_run` (bypass gates, confirmed in UI), `skip_wait`, `pause`, `resume`,
-`reload_config`.
+`reload_config`, `reduce_reserve` (entity-follow only, added D86 — keeps entity-follow processing
+the queue, successes and skips alike, until scraped+follow_queued drops to the backpressure
+reserve target, instead of stopping at `FOLLOW_BATCH` successful follows; implies `force_run`'s
+daily-limit bypass too, confirmed in UI).
 
 **Landed in CP 3.4** (agent-side) **and closed the same session** (D28: `Prefect.serve()` now runs
 `heartbeat_loop()`, posting every flow's real state every ~2s — `gate` is set by each trigger loop

@@ -1136,6 +1136,95 @@ apps, desktop `flutter test` 52/52 unchanged. Built and started for you (desktop
 installed on the test phone (mobile) — **you tested both live and confirmed everything worked**.
 Full account in DECISIONS.md's D85.
 
+**2026-08-04 (continued): a second entity-follow trigger, "Reduce reserve" (D86).** The batch stop
+condition (`FOLLOW_BATCH`, 5 successful follows) never matched what actually gates entity-scrape —
+`scraped/ + follow_queued/` against `FOLLOW × SCRAPE_RESERVE_FACTOR` — since every image processed
+gets unlinked regardless of outcome (success, already-requested, not-found), so a batch of 5 real
+follows could leave the pool barely smaller, or a lot smaller, with no way to tell in advance. New
+command `reduce_reserve` rides the existing generic command channel (`KNOWN_COMMANDS` in
+`agent/src/ia_agent/scheduler.py`, one new entry; both Flutter clients' `sendCommand` were already
+fully generic, so no plumbing changes there) — confirmed with the user as bypassing the daily
+FOLLOW limit the same way Force run does, since backpressure and the daily cap are most likely hit
+on the same bad day (the safer "stop early" alternative would leave that exact worst case
+unresolved). `entity_follow_trigger()` folds it into the existing `force` bool so the daily-limit
+bypass falls out for free; `reduce_reserve` itself only changes entity_follow.py's stop condition —
+`followed >= n` becomes `scraped+follow_queued > reserve_target`, checked in both the outer and
+inner loop, decrementing a running pool count by 1 per processed image rather than re-globbing
+(safe: entity-scrape's own trigger is gated off by the same backpressure check while the pool is
+above target). Button naming iterated live with the user — "Drain to reserve" →
+"Clear backpressure"/"Catch up to reserve"/"Unblock scrape" → **"Reduce reserve"**, their own final
+wording, used verbatim as the wire command name too. Verified: a throwaway script calling the real
+`entity_follow.fn(...)` directly (Prefect's own engine-bypass escape hatch) against a scratch
+directory with every heavy dependency monkeypatched — 7/7 checks, including the exact-stop-at-
+target invariant regardless of the success/skip mix. Agent `test_scheduler.py` 25/25, all ten other
+suites re-run clean. Desktop `flutter analyze`/`flutter test` (51/51) clean, built and started for
+you per rule 5 — not clicked by Claude. Mobile `flutter analyze` clean (the one pre-existing
+`thumbnail_cache.dart` lint, untouched), built and installed on the test phone, deliberately not
+navigated or tapped through afterward (on-device interaction left to you, same as the mobile-
+reinstall precedent) — flagging one real risk for you to check rather than assuming it away: up to
+4 `Expanded` buttons can now share `FlowDetailScreen`'s button row on a phone-width screen. Neither
+client's Reduce reserve action, nor a real drain run, was triggered against live data or the real
+queue — same standing precedent as CP 5.2/CP 7.1 for a real, consequential action. Deployed:
+`Insta-Automate`'s `feat/control-center` branch pushed, `ia build`'d, rolled out to both the
+scheduler and worker pods (the worker needed a real rebuild, not just a rollout, since
+`entity_follow()`'s signature changed), confirmed via `kubectl exec` against the worker pod's
+loaded source. Full account in DECISIONS.md's D86.
+
+**Same day, minutes later: your own live test of D86 caught two real bugs and one deploy gap
+(D87).** Mobile's Reduce reserve button answered `unknown command: reduce_reserve` — D86's deploy
+step rebuilt and restarted both `Insta-Automate` pods but never restarted the agent process itself,
+the one place `KNOWN_COMMANDS` actually lives (the same "code changed, process didn't" gap every
+checkpoint since CP 4.4 has had to remember, this time forgotten for the agent's own source, not
+the pipeline's). Fixed with a plain `taskkill /F /IM ia-agent.exe`; the launcher respawned it in
+seconds with all three supervised services still `adopted`, then verified `reduce_reserve` is
+accepted by queuing it against `entity-scan` (whose trigger loop never consumes that name, so
+nothing real fires). Desktop's FlowCard rendered the button unclickable, overlapping the "Last run"
+line — a `SizedBox(height: 36)` sized for one row silently clipped the second row four buttons now
+need, and a `Wrap` given a tight height constraint doesn't throw the way `Row`/`Column` overflow
+does, so the existing `tester.takeException()`-based tests had nothing to catch. Fixed by sizing the
+row to its content instead of a fixed height; verified as a real regression (not assumed) by
+deliberately reintroducing the fixed height, confirming the new test fails against it, then passes
+again once reverted. `flutter test` 52/52 (51 prior + 1 new — real rendered-position assertions,
+not just exception checks). Mobile's equal-width button row (deliberate, D67, for a set of
+similar-length labels) didn't scale to "Reduce reserve" — it wrapped onto two lines, taller than its
+siblings — fixed by giving it a full-width row of its own below the original equal-width row rather
+than switching to a `Wrap` that would have made every button inconsistent. Both apps rebuilt;
+desktop's five accumulated stale instances killed and replaced with one fresh one; mobile
+reinstalled on the test phone — neither app's button clicked/tapped by Claude. Full account in
+DECISIONS.md's D87.
+
+**Same day: "Run now"/"Skip wait" removed, "Force run" renamed to "Trigger now" on both clients
+(D88).** Your own framing: a manual trigger always means "run it now, regardless of condition" —
+the softer "Run now"/"Skip wait" (ends a wait early but doesn't bypass the switch/limit/condition,
+so could still do nothing) never matched how you actually use these buttons. Pure UI change, zero
+backend logic: `force_run`'s existing bypass-everything semantics already are "always run
+regardless of condition," so only which buttons exist and what they're labeled changed — the wire
+command stays `force_run`, `gate.reason` stays `"forced"`. Desktop's `flow_card.dart` lost the
+"Run now" button and its two helper methods; `core/force_run.dart`'s `forceRunFlow` dialog/button
+text renamed (function name kept — pure label change, renaming it would be churn); `live_page.dart`
+matched. Mobile's `flow_actions.dart` lost `runNow`/`runNowLabel`, `forceRun`'s dialog renamed the
+same way; `flow_detail_screen.dart`'s button row simply lost its first slot (D87 had already moved
+Reduce reserve to its own row, so no further layout rework was needed). Also renamed, for
+consistency: the pipeline's own `_trigger_gate()` gate-detail string
+(`controllers/prefect.py`), which said "triggered via Force run, bypassing the gate" verbatim and
+would otherwise have kept the old name showing right next to the new button. Verified: `flutter
+analyze` clean both apps, desktop `flutter test` 52/52 (fixtures/assertions updated to the new
+label rather than left silently checking for text that no longer exists), backend pushed/rebuilt/
+scheduler-restarted (worker untouched — this string is scheduler-side only) and confirmed via
+`kubectl exec`. Both apps rebuilt and reinstalled/restarted; nothing clicked/tapped by Claude. Full
+account in DECISIONS.md's D88.
+
+**Same day: mobile's button row corrected back to evenly-spaced (D89).** With "Run now" gone (D88),
+D87's full-width-row split for Reduce reserve (built to dodge its label wrapping onto two lines in
+a cramped share) no longer read as necessary and looked more stacked than the original side-by-side
+design ever did with two buttons — your own correction. Merged back into one `Row` of `Expanded`
+buttons (Trigger now, + Reduce reserve, + Stop while running), with every label capped to
+`maxLines: 1` + ellipsis — the actual fix for D87's wrapping complaint, rather than a layout split
+routing around it. `flutter analyze` clean; rebuilt and reinstalled on the test phone; not
+opened/tapped by Claude. **You tested live afterward and confirmed it works** — closes the whole
+D86–D89 arc (Reduce reserve, the two live-caught bugs, the Trigger now rename, and this layout
+correction) as checkpoint-tested. Committed. Full account in DECISIONS.md's D89.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

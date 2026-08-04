@@ -187,12 +187,48 @@ void main() {
       _state(
         flow: 'entity-ingest',
         phase: 'running',
-        gate: const FlowGate(ok: true, reason: 'forced', detail: 'triggered via Force run, bypassing the gate'),
+        gate: const FlowGate(ok: true, reason: 'forced', detail: 'triggered via Trigger now, bypassing the gate'),
         lastRun: const FlowLastRun(id: '2fc1d0d4-abcd-4e12-9f34-aaaaaaaaaaaa', state: 'COMPLETED', durationS: 214),
       ),
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'FlowCard lays out without overflow: entity-follow with all three buttons at once',
+    (tester) async {
+      // Regression for a real bug caught live: the button row sat in a fixed
+      // 36px SizedBox, sized for one row. Multiple buttons at once (Trigger
+      // now, Reduce reserve, Stop) can wrap to a second row — `Wrap` given a
+      // *tight* height constraint doesn't throw (unlike Row/Column
+      // overflow), it just paints the second row outside its box, so
+      // `tester.takeException()` alone would not have caught this. Asserting
+      // real rendered positions is what would have. ("Run now"/"Skip wait"
+      // removed — a manual trigger only ever means "run it regardless of its
+      // condition," so Trigger now is now the only one.)
+      await _render(
+        tester,
+        _state(
+          flow: 'entity-follow',
+          phase: 'running',
+          gate: const FlowGate(ok: true, reason: 'reduce_reserve', detail: 'triggered via Reduce reserve'),
+          lastRun: const FlowLastRun(id: 'run-1', state: 'RUNNING', durationS: null),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Running · reducing to reserve'), findsOneWidget);
+      expect(find.text('Trigger now'), findsOneWidget);
+      expect(find.text('Reduce reserve'), findsOneWidget);
+      expect(find.text('Stop'), findsOneWidget);
+
+      // The button row must have grown to fit however many rows it needs
+      // rather than clip any of them — the "Last run" line below has to
+      // actually sit below the last button, not overlap it.
+      final reduceReserveBottom = tester.getBottomLeft(find.text('Reduce reserve')).dy;
+      final lastRunTop = tester.getTopLeft(find.textContaining('Last run:')).dy;
+      expect(lastRunTop, greaterThanOrEqualTo(reduceReserveBottom));
+    },
+  );
 
   testWidgets('FlowCard lays out without overflow: command pending', (tester) async {
     await _render(
@@ -206,6 +242,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Command sent'), findsOneWidget);
-    expect(find.text('Force run'), findsNothing);
+    expect(find.text('Trigger now'), findsNothing);
   });
 }

@@ -22,7 +22,9 @@ from ia_agent.events.bus import EventBus
 STALE_AFTER = 15.0  # no heartbeat this long -> the scheduler reads offline
 WATCHDOG_TICK = 3.0
 
-KNOWN_COMMANDS = {"run_now", "force_run", "skip_wait", "pause", "resume", "reload_config"}
+KNOWN_COMMANDS = {
+    "run_now", "force_run", "skip_wait", "pause", "resume", "reload_config", "reduce_reserve",
+}
 
 
 class SchedulerMirror:
