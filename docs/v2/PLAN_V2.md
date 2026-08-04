@@ -285,8 +285,8 @@ disabled with nothing selected. Selection behaves exactly as before. Counts matc
 - Automatic pagination as the end of the loaded set approaches — never present a partial
   set as the whole folder (the class of bug D90 caught on mobile).
 
-**Decide first:** the double-click → lightbox change (SCREENS §5c) needs the user's
-confirmation before building, since it repurposes an existing interaction.
+Also lands here: the **lightbox** on double-click (SCREENS §5c) — ✅ confirmed by the user,
+who doesn't use double-click; copy-id moves to the context menu where it already exists.
 
 **Verify:** `flutter analyze` · a new `review_mode_test.dart` — every key maps to the right
 action, the buffer is correct across a pagination boundary, `Esc` writes nothing.

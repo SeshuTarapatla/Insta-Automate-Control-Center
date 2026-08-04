@@ -5,8 +5,10 @@
 > pipeline data. Findings are in [OBSERVED.md](OBSERVED.md); the screenshots are committed
 > in [screens/](screens/).
 >
-> Everything this document originally asked for in Tiers 1 and 2 has been captured. What
-> remains below is the part no screenshot can answer.
+> Everything this document originally asked for in Tiers 1 and 2 has been captured, and both
+> design questions have since been answered by the user. **Nothing here blocks
+> implementation.** What remains is one optional nice-to-have (§"Still worth capturing") and
+> the inspiration ask below, which would improve V2.4 but doesn't gate it.
 
 ---
 
@@ -63,23 +65,19 @@ the difference between designing for what I think the job is and what it actuall
 
 ---
 
-## Two decisions that need your answer
+## ✅ Both design decisions answered (2026-08-04)
 
-### A. Double-click in the Library grid
+### A. Double-click in the Library grid — **lightbox**
 
-Today double-click **copies the image id** (`library_tile.dart:84`). SCREENS §5c proposes it
-opens a **lightbox** instead, with copy-id moving to the right-click menu where it already
-exists.
+The user doesn't use double-click at all, so repurposing it costs nothing. Copy-id moves to
+the right-click menu, where it already exists (`library_tile.dart:58`), and double-click
+opens the large single-image view. Plain click / Space / arrows / Shift-range are untouched
+(D48). See SCREENS §5c.
 
-Flagged rather than assumed because it changes an interaction you use daily, and the
-library's selection mechanics are a recorded preference of yours (D48). **Do you use
-double-click-to-copy?** If yes, the lightbox gets a different key and nothing changes.
+### B. Default theme on first launch — **Classic**
 
-### B. The default theme on first launch
-
-The plan keeps **Classic** as the default so nothing changes for you until you choose
-otherwise. If you'd rather v2.0.0 open in **Command Deck** — the one designed for how this
-app is actually used — say so and it becomes the default, with Classic still one click away.
+v2.0.0 opens in Classic, so nothing changes visually until the user picks another theme from
+the new Appearance tab. See THEMES §1.
 
 ---
 

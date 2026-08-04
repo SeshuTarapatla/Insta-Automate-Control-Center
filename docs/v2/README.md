@@ -45,7 +45,7 @@ working. Then re-architect the three screens whose shape actively hides informat
 | 4 | **[COMPONENTS.md](COMPONENTS.md)** | The shared `ui/` vocabulary every screen is rebuilt from. |
 | 5 | **[SCREENS.md](SCREENS.md)** | Per-screen re-architecture with wireframes. The "what". |
 | 6 | **[PLAN_V2.md](PLAN_V2.md)** | Thirteen checkpoints, each a commit boundary with a manual test. |
-| 7 | **[VISUAL_INPUTS.md](VISUAL_INPUTS.md)** | Mostly resolved by the observation pass. **Two open questions still need the user's answer.** |
+| 7 | **[VISUAL_INPUTS.md](VISUAL_INPUTS.md)** | Resolved — the observation pass and the user's answers closed everything. One optional nice-to-have remains. |
 
 ---
 
@@ -62,7 +62,8 @@ working. Then re-architect the three screens whose shape actively hides informat
 | Live keeps a **horizontal** split, made resizable — ⚠️ reversed after observation | SCREENS §3, OBSERVED §7 |
 | Library grid gets a **per-folder cell aspect ratio** — 40–82% of every cell is wasted today | SCREENS §5a-0, OBSERVED §3 |
 | `fl_chart` stays on `^0.69.0` through v2.0.0 | PLAN_V2, "what v2 does not do" |
-| Default theme on first launch stays Classic | THEMES §1 — *but see VISUAL_INPUTS question B* |
+| Default theme on first launch stays **Classic** ✅ confirmed | THEMES §1 |
+| Library double-click opens a **lightbox**; copy-id moves to the context menu ✅ confirmed | SCREENS §5c |
 
 ## Scope boundary
 

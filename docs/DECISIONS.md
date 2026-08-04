@@ -5,6 +5,34 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — v2's two open design forks answered
+
+### D98 · Library double-click opens a lightbox; Classic stays the launch default
+
+**Asked:** the two questions `docs/v2/VISUAL_INPUTS.md` left open after the observation pass
+(D97) — both changes to existing behaviour, so both flagged for the user rather than assumed.
+
+**Chosen, on the user's answer:**
+
+**Double-click in the Library grid opens a lightbox.** The user confirmed they don't use
+double-click at all, which makes this free: `library_tile.dart:84`'s copy-id moves to the
+right-click menu — where it already exists (`library_tile.dart:58`), so no capability is lost —
+and double-click instead opens the large single-image view review mode uses. This is the browsing
+answer to the problem D97 measured: a 1080×2246 profile page is unjudgeable at ~120px.
+**Explicitly untouched:** plain click toggles, Space toggles, arrows move focus only, Shift
+ranges — D48 / `feedback-multiselect-toggle`, a recorded user preference.
+
+**Classic stays the default theme on first launch.** v2.0.0 opens looking exactly as the app does
+today; the other five themes are one click away in the new Appearance tab. Rejected making
+Command Deck the default despite it being the theme designed for how this app is actually used —
+an overhaul that changes everything the moment it launches gives the user no reference point, and
+the welcome dialog pointing at the Appearance tab is a better introduction than a surprise.
+
+**Cost:** none. Both were scoped into existing checkpoints (V2.10 and V2.4 respectively) rather
+than adding work. With these closed, **no open question blocks v2 implementation.**
+
+---
+
 ## 2026-08-04 (continued) — v2 planning corrected by actually looking at the app
 
 ### D97 · Rule 5 lifted for one session; three planning errors found by observation

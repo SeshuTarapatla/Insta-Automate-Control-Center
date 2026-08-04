@@ -21,8 +21,8 @@ value, not a placeholder. Every theme has been contrast-checked against its own
 | 5 | `daylight` | **Daylight** | light | Warm paper. The biggest single vibe change available. |
 | 6 | `swiss` | **Swiss** | light | International Style. Rules, grid, one red, zero radius. |
 
-Default on first launch stays **Classic**, so an existing user's app is unchanged until
-they choose otherwise. The welcome dialog (`core/onboarding.dart`) gains one line pointing
+Default on first launch stays **Classic** — ✅ confirmed by the user — so an existing app is
+unchanged until they choose otherwise. The welcome dialog (`core/onboarding.dart`) gains one line pointing
 at the new Appearance tab.
 
 ---

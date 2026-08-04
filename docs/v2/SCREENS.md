@@ -489,17 +489,20 @@ Keyboard, and only keyboard, is the fast path:
   (`library_toolbar.dart:53`). It must never present a partial set as if it were the whole
   folder, which is the same class of bug D90 caught on mobile.
 
-### 5c. Lightbox — one change that needs your confirmation
+### 5c. Lightbox — ✅ confirmed
 
-Double-click on a grid tile currently **copies the id** (`library_tile.dart:84`). I'd
-propose double-click opens a **lightbox** (the same large view review mode uses, for a
-single image) and copy-id moves to the context menu, where it already exists
-(`library_tile.dart:58`).
+**Double-click opens a lightbox.** The user confirmed they don't use double-click at all,
+so repurposing it costs nothing.
 
-**Flagged rather than assumed** because it changes an existing interaction, and the
-library's selection mechanics are a recorded user preference (D48,
-`feedback-multiselect-toggle`). Plain click keeps toggling, arrows keep moving focus only —
-none of that changes. Confirm before building.
+Today double-click **copies the id** (`library_tile.dart:84`). That moves to the context
+menu — where it already exists (`library_tile.dart:58`), so no capability is lost — and
+double-click instead opens the same large single-image view review mode uses. This is the
+answer to "you cannot read a 1080×2246 profile page at ~120px" for people browsing rather
+than batch-reviewing.
+
+Unchanged: plain click keeps toggling, Space keeps toggling, arrows keep moving focus only,
+Shift still ranges. That's D48 / `feedback-multiselect-toggle`, a recorded user preference,
+and none of it is touched.
 
 ---
 

@@ -24,9 +24,8 @@
 > `docs/v2/screens/`; that pass corrected three planning errors, including a Library grid
 > defect invisible from source. **Rule 5 is back in force by default.**
 >
-> **Two questions in [docs/v2/VISUAL_INPUTS.md](docs/v2/VISUAL_INPUTS.md) still need the
-> user's answer**: the Library double-click behaviour, and the default theme on first
-> launch.
+> **No open questions block implementation.** Both design forks were answered 2026-08-04
+> (D98): the launch default stays Classic, and Library double-click becomes a lightbox.
 
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
