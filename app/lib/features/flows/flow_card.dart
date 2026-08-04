@@ -101,7 +101,8 @@ class FlowCard extends ConsumerWidget {
           '${_humanizeSeconds(_secondsFor(ref, 'INGEST_POLL_WAIT'))} poll as fallback',
     'entity-scan' =>
       'Runs when entities are queued · checked every '
-          '${_humanizeSeconds(_secondsFor(ref, 'SCAN_POLL_WAIT'))}',
+          '${_humanizeSeconds(_secondsFor(ref, 'SCAN_POLL_WAIT'))} · public profiles pause '
+          'above the ${ref.watch(configControllerProvider).value?.values.limits['SCAN_RESERVE_TARGET'] ?? 1000} backlog cap',
     'entity-classify' =>
       'Runs when files land in scanned/ · checked every '
           '${_humanizeSeconds(_secondsFor(ref, 'CLASSIFY_POLL_WAIT'))}',

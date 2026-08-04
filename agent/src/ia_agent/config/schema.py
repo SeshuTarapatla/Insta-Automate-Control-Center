@@ -150,4 +150,9 @@ SCHEMA: dict[str, ConfigKey] = {
         "How many days' worth of FOLLOW to keep in reserve (scraped+follow_queued) before "
         "pausing entity-scrape.", min=1,
     ),
+    "SCAN_RESERVE_TARGET": ConfigKey(
+        "SCAN_RESERVE_TARGET", ConfigGroup.TIMING, ConfigType.INT, 1000,
+        "Cap on scanned+gender_invalid+gender_valid+scrape_queued before pausing entity-scan — "
+        "public profiles only (private profiles and REEL/POST entities always scan).", min=1,
+    ),
 }

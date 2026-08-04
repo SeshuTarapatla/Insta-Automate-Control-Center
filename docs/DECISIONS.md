@@ -5,6 +5,149 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — message-triggered ingest left a stale gate on the Flows card
+
+### D92 · Wake the ingest poll loop right after a message-triggered run, instead of leaving a stale gate
+
+**Asked:** while checkpoint-testing D91 live (posting an entity URL to the Telegram channel to
+verify the new scan gate), the user noticed the Ingest card stayed on "Checking…" for a few
+minutes after its run had already completed (confirmed by "Last run: COMPLETED · 35s" showing
+correctly at the bottom of the same card) — not a functional problem, just a confusing few minutes
+of stale status.
+
+**Root cause: two independent triggers write the same shared state, and only one of them leaves it
+accurate.** `entity_ingest_time_trigger()` (the periodic poll, `INGEST_POLL_WAIT` = 10 min default)
+always recomputes an accurate gate — `no_work` if nothing's queued, or a real one before it runs.
+`entity_ingest_message_trigger()` (Telethon's own `NewMessage` event, fires instantly on a channel
+post, D66) sets `gate={ok:true, reason:"message"}` before running, then on completion only calls
+`self._set_state("entity-ingest", phase="idle")` — `_set_state` only updates the keys passed
+(`state.update(fields)`), so the "message" gate from the run itself is left sitting there
+untouched. `flow_card.dart`'s `_kindOf` doesn't match `running`/`day_paused`/`cooldown` for that
+combination and falls through to the generic default, `_StatusKind.polling` → "Checking…" — an
+accurate read of a stale state, not a UI bug. Nothing corrects it until the **separate**,
+independently-timed poll loop happens to reach its own next iteration — anywhere from seconds to
+the full 10 minutes later, unrelated to when the message actually arrived.
+
+**Fixed by waking the existing poll loop instead of duplicating its gate logic.** Right after the
+message-triggered run finishes, `entity_ingest_message_trigger()` now queues `skip_wait` for
+entity-ingest (`self._commands.setdefault("entity-ingest", []).append("skip_wait")`) — the exact
+same command "Trigger now" and the REST command endpoint already use, consumed by the existing,
+already-tested `wait_until()` machinery. If the poll loop is mid-wait, it wakes immediately,
+re-checks `entities_exist`, and sets a real gate right away instead of leaving the stale one there.
+Chosen over teaching the message handler to compute its own resting gate, since that would
+duplicate logic the poll loop already owns and could drift out of sync with it over time.
+
+**Verified:** a throwaway script building a real `Prefect` instance via `__new__` (skips `__init__`,
+so no Postgres/Telegram/device construction needed) with `Config.get` monkeypatched to short
+durations, exercising the real `wait_until()`/`_set_state()`/`_commands` machinery directly — 3/3:
+`skip_wait` is queued after the simulated message-triggered run, a concurrently-waiting
+`wait_until` wakes on it almost immediately (0.06s, not the full 5s), and — proving the first result
+isn't a fluke of a short tick — the same wait genuinely runs the full ~5s when nothing is queued.
+Import sanity-check clean. Deployed for real: pushed to `Insta-Automate`'s `feat/control-center`
+(`9ad212c`), `ia build`, `kubectl rollout restart deployment/insta-automate`. The rollout took
+longer than usual (~3.5 min on `insta-automate-flow-init`, the container that re-registers all six
+Prefect deployments) and the old pod logged one transient `ConnectionError: Connection to Telegram
+failed 5 time(s)` restart while being torn down mid-shutdown — both are normal rolling-restart
+churn on the outgoing pod, unrelated to this change; the new pod came up clean and stayed at 0
+restarts. Confirmed via `kubectl exec` that the running pod's loaded `Prefect.serve` source
+contains the `skip_wait` queuing (D39's precedent). Worker pod untouched (trigger-loop-only
+change, same reasoning as D84/D91). **You tested live afterward and confirmed it works** — the
+Ingest card now settles to its real resting state promptly instead of sitting on "Checking…" for
+minutes. Committed.
+
+---
+
+## 2026-08-04 (continued) — entity-scan gets its own curation-backlog reserve gate
+
+### D91 · A new `SCAN_RESERVE_TARGET` gate on entity-scan, scoped to PROFILE+PUBLIC only
+
+**Asked:** entity-scrape already pauses once `scraped+follow_queued` reaches a reserve target
+(`SCRAPE_RESERVE_FACTOR`), keeping that pool bounded. The user wanted the identical idea one stage
+earlier: entity-scan should pause once `scanned+gender_invalid+gender_valid+scrape_queued` — the
+whole human-curation backlog between scan output and scrape input — reaches a cap, so `IA_DIR`
+can't grow unbounded ahead of the two manual mobile-review steps. Unlike `SCRAPE_RESERVE_FACTOR`
+(a multiplier on a daily limit), the requested cap is a flat number: 1000. And the gate is scoped
+narrower than scrape's: only when the *next queued entity* is a `PROFILE` with `PUBLIC` access —
+a `PRIVATE` profile can't be scanned for followers/following at all (nothing to gate), and a
+REEL/POST's likers scan is a one-shot job, not an ongoing backlog contributor, so both always run
+regardless of backlog size.
+
+**Chosen — `SCAN_RESERVE_TARGET` (default 1000), mirroring `SCRAPE_RESERVE_FACTOR`'s existing
+"reserve" vocabulary** rather than inventing new terminology, even though this one is a flat count
+instead of a multiplier — the underlying concept (a bounded downstream pool between two flows) is
+identical to what "reserve" already means everywhere else in this codebase (the Reduce-reserve
+button, D86, uses the same word for the analogous scrape→follow pool). `force` (Trigger now)
+bypasses the gate, same as every other flow's gate.
+
+**First cut only checked `entities[0]` — wrong, caught before deploy mattered.** The initial
+version read `subject = entities[0]` and blocked the whole trigger loop if that single entity was
+gated. `Entity.entity_priority_order()` (unrelated to this gate, pre-existing) sorts by access
+first (PRIVATE=0, PUBLIC=1) then type (PROFILE=0, REEL=1, POST=2) *within* the same access tier —
+and ingest actually resolves real PUBLIC/PRIVATE access for REEL/POST entities too
+(`device._reel_entity_access`/`_post_entity_access`), not just profiles. So a public REEL sorts
+*behind* a public PROFILE in the same access tier, which means a single stuck public profile at
+`entities[0]` would silently block every REEL/POST/private-profile entity queued behind it
+forever — exactly backwards from "any other type of entity need not need to follow this and SCAN
+should start normally." Found by re-reading `entity_priority_order()` while explaining the design
+to the user, before they ran the live test that would have caught it (queue a blocked public
+profile, then a reel, and watch the reel never scan).
+
+**Fixed: `_scan_reserve_gate(entities, force) -> (subject, count, target)` walks the whole
+priority-ordered queue** and returns the first entity the gate doesn't block — `None` only if
+every queued entity is a gated, over-target public profile. The whole-library backlog count is
+computed at most once (lazily, on first gated candidate), not per candidate, so a queue full of
+non-public-profile entities never touches the filesystem at all. `entity_scan_trigger()` uses
+`subject` directly; a `None` result sets the `backpressure` gate (reusing scrape's own gate-reason
+name, scoped per-flow already so no collision) and skips the run entirely, matching the user's own
+framing ("donot trigger automatic flow if not passed") — it never skips ahead past a *blocked*
+entity to try a lower-priority one; it only skips past entities the gate never applied to in the
+first place.
+
+**Extracted into a standalone function, not inlined**, unlike scrape's own backpressure check —
+specifically so it could be unit-verified in isolation (a throwaway script, monkeypatching the
+module's own `SCANNED_DIR`/`GENDER_INVALID_DIR`/`GENDER_VALID_DIR`/`SCRAPE_QUEUE_DIR` globals against
+a scratch tree) without standing up the full `Prefect` class's Postgres/Telegram/device
+dependencies. Final version: 7/7 checks, including the exact scenario the bug was found from
+(a blocked public profile ahead of a public REEL in priority order — the REEL is still picked), a
+private entity found regardless of position, force bypassing a fully-blocked queue, and the
+backlog count computed only once and only when actually needed.
+
+**Wired into both control-center pieces that read `Config`'s schema generically**, no other UI code
+needed: `agent/src/ia_agent/config/schema.py` gained one `ConfigKey` entry (same `TIMING` group as
+`SCRAPE_RESERVE_FACTOR`, since Settings' Limits tab and `LimitCard` are both fully schema-driven —
+confirmed by reading `limits_tab.dart`/`limit_card.dart` before assuming a new UI widget was needed).
+`flow_card.dart`'s always-visible mechanism line (D84) for `entity-scan` gained a clause naming the
+backlog cap, reading it live from `configControllerProvider` the same way `SCRAPE_RESERVE_FACTOR`
+is read in `force_run.dart`. The mobile client (`ia_manager`) is untouched — D84 already scoped it
+out of the mechanism-line work entirely (no config-reading plumbing there today), and this gate
+needs no client-side plumbing beyond the blocked/cooldown split it already has.
+
+**Verified:** the throwaway `_scan_reserve_gate` script (7/7, final version) plus a real import
+sanity-check of both changed `Insta-Automate` modules. All 15 agent verification scripts green
+(541 + the new schema key, no suite asserts an exact key count). `flutter analyze` clean,
+`flutter test` 52/52 unchanged (the existing `entity-scan` layout test already renders the
+longer mechanism line at its test width with no overflow, and the `?? 1000` fallback keeps the
+config-less test fixtures rendering the coded default rather than crashing on a missing key) —
+the queue-walk fix is entirely `Insta-Automate`-side, so nothing on the Flutter side needed a
+second pass. Deployed for real, twice: the first cut was pushed
+(`Insta-Automate feat/control-center` `8552e32`), built, and rolled out to the scheduler pod
+before the `entities[0]` bug was caught; the fix (`4d22cbe`) was then pushed, rebuilt, and rolled
+out the same way (`kubectl rollout restart deployment/insta-automate` — scheduler only, this gate
+lives in the trigger loop, which only the scheduler pod runs; the worker pod executes flow bodies
+via `git_clone`-per-run and was never in scope, same reasoning D84 used for its own scheduler-only
+gate change), with the running pod's loaded `prefect._scan_reserve_gate` source confirmed via
+`kubectl exec` to match the fixed commit, not the first one (D39's precedent). The agent itself
+was restarted once (`taskkill /F /IM ia-agent.exe`, the launcher respawned it) to pick up the new
+schema key — confirmed live via `GET /api/config/schema`, and all three supervised services
+stayed `adopted` with uptime intact across it (D87's lesson, checked again rather than assumed).
+**You tested this live afterward and confirmed it works**, exactly the scenario that caught the
+`entities[0]` bug in the first place: with the real backlog over 6000 (well past the 1000 target),
+a queued `PROFILE`+`PUBLIC` entity correctly did not trigger a scan (blocked, confirmed via the
+Flows card's gate detail), and a `REEL` queued right after it — behind the blocked profile in
+priority order — scanned normally. Committed.
+
+---
+
 ## 2026-08-04 (continued) — Mobile Library apply/delete now dual-writes to the paired agent
 
 ### D90 · Closing the Reduce-reserve/Syncthing race: mobile's Apply/Delete mirror straight to the desktop's own `IA_DIR`, not just locally
