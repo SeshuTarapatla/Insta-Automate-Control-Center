@@ -61,18 +61,44 @@ fetching it from the backend.
 
 **Verified:** Insta-Automate — `uv run python -c "import insta_automate.controllers.prefect"` and
 `ruff check` both clean (no test suite there, same precedent as every prior checkpoint in that
-repo); change is on `feat/control-center`, undeployed, same standing rule as every other change in
-that repo until the whole control center is accepted. Control center — `flutter analyze` clean,
-`flutter test` all green (52 — 48 prior + 4 new cases in `flows_layout_test.dart` covering the
-blocked/cooldown/mechanism-line/instant-path states). Two existing suites needed a
-`ConfigController` fake added alongside their existing fakes
+repo). Unlike every other undeployed `feat/control-center` change to date, this one was pushed,
+rebuilt (`ia build`), and rolled out to the real scheduler pod the same session — needed so you
+could actually see the cooldown state live rather than a dead code path — and the live pod's
+loaded source was inspected directly (`kubectl exec` + `inspect.getsource`, D39's precedent) to
+confirm all three trigger loops carry the `"cooldown"` gate, not just a healthy rollout. Control
+center — `flutter analyze` clean, `flutter test` all green (52 — 48 prior + 4 new cases in
+`flows_layout_test.dart` covering the blocked/cooldown/mechanism-line/instant-path states). Two
+existing suites needed a `ConfigController` fake added alongside their existing fakes
 (`flows_layout_test.dart`, and `overview_layout_test.dart` since `OverviewPage` embeds `FlowCard`
 directly per D79) — without it, `FlowCard`'s new mechanism line triggers a real `dio.get
 ('/api/config')` with no override, which left a pending `Timer` past test teardown and failed the
 suite (the same class of gap `ops_layout_test.dart`'s own offline Dio adapter, noted in CP 7.3,
-exists to avoid). **Not yet live-tested** — built and started for you per rule 5; awaiting your
-check that the new mechanism line, blocked/cooldown states, and running-reason subtitle read
-correctly against the real pipeline.
+exists to avoid). **Not yet live-tested against the real UI** — built and started for you per rule
+5; awaiting your check that the new mechanism line, blocked/cooldown states, and running-reason
+subtitle read correctly against the real pipeline.
+
+**Addendum, same day: the mobile client (`ia_manager`) had the identical bug.**
+`FlowDetailScreen`'s header (`flutter/Insta-Automate-Client`, `feat/lan-agent`) showed "next
+trigger in mm:ss" any time `phase == 'waiting'`, including while blocked on backpressure/no_work —
+the same false claim, just as text instead of a ring. You scoped this explicitly to the core fix
+only, not full parity: no always-visible mechanism line (that would need new config-reading
+plumbing — `EnvService.kLimitDefaults` doesn't carry the eight timing keys today, only the nine
+limit ones), just the same blocked-vs-cooldown split. New `flowStatusKind()` in
+`utils/flow_phase.dart` mirrors the desktop's `_StatusKind`/`_kindOf` exactly (off/running/
+day_paused/cooldown/blocked/polling); `FlowDetailScreen`'s `_Header` only shows a countdown for
+`FlowStatusKind.cooldown`, relabels the subtitle per kind, and — free, from data already on
+`FlowState` — names *why* a run is in progress (`"Running · triggered by message"` /
+`"Running · forced"`). `flowPhaseColor` (shared with `LiveFlowStrip`'s compact chips) now gives
+blocked its own amber tint instead of the same primary tint an ordinary poll wait gets, so even
+the home-screen strip hints something needs a look before you tap through.
+
+**Verified:** `flutter analyze` clean (one pre-existing, unrelated `unnecessary_import` lint in
+`thumbnail_cache.dart`, not touched here). No test suite exists in this repo (matches CP 6.4's own
+precedent). Built a real debug APK and installed it on the adb-connected test phone — per D57's
+ground rules, that phone's `IA_DIR` is stale and not the production sync target, so it's good for
+exercising the app's own logic but the scheduler state it shows is whatever the real agent reports,
+same as before. **Not yet opened/verified on the phone** — per the mobile-reinstall-setup
+precedent, the install is done and handed over rather than tapped through by the agent.
 
 ---
 

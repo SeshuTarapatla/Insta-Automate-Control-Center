@@ -1100,8 +1100,27 @@ only wait that's a deterministic "eligible again at X." Verified: Insta-Automate
 import/ruff-clean (no test suite there); `flutter analyze` clean, `flutter test` 52/52 (48 prior +
 4 new), with `flows_layout_test.dart`/`overview_layout_test.dart` both needing a `ConfigController`
 fake added since `FlowCard`'s new mechanism line reads live timing config and `OverviewPage`
-embeds `FlowCard` directly (D79). **Not yet live-tested** — built and started for you per rule 5;
-full reasoning and rejected alternatives in DECISIONS.md's D84.
+embeds `FlowCard` directly (D79). Unlike every other undeployed `feat/control-center` change to
+date, the Insta-Automate side of this one was pushed, rebuilt, and rolled out to the live
+scheduler pod the same session (needed so the cooldown state isn't a dead code path), with the
+running pod's loaded source confirmed directly via `kubectl exec` (D39's precedent). **Not yet
+live-tested against the real UI** — built and started for you per rule 5.
+
+**Same day: the mobile client (`ia_manager`, `feat/lan-agent`) had the identical bug, fixed to the
+same core scope, by your own explicit choice.** `FlowDetailScreen`'s header showed "next trigger
+in mm:ss" any time a flow was `waiting`, including while blocked — the same false claim as the
+desktop's old ring, just as text. You chose the core fix only, not full parity: no always-visible
+mechanism line (would need new config-reading plumbing the mobile app doesn't have today), just
+the same blocked-vs-cooldown split via a new `flowStatusKind()` in `utils/flow_phase.dart`
+(mirrors the desktop's `_StatusKind`/`_kindOf` exactly) — a countdown only for a real cooldown,
+a relabeled subtitle per state, and the same free "Running · triggered by message"/"· forced"
+detail. `flowPhaseColor` (shared with `LiveFlowStrip`'s home-screen chips) now gives blocked its
+own amber tint instead of the same tint an ordinary poll wait gets. Verified: `flutter analyze`
+clean (one pre-existing, unrelated lint untouched by this change); no test suite exists in this
+repo (CP 6.4's own precedent). Built a real debug APK, installed on the adb-connected test phone.
+**Not yet opened/verified on the phone** — installed and handed over, not tapped through by the
+agent, per the mobile-reinstall-setup precedent. Full reasoning and rejected alternatives for both
+sides in DECISIONS.md's D84.
 
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
