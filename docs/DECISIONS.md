@@ -5,6 +5,88 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — V2.1 token foundation implemented
+
+### D99 · Token layer built; the mono-font swap is the one intentional visible change
+
+**Built:** `app/lib/core/theme/` — `tokens.dart` (`AppTokens` plus every sub-token class from
+DESIGN_SYSTEM.md §1: `SurfaceTokens`, `ContentTokens`, `AccentTokens`, `StatusTokens`,
+`TypographyTokens`, `GeometryTokens`, `EffectTokens`, `SpacingTokens`, `MotionTokens`,
+`ChartTokens`, plus `TerminalPalette` moved in from `app_theme.dart`), `density.dart`,
+`build_theme.dart` (all ~40 `ThemeData` component sub-themes), `registry.dart`, and
+`themes/classic.dart`. `flutter_animate` and `phosphor_flutter` added; `InterVariable(-Italic).ttf`
+and `JetBrainsMono-{Regular,Medium,Bold}.ttf` downloaded from each project's GitHub release
+(rsms/inter's `docs/font-files/` path 404s for the italic — pulled from the `Inter-4.1.zip`
+release asset instead) and committed under `app/assets/fonts/` with both `OFL.txt` licenses.
+
+**Classic's exact-match mechanism:** `themes/classic.dart` calls
+`ColorScheme.fromSeed(seedColor: 0xFF6C63FF, brightness: dark)` — the same call `app.dart` used to
+make directly — and reads `SurfaceTokens`/`ContentTokens`/`AccentTokens` straight off the
+generated scheme's fields (THEMES.md §1's table), rather than hand-transcribing hex values. Every
+one of `build_theme.dart`'s ~40 sub-themes is then set explicitly from those tokens (never left to
+fall back on `ColorScheme`-driven Material defaults), so the checkpoint's "no visible change"
+claim rests on the explicit values matching Material 3's own default derivation for that seed,
+not on the base `ColorScheme` alone.
+
+**The one deliberate exception to "nothing else changes yet":** DESIGN_SYSTEM.md §1.5 says the
+`'Consolas'`/`'monospace'` mix (AUDIT §7, 12 call sites across 8 files) becomes `tokens.type.mono`
+explicitly, and PLAN_V2.md's own checkpoint test names this as the one expected visible diff. Did
+exactly those 12 call sites — no other literal at those sites touched, no other file migrated.
+
+**`AppTokensX.tokens` needs a fallback, same as `AppPalette` did.** The ~12 mono call sites now
+read `theme.tokens.type.mono` unconditionally, but the ten existing layout tests build their own
+bare `ThemeData(useMaterial3: true, brightness: dark)` with no `AppTokens` registered (same
+pattern D19/CP 7.3 already established for `AppPalette`) — a force-unwrapped `extension<AppTokens>()!`
+crashed four of them (`services_layout_test.dart`) with a null-check error. Fixed the same way
+`AppPalette.dark` was: `AppTokensX.tokens` falls back to `buildClassicTokens()` when nothing is
+registered. This makes `tokens.dart` → `themes/classic.dart` → `tokens.dart` a real cyclic import;
+confirmed Dart accepts library-level import cycles (unlike `part`/`part of`) — `flutter analyze`
+stays clean and all 52 tests pass with it in place.
+
+**`AppPalette` kept as a real deprecated shim, not just co-existing.** `TerminalPalette` moved out
+of `app_theme.dart` into `tokens.dart` (its constructor requires one for `AppTokens.terminal`);
+`AppPalette`'s `.palette` getter now builds the legacy shape on demand from whichever `AppTokens`
+is registered (`tokens.status.good.fg` etc.), falling back to the old hardcoded `AppPalette.dark`
+only when no `AppTokens` extension exists at all — so the five call sites still reading
+`theme.palette.*` (`flow_card.dart`, `title_bar.dart`, `service_terminal.dart`,
+`dependency_models.dart`, `service_models.dart`) needed zero changes and will keep working
+unchanged until V2.3 migrates them.
+
+**Not specified by THEMES.md's Classic table, so derived rather than guessed:** `borderSubtle`
+(`outlineVariant @ 0.5`), status `good`/`info`/`warn` containers (existing fg values, alpha-blended
+onto `surfaceContainer` for the container, fg reused as `onContainer` — `bad` uses the seed
+scheme's own `errorContainer`/`onErrorContainer` instead, since that's a real generated value, not
+a guess), `bodyHeight`/tracking/`chart.*` (Classic's row in THEMES.md §1 doesn't give these — nothing
+in the app reads `AppTokens.chart` or applies letter-spacing yet, so precision here doesn't affect
+the pixel-identical checkpoint). Flagged here rather than presented as spec.
+
+**Also not literally achievable, and not attempted:** `DESIGN_SYSTEM.md` §2's nine-role type scale
+(pageTitle 22, cardTitle 15, etc.) does not match Material 3's own default `TextTheme` sizes
+(headlineSmall 24 not 22, titleMedium 16 not 15, …), so setting it changes `ThemeData.textTheme`'s
+baked-in sizes for Classic too. This is expected to be near-invisible today because the audit's
+own evidence is that most on-screen text already comes from inline `TextStyle` overrides at the
+~90 feature-file call sites rather than `theme.textTheme.*` — but it is not verified pixel-by-pixel,
+and is exactly the kind of thing the checkpoint test is designed to catch.
+
+**Verified:** `flutter analyze` clean, `flutter test` 52/52 (unchanged — no test file edited),
+`flutter build windows --debug` succeeds. The Windows ephemeral `cpp_client_wrapper/` was
+regenerated (stale/incomplete, unrelated to this checkpoint) and a stale `ia_control_center.exe`
+from an earlier session had to be closed (confirmed with the user first) before the linker could
+write the new binary. Built and started for you per rule 5 — not clicked through by Claude.
+
+**Your live check caught one real bug, same session:** the Live screen's flow-selector
+`ChoiceChip` (`live_page.dart:98`) was dark-on-dark when selected — `chipTheme.secondaryLabelStyle`
+(the label style `ChoiceChip` uses while selected) was set to `accent.onPrimary`, which is meant
+for text on a *solid* `accent.primary` fill, but the selected chip's actual background is
+`accent.muted` — a translucent tint, still close to the dark page color, not a solid fill. Fixed
+to `accent.primary` (the light lavender), matching `checkmarkColor`, which already used the right
+token. Nothing else in `build_theme.dart` pairs `onPrimary` with a non-solid background the same
+way (checked `filledButtonTheme`/`badgeTheme`, both solid-fill, both correct;
+`segmentedButtonTheme`/nav rail's selected state already used `accent.primary` correctly). Rebuilt,
+re-analyzed, re-tested (52/52), restarted for you.
+
+---
+
 ## 2026-08-04 (continued) — v2's two open design forks answered
 
 ### D98 · Library double-click opens a lightbox; Classic stays the launch default

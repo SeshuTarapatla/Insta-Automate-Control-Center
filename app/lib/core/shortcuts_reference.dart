@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'theme/tokens.dart';
+
 /// Every keyboard binding in the app, assembled by hand from the real call
 /// sites (CP 7.3) — nothing declares these in one place today, so this is
 /// the closest thing to a registry rather than a read of one. Keep in step
@@ -75,7 +77,7 @@ Future<void> showShortcutsReference(BuildContext context) {
                               ),
                               child: Text(
                                 entry.keys,
-                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'Consolas'),
+                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: theme.tokens.type.mono),
                               ),
                             ),
                           ),

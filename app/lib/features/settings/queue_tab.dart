@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/queue_models.dart';
+import '../../core/theme/tokens.dart';
 import 'config_controller.dart';
 import 'queue_controller.dart';
 
@@ -170,7 +171,7 @@ class _QueueTile extends StatelessWidget {
                     child: Text(
                       entry.name,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(fontFamily: 'Consolas'),
+                      style: theme.textTheme.bodyLarge?.copyWith(fontFamily: theme.tokens.type.mono),
                     ),
                   ),
                   if (!entry.hasEntityImage) ...[

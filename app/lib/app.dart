@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'core/app_theme.dart';
+import 'core/theme/build_theme.dart';
+import 'core/theme/themes/classic.dart';
 import 'shell/app_shell.dart';
 
 class ControlCenterApp extends StatelessWidget {
@@ -12,13 +13,9 @@ class ControlCenterApp extends StatelessWidget {
       title: 'Insta-Automate Control Center',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorSchemeSeed: const Color(0xFF6C63FF),
-        scaffoldBackgroundColor: Colors.transparent,
-        extensions: const [AppPalette.dark],
-      ),
+      // Only Classic exists through V2.1 — the theme picker (V2.4) is what
+      // lets this vary, persisted via `theme_controller.dart`.
+      darkTheme: buildTheme(buildClassicTokens()),
       home: const AppShell(),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_models.dart';
+import '../../core/theme/tokens.dart';
 import 'services_controller.dart';
 import 'status_dot.dart';
 
@@ -112,7 +113,7 @@ class ServiceTile extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
-                  fontFamily: 'Consolas',
+                  fontFamily: theme.tokens.type.mono,
                 ),
               ),
             ],

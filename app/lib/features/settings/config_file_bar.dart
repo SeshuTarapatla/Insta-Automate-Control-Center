@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/file_opener.dart';
+import '../../core/theme/tokens.dart';
 
 /// Quick access to the file every control on this page ultimately writes to.
 /// Shows where config.env actually lives, and opens it in the user's default
@@ -56,7 +57,7 @@ class ConfigFileBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontFamily: 'Consolas',
+                    fontFamily: theme.tokens.type.mono,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),

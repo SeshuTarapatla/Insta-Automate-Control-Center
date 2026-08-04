@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/flowrun_models.dart';
+import '../../core/theme/tokens.dart';
 import 'live_controller.dart';
 
 const _levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
@@ -264,7 +265,7 @@ class _StickyErrorsState extends State<_StickyErrors> {
                           child: Text(
                             error.message,
                             style: widget.theme.textTheme.bodySmall?.copyWith(
-                              fontFamily: 'monospace',
+                              fontFamily: widget.theme.tokens.type.mono,
                               color: scheme.onErrorContainer,
                             ),
                           ),

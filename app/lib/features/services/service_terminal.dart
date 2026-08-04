@@ -11,6 +11,7 @@ import '../../core/app_snack_bar.dart';
 import '../../core/app_theme.dart';
 import '../../core/async_state_view.dart';
 import '../../core/service_models.dart';
+import '../../core/theme/tokens.dart';
 import 'services_controller.dart';
 
 /// Matches the agent's own ring: 5000 chunks / 512 KB of scrollback, which is
@@ -319,7 +320,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
             Text(
               '$_cols×$_rows',
               style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'Consolas',
+                fontFamily: theme.tokens.type.mono,
                 color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
               ),
             ),
@@ -363,7 +364,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
             child: TextField(
               controller: _searchField,
               focusNode: _searchFocus,
-              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'Consolas'),
+              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: theme.tokens.type.mono),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -462,7 +463,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
         controller: _controller,
         scrollController: _scroll,
         theme: _terminalTheme(theme),
-        textStyle: const TerminalStyle(fontSize: 13, fontFamily: 'Consolas'),
+        textStyle: TerminalStyle(fontSize: 13, fontFamily: theme.tokens.type.mono),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         // Nothing here is interactive: these panes replace terminal tabs the
         // user only ever read, and the agent exposes no write path to the pty.

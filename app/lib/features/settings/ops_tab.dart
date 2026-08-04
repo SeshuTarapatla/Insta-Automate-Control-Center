@@ -10,6 +10,7 @@ import '../../core/async_state_view.dart';
 import '../../core/ops_confirm.dart';
 import '../../core/ops_models.dart';
 import '../../core/relative_time.dart';
+import '../../core/theme/tokens.dart';
 import '../services/services_controller.dart' show describeAgentError;
 import 'ops_controller.dart';
 
@@ -507,7 +508,7 @@ class _OpsLogLine extends StatelessWidget {
       child: Text(
         entry.text,
         style: theme.textTheme.bodySmall?.copyWith(
-          fontFamily: 'Consolas',
+          fontFamily: theme.tokens.type.mono,
           color: color,
           fontWeight: isStep ? FontWeight.w600 : FontWeight.normal,
         ),

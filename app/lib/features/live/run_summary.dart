@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/flow_event_models.dart';
 import '../../core/scheduler_models.dart';
+import '../../core/theme/tokens.dart';
 import '../flows/flows_controller.dart';
 import 'live_controller.dart';
 
@@ -160,7 +161,7 @@ class _SummaryRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: mono ? theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace') : theme.textTheme.bodyMedium,
+              style: mono ? theme.textTheme.bodySmall?.copyWith(fontFamily: theme.tokens.type.mono) : theme.textTheme.bodyMedium,
             ),
           ),
         ],

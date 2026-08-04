@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/service_models.dart';
+import '../../core/theme/tokens.dart';
 import 'service_terminal.dart';
 import 'services_controller.dart';
 import 'status_dot.dart';
@@ -495,7 +496,7 @@ class _MetricLine extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(fontFamily: 'Consolas'),
+                style: theme.textTheme.labelMedium?.copyWith(fontFamily: theme.tokens.type.mono),
               ),
             ),
           ],
@@ -648,7 +649,7 @@ class _MetricChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  fontFamily: 'Consolas',
+                  fontFamily: theme.tokens.type.mono,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
