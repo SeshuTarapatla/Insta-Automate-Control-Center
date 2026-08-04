@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../ui/status.dart';
+import '../../../ui/surfaces.dart';
+import '../../../ui/text.dart';
 import 'surface_common.dart';
 
 /// entity-scrape: the queued row strip resolves into either a reason chip
@@ -40,11 +43,12 @@ class ScrapeSurface extends StatelessWidget {
       return _HistoryWrap(subjects: subjects.reversed, bySubject: bySubject, theme: theme);
     }
 
+    final tokens = theme.tokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.md, tokens.space.md, tokens.space.xs),
           child: _ScrapeCard(events: latestEvents, theme: theme, large: true),
         ),
         const Divider(height: 1),
@@ -74,11 +78,12 @@ class _HistoryWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = theme.tokens;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(tokens.space.md),
       child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
+        spacing: tokens.space.md,
+        runSpacing: tokens.space.md,
         children: [
           for (final subject in subjects)
             SizedBox(width: 380, child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false)),
@@ -103,6 +108,7 @@ class _ScrapeCard extends StatelessWidget {
     final subject = (done ?? skipped ?? started)?.subject ?? '?';
     final root = rootFromImage((done ?? skipped ?? started)?.image);
     final inProgress = done == null && skipped == null;
+    final tokens = theme.tokens;
 
     final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,22 +116,23 @@ class _ScrapeCard extends StatelessWidget {
       children: [
         Text('@$subject', style: large ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium),
         if (root != null)
-          Text('root: $root', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 6),
+          Text('root: $root', style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary)),
+        SizedBox(height: tokens.space.xs),
         if (done != null) ...[
           OutcomeBadge(label: 'SCRAPED', kind: StatusKind.good),
-          const SizedBox(height: 6),
-          Text(
+          SizedBox(height: tokens.space.xs),
+          NumericText(
             'posts ${done.counters['posts']} · followers ${done.counters['followers']} · '
             'following ${done.counters['following']}',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            role: TextRole.caption,
+            color: tokens.content.secondary,
           ),
         ] else if (skipped != null) ...[
           OutcomeBadge(label: 'SKIPPED', kind: StatusKind.bad),
-          const SizedBox(height: 6),
+          SizedBox(height: tokens.space.xs),
           Text(skipped.reason ?? '', style: theme.textTheme.bodySmall),
         ] else
-          Text('scraping…', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text('scraping…', style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
       ],
     );
 
@@ -138,18 +145,15 @@ class _ScrapeCard extends StatelessWidget {
       return ResultCardActions(
         subject: (done ?? skipped ?? started)?.subject,
         root: root,
-        child: Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
-                const SizedBox(height: 10),
-                details,
-              ],
-            ),
+        child: AppCard(
+          padding: EdgeInsets.all(tokens.space.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
+              SizedBox(height: tokens.space.sm),
+              details,
+            ],
           ),
         ),
       );
@@ -162,25 +166,22 @@ class _ScrapeCard extends StatelessWidget {
     return ResultCardActions(
       subject: (done ?? skipped ?? started)?.subject,
       root: root,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: large ? 140.0 : 90.0,
-                child: AgentImage(
-                  imageKey: (done ?? skipped ?? started)?.imageKey,
-                  width: large ? 200 : 100,
-                  aspectRatio: done != null ? 1080 / 2000 : 1080 / 198,
-                ),
+      child: AppCard(
+        padding: EdgeInsets.all(tokens.space.sm),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: large ? 140.0 : 90.0,
+              child: AgentImage(
+                imageKey: (done ?? skipped ?? started)?.imageKey,
+                width: large ? 200 : 100,
+                aspectRatio: done != null ? 1080 / 2000 : 1080 / 198,
               ),
-              const SizedBox(width: 12),
-              Expanded(child: details),
-            ],
-          ),
+            ),
+            SizedBox(width: tokens.space.sm),
+            Expanded(child: details),
+          ],
         ),
       ),
     );

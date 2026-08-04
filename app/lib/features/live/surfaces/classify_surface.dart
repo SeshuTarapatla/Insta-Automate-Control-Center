@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../ui/status.dart';
+import '../../../ui/surfaces.dart';
 import 'surface_common.dart';
 
 /// entity-classify: a verdict card stream (`classify.access`/`classify.gender`)
@@ -47,17 +49,18 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
       });
     }
 
+    final tokens = theme.tokens;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.md, tokens.space.md, tokens.space.xs),
           child: Row(
             children: [
               Text('${verdicts.length} classified', style: theme.textTheme.titleMedium),
-              const SizedBox(width: 10),
-              if (rate != null)
-                Chip(label: Text('${rate.toStringAsFixed(1)} img/s'), visualDensity: VisualDensity.compact),
+              SizedBox(width: tokens.space.sm),
+              if (rate != null) StatusChip(kind: StatusKind.neutral, label: '${rate.toStringAsFixed(1)} img/s', dense: true),
             ],
           ),
         ),
@@ -69,37 +72,34 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
           // this surface's faster streaming pace).
           child: ListView.separated(
             controller: _scroll,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.xs),
             itemCount: verdicts.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => SizedBox(height: tokens.space.sm),
             itemBuilder: (context, index) {
               final event = verdicts[index];
               return ResultCardActions(
                 subject: event.subject,
-                child: Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AgentImage(imageKey: event.imageKey, width: 400, aspectRatio: 1080 / 198),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '@${event.subject ?? '?'}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium,
-                              ),
+                child: AppCard(
+                  padding: EdgeInsets.all(tokens.space.sm),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AgentImage(imageKey: event.imageKey, width: 400, aspectRatio: 1080 / 198),
+                      SizedBox(height: tokens.space.sm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '@${event.subject ?? '?'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
                             ),
-                            OutcomeBadge(label: event.verdict ?? '?', kind: toneFor(event.verdict)),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                          OutcomeBadge(label: event.verdict ?? '?', kind: toneFor(event.verdict)),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               );

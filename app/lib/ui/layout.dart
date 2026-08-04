@@ -251,7 +251,19 @@ class KeyValueList extends StatelessWidget {
                       Icon(row.icon, size: tokens.space.iconSm, color: tokens.content.secondary),
                       SizedBox(width: tokens.space.xs),
                     ],
-                    Text(row.label, style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
+                    // Flexible, not a bare `Text` — a fixed [labelWidth] minus
+                    // this padding can be narrower than a real label's
+                    // intrinsic width, and a bare `Text` here throws a
+                    // `RenderFlex` overflow instead of ellipsizing the way
+                    // every other label in v2 defaults to.
+                    Flexible(
+                      child: Text(
+                        row.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
+                      ),
+                    ),
                   ],
                 ),
               ),

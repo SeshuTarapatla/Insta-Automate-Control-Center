@@ -5,6 +5,108 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.3 migration finished (D102 · part 2 of 2)
+
+### D102 · All 90 files under `features/`, `shell/`, `core/` migrated; the three acceptance greps enforced; token_coverage_test.dart written
+
+**Scope closed out from D101's split.** Every screen's `Page` widget now wraps in `AppPage` —
+Settings, Services, Flows, Overview, Live, Library, Insights all gained a real title (several,
+per AUDIT §4, had none at all) and a single page-padding convention, replacing the six different
+paddings AUDIT §3 catalogued. `EdgeInsets` literals across `features/` were swept to
+`tokens.space.*`: zero raw numeric `EdgeInsets.all(16)`-shaped literals remain anywhere under
+`features/` (verified by grep) — every occurrence is now either `EdgeInsets.zero`,
+`tokens.space.*`-derived, or absorbed entirely into `AppCard`/`AppPanel`'s own default padding
+(dropping the wrapper `Padding` outright wherever the value matched the token default). The raw
+occurrence count of the word `EdgeInsets` itself only drops from 138 to 95, not to zero — Gap only
+inserts space between siblings, it has no way to express a container's own inset, so a `Padding`
+around a `TextField`'s decoration, a `GridView`'s content margin, or an asymmetric corner case
+still writes `EdgeInsets.symmetric(...)`/`.only(...)`, now always token-sourced rather than a
+magic number. `Icon(Icons.*)` widgets are fully gone from `features/`/`shell/` (verified by
+grep — the only remaining hits are `FilledButton.tonalIcon` and `trayManager.setIcon`, both false
+matches on the substring); every one is `AppIcon(AppIcons.*)`. Numeric displays route through
+`NumericText` at every site COMPONENTS.md §2 named by file:line (the cooldown ring, today's
+counters, run-summary counters, the ranking table's three metric columns, library folder counts)
+plus the further ones found doing this pass (log console timestamps, the pairing code, dependency
+latencies, the funnel/burn-down chart numbers). `Gap.xs/.sm/.md/.lg/.xl` replaces bare
+`SizedBox(height/width: N)` wherever the value maps onto the five-step scale.
+
+**`AppIcons` grew from 18 entries to ~65**, not guessed up front — every new one was added because
+a real `Icon(Icons.*)` call site in this pass needed a Phosphor equivalent and none of the
+original 18 domain-specific names fit. Verified against the real `phosphor_flutter` package source
+(`phosphor_icons_base.dart`'s 1,512 static methods) before use, not assumed — three names
+(`selfHeal`→`bandaids`, `history`→`clockCounterClockwise`, the three library-zoom
+`density{Small,Medium,Large}` steps) needed a second lookup pass when the first guess didn't
+exist. The zoom control specifically needed *visually distinct* icons (dots→squares→one square)
+since the icon itself is the size cue in a `SegmentedButton` with `showSelectedIcon: false` — a
+single reused glyph there would have defeated the control's whole point.
+
+**Two real widget-library bugs found and fixed while doing this, not feature-code bugs:**
+`ui/layout.dart`'s `KeyValueList` wrapped its label in a bare `Text` inside a `mainAxisSize: min`
+`Row` — fine for the original hand-picked `labelWidth`s, but the row's *usable* width is
+`labelWidth` minus the row's own right padding, so a label like "Last run" that fit the original
+76px gutter no longer fit the ~68px left after the padding subtraction, throwing a real
+`RenderFlex` overflow (caught by `live_layout_test.dart`, not `flutter analyze` — D19's
+precedent again). Fixed generically in the shared widget (wrapped in `Flexible` + `maxLines: 1` +
+ellipsis, matching `AppText`'s own default-safe philosophy) rather than hand-tuning
+`run_summary.dart`'s `labelWidth`, since any future `KeyValueList` consumer would hit the same
+class of bug with a long enough label. `core/dependency_models.dart`'s `DependencyLevel.icon`
+getter (Material `IconData`) couldn't become `AppIcons`-based directly — `ui/` sits between
+`core/` and `features/` (D100's own layering rule), so `core/` importing `ui/icons.dart` would
+invert it. Fixed the same way D100 handled `ServiceState.statusKind`: a small feature-level bridge
+extension (`_DependencyLevelIconX`, duplicated once in `dependencies_tab.dart` and once in
+`overview/dependency_strip.dart`, its only two consumers) rather than relaxing the layering rule.
+`core/funnel_stage.dart`, `core/agent_image.dart`, and `core/library_image.dart` hit the identical
+constraint and were retokened (spacing, colors) but deliberately **not** converted to `AppIcon`/
+`NumericText` for the same reason — flagged in each file with a comment rather than silently left
+inconsistent.
+
+**Eleven `.when()` sites named in AUDIT §6 — nine converted to `stateView`, two confirmed
+correctly left alone.** `library_rail.dart` (×2), `log_console.dart`, `notification_center.dart`,
+`devices_tab.dart`, `ops_tab.dart`, `queue_tab.dart`, `entity_yield_dialog.dart` now use
+`AsyncValue.stateView()` with real `LoadingView`/`ErrorView`/`EmptyView` states and retry
+callbacks (several gained a working retry button they didn't have before, e.g. `queue_tab.dart`,
+`ops_tab.dart`'s spec list). `core/agent_image.dart` and `core/library_image.dart` were confirmed,
+not just skipped — AUDIT §6 already called these "correctly bespoke — leave" (per-image inline
+placeholders, not page-level states), and building through them confirmed that judgment still
+holds. `live/device_bar.dart`'s `.when()` also stays hand-rolled by design (AUDIT §6: "acceptable,
+it's a header strip") — only tokenized, not restructured, since a full `ErrorView` would be far
+too heavy for a compact header control.
+
+**`test/token_coverage_test.dart` written**, encoding PLAN_V2.md's three "must return nothing"
+greps as real `flutter test` assertions (`Color(0x` outside `core/theme/`, named `Colors.*`
+outside `core/theme/` except `Colors.transparent`, `fontFamily: '` outside `core/theme/`) plus the
+one exception the plan's own criteria comment names by hand: the QR quiet zone
+(`themes/classic.dart`'s `qrQuietZone: Colors.white`, where `AppTokens.chart.qrQuietZone` is
+*defined*) is excepted the same way `core/theme/` itself is for the other two patterns. Reading
+`lib/` from disk at test time (`dart:io`, matching every other test's `Directory.current`-relative
+convention) rather than shelling out to `grep`, so this suite runs anywhere `flutter test` does,
+Windows included, with no external tool dependency. One genuine false-positive found writing it:
+`ui/status.dart`'s own doc comment for `OutcomeBadge` quoted the two hex literals it used to
+replace — literally matching the `Color(0x` pattern from inside a comment. Fixed by rewording the
+(now-stale, since D101 already did the retarget) comment rather than teaching the test to skip
+comments, since a genuine hardcoded color hiding behind a comment-like string is exactly the kind
+of near-miss this test exists to catch.
+
+**Verified:** `flutter analyze` clean across all of `lib/` and `test/`. `flutter test` 121/121
+(118 prior + 3 new in `token_coverage_test.dart`) — one real round of test breakage from the
+migration itself, all in icon/text finders that were asserting against the exact Material
+`IconData`/string this session replaced, fixed by updating the finders to the new Phosphor
+glyph + weight rather than the app code (`flows_layout_test.dart`'s info-tooltip icon,
+`notification_center_layout_test.dart`'s bell/filter/open-external icons ×3,
+`ops_tab.dart`'s empty-state string losing its trailing period in translation to `EmptyView`).
+`flutter build windows --debug` succeeds. Built and started for you per rule 5 — not clicked
+through by Claude. **Deliberately out of scope, left as-is:** every `AlertDialog`-based confirm
+dialog (`force_run.dart`, `library_toolbar.dart`'s apply/delete, `limit_card.dart`'s revoke-style
+confirms, etc.) — `AppDialog` exists in `ui/overlays.dart` but PLAN_V2.md's V2.3 checklist doesn't
+name a dialog-shell migration as one of its bullets, and rewriting a confirm dialog's structure
+sight-unseen (rule 5: the user drives the app, this session cannot) carries real risk for a widget
+whose whole job is a correct Cancel/confirm button pair. `AppTable` was not substituted for the
+Ranking tab's hand-built D77 table, nor was `ResizableSplit` substituted for any of the thirteen
+AUDIT §11 hardcoded-width splits — both are explicitly named as V2.11/V2.9's own scope in
+PLAN_V2.md's sequencing notes, not V2.3's.
+
+---
+
 ## 2026-08-05 — V2.3 migration started, split into two halves (D101 · part 1 of 2)
 
 ### D101 · The `AppPalette` shim deleted; every hardcoded color found by AUDIT §2 now reads a token

@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/library_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/status.dart';
+import '../../ui/text.dart';
 import 'entity_yield_dialog.dart';
 import 'library_controller.dart';
 
@@ -104,8 +108,10 @@ class LibraryToolbar extends ConsumerWidget {
         ? const <LibraryImageEntry>[]
         : images.images.where((e) => selection.selected.contains(e.name)).toList();
 
+    final tokens = theme.tokens;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.sm, tokens.space.md, tokens.space.xs),
       // A single Row here would overflow well before the app's 1024px floor:
       // breadcrumb + count + select-all + a selection cluster + zoom easily
       // exceeds what's left after the folder/entity rail columns. Row 1 keeps
@@ -127,19 +133,19 @@ class LibraryToolbar extends ConsumerWidget {
               if (entity != null)
                 IconButton(
                   tooltip: 'View entity across every stage',
-                  icon: const Icon(Icons.query_stats, size: 20),
+                  icon: AppIcon(AppIcons.insight, size: IconSize.md),
                   onPressed: () => showEntityYieldDialog(context, entity!),
                 ),
               if (images != null) ...[
-                const SizedBox(width: 12),
-                Text('${images.total}', style: theme.textTheme.bodySmall),
+                SizedBox(width: tokens.space.sm),
+                NumericText('${images.total}', role: TextRole.caption),
               ],
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: tokens.space.xs),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: tokens.space.xs,
+            runSpacing: tokens.space.xs,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               TextButton(
@@ -151,12 +157,12 @@ class LibraryToolbar extends ConsumerWidget {
                 _MoveTargetPicker(folder: folder, target: target),
                 FilledButton.tonalIcon(
                   onPressed: () => _apply(context, ref, selection.selected, target),
-                  icon: const Icon(Icons.done_all, size: 18),
+                  icon: AppIcon(AppIcons.apply, size: IconSize.sm),
                   label: const Text('Apply'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => deleteLibrarySelection(context, ref, selectedEntries),
-                  icon: const Icon(Icons.delete_outline, size: 18),
+                  icon: AppIcon(AppIcons.discard, size: IconSize.sm),
                   label: const Text('Delete'),
                 ),
               ],
@@ -189,10 +195,7 @@ class _MoveTargetPicker extends ConsumerWidget {
             child: Text(f.name == folder ? '${f.name} (no move — just keep the selection)' : '→ ${f.name}'),
           ),
       ],
-      child: Chip(
-        label: Text(target == folder ? 'keep selection' : '→ $target'),
-        visualDensity: VisualDensity.compact,
-      ),
+      child: StatusChip(kind: StatusKind.neutral, label: target == folder ? 'keep selection' : '→ $target', dense: true),
     );
   }
 }
@@ -205,10 +208,10 @@ class _ZoomControl extends ConsumerWidget {
     final zoom = ref.watch(libraryZoomProvider);
     return SegmentedButton<LibraryZoom>(
       showSelectedIcon: false,
-      segments: const [
-        ButtonSegment(value: LibraryZoom.small, icon: Icon(Icons.apps, size: 16), tooltip: 'Small'),
-        ButtonSegment(value: LibraryZoom.medium, icon: Icon(Icons.grid_view, size: 16), tooltip: 'Medium'),
-        ButtonSegment(value: LibraryZoom.large, icon: Icon(Icons.grid_on, size: 16), tooltip: 'Large'),
+      segments: [
+        ButtonSegment(value: LibraryZoom.small, icon: AppIcon(AppIcons.densitySmall, size: IconSize.sm), tooltip: 'Small'),
+        ButtonSegment(value: LibraryZoom.medium, icon: AppIcon(AppIcons.densityMedium, size: IconSize.sm), tooltip: 'Medium'),
+        ButtonSegment(value: LibraryZoom.large, icon: AppIcon(AppIcons.densityLarge, size: IconSize.sm), tooltip: 'Large'),
       ],
       selected: {zoom},
       onSelectionChanged: (selected) => ref.read(libraryZoomProvider.notifier).set(selected.first),

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/library_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/text.dart';
 import 'library_controller.dart';
 
 /// Left column: the seven stage folders with their cached counts.
@@ -13,11 +17,10 @@ class FolderRail extends ConsumerWidget {
     final async = ref.watch(libraryFoldersControllerProvider);
     final selected = ref.watch(selectedFolderProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('$error')),
+    return async.stateView(
+      onRetry: () => ref.invalidate(libraryFoldersControllerProvider),
       data: (folders) => ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: Theme.of(context).tokens.space.sm),
         itemCount: folders.length,
         itemBuilder: (context, index) {
           final folder = folders[index];
@@ -49,9 +52,9 @@ class _FolderTile extends StatelessWidget {
       selected: selected,
       selectedTileColor: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
       title: Text(folder.name, style: theme.textTheme.bodyLarge),
-      subtitle: Text(
+      subtitle: NumericText(
         folder.flat ? '${folder.total} image(s)' : '${folder.total} across ${folder.entities} entit${folder.entities == 1 ? 'y' : 'ies'}',
-        style: theme.textTheme.bodySmall,
+        role: TextRole.caption,
       ),
       onTap: onTap,
     );
@@ -80,32 +83,33 @@ class _EntityListState extends ConsumerState<EntityList> {
     final async = ref.watch(libraryEntitiesControllerProvider);
     final selected = ref.watch(selectedEntityProvider);
 
+    final tokens = Theme.of(context).tokens;
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          padding: EdgeInsets.fromLTRB(tokens.space.sm, tokens.space.sm, tokens.space.sm, tokens.space.xs),
           child: TextField(
             controller: _search,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
+              prefixIcon: AppIcon(AppIcons.search, size: IconSize.sm),
               hintText: 'Filter entities',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
           ),
         ),
         Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('$error')),
+          child: async.stateView(
+            onRetry: () => ref.invalidate(libraryEntitiesControllerProvider),
             data: (entities) {
               final query = _search.text.trim().toLowerCase();
               final filtered = query.isEmpty
                   ? entities
                   : entities.where((e) => e.root.toLowerCase().contains(query)).toList();
               if (filtered.isEmpty) {
-                return const Center(child: Text('No entities here.'));
+                return const EmptyView(icon: Icons.person_outline, title: 'No entities here');
               }
               return ListView.builder(
                 itemCount: filtered.length,
@@ -115,7 +119,7 @@ class _EntityListState extends ConsumerState<EntityList> {
                     dense: true,
                     selected: entity.root == selected,
                     title: Text(entity.root, overflow: TextOverflow.ellipsis),
-                    trailing: Text('${entity.count}', style: Theme.of(context).textTheme.bodySmall),
+                    trailing: NumericText('${entity.count}', role: TextRole.caption),
                     onTap: () => ref.read(selectedEntityProvider.notifier).select(entity.root),
                   );
                 },

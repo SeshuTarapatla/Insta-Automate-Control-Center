@@ -2,6 +2,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/insights_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/surfaces.dart';
 
 /// One flow's daily count against its current cap (PLAN CP 7.2). Sequential
 /// job — "compare magnitude, day to day" — so one hue throughout, same as
@@ -23,6 +25,7 @@ class BurndownCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final counts = [for (final day in days) day.values[values] ?? 0];
     final maxCount = counts.isEmpty ? 0 : counts.reduce((a, b) => a > b ? a : b);
     // The chart's ceiling must clear both the tallest real bar and the cap
@@ -31,12 +34,9 @@ class BurndownCard extends StatelessWidget {
     final ceiling = [maxCount, cap ?? 0, 1].reduce((a, b) => a > b ? a : b).toDouble();
     final interval = _niceInterval(ceiling);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 20, 12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
-      ),
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      borderRadius: tokens.geometry.radiusLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -44,15 +44,15 @@ class BurndownCard extends StatelessWidget {
             children: [
               Expanded(child: Text(title, style: theme.textTheme.titleSmall)),
               if (cap != null)
-                Text('cap $cap/day', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                Text('cap $cap/day', style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: tokens.space.md),
           SizedBox(
             height: 160,
             child: days.isEmpty
                 ? Center(
-                    child: Text('No history yet', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                    child: Text('No history yet', style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
                   )
                 : BarChart(
                     BarChartData(
@@ -61,7 +61,7 @@ class BurndownCard extends StatelessWidget {
                       gridData: FlGridData(
                         drawVerticalLine: false,
                         horizontalInterval: interval,
-                        getDrawingHorizontalLine: (_) => FlLine(color: scheme.outlineVariant, strokeWidth: 1),
+                        getDrawingHorizontalLine: (_) => FlLine(color: tokens.chart.grid, strokeWidth: 1),
                       ),
                       borderData: FlBorderData(show: false),
                       titlesData: FlTitlesData(
@@ -74,7 +74,11 @@ class BurndownCard extends StatelessWidget {
                             reservedSize: 32,
                             getTitlesWidget: (value, meta) => Text(
                               value.round().toString(),
-                              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: tokens.chart.axisLabel,
+                                fontFamily: tokens.type.mono,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
                             ),
                           ),
                         ),
@@ -95,8 +99,8 @@ class BurndownCard extends StatelessWidget {
                               }
                               final label = days[index].date.substring(5); // MM-DD
                               return Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                                padding: EdgeInsets.only(top: tokens.space.xs),
+                                child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: tokens.chart.axisLabel)),
                               );
                             },
                           ),
@@ -111,7 +115,7 @@ class BurndownCard extends StatelessWidget {
                             children: [
                               TextSpan(
                                 text: rod.toY.round().toString(),
-                                style: TextStyle(color: scheme.onInverseSurface, fontWeight: FontWeight.w400),
+                                style: TextStyle(color: scheme.onInverseSurface, fontWeight: FontWeight.w400, fontFamily: tokens.type.mono),
                               ),
                             ],
                           ),
@@ -123,13 +127,13 @@ class BurndownCard extends StatelessWidget {
                               horizontalLines: [
                                 HorizontalLine(
                                   y: cap!.toDouble(),
-                                  color: scheme.tertiary,
+                                  color: tokens.chart.capLine,
                                   strokeWidth: 1.5,
                                   dashArray: [6, 4],
                                   label: HorizontalLineLabel(
                                     show: true,
                                     alignment: Alignment.topRight,
-                                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.tertiary, fontWeight: FontWeight.w600),
+                                    style: theme.textTheme.bodySmall?.copyWith(color: tokens.chart.capLine, fontWeight: FontWeight.w600),
                                     labelResolver: (_) => 'cap',
                                   ),
                                 ),
@@ -142,9 +146,9 @@ class BurndownCard extends StatelessWidget {
                             barRods: [
                               BarChartRodData(
                                 toY: counts[i].toDouble(),
-                                color: scheme.primary,
+                                color: tokens.chart.positiveFill,
                                 width: 18,
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(tokens.geometry.radiusSm)),
                               ),
                             ],
                           ),

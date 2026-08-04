@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
 import '../../core/agent_image.dart';
 import '../../core/file_opener.dart';
 import '../../core/notification_models.dart';
 import '../../core/notification_text.dart';
 import '../../core/relative_time.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/status.dart';
 import 'notification_controller.dart';
 
 /// The bell icon in the title bar (D54 — reachable from every screen rather
@@ -68,7 +73,7 @@ class _NotificationCenterState extends ConsumerState<NotificationCenter> {
         icon: Badge(
           label: Text('$unread'),
           isLabelVisible: unread > 0,
-          child: const Icon(Icons.notifications_outlined, size: 18),
+          child: AppIcon(AppIcons.notification, size: IconSize.sm),
         ),
       ),
     );
@@ -89,20 +94,21 @@ class _NotificationPanelState extends ConsumerState<_NotificationPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final async = ref.watch(notificationControllerProvider);
     final muted = ref.watch(mutedTagsProvider);
 
     return Material(
       elevation: 8,
-      borderRadius: BorderRadius.circular(12),
-      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(tokens.geometry.radiusMd),
+      color: tokens.surface.raised,
       child: SizedBox(
         width: 380,
         height: 480,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+              padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.sm, tokens.space.xs, tokens.space.xs),
               child: Row(
                 children: [
                   Expanded(
@@ -115,7 +121,7 @@ class _NotificationPanelState extends ConsumerState<_NotificationPanel> {
                   IconButton(
                     tooltip: 'Filter by tag',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.filter_list, size: 18),
+                    icon: AppIcon(AppIcons.filter, size: IconSize.sm),
                     onPressed: () => setState(() => _showFilters = !_showFilters),
                   ),
                   TextButton(
@@ -127,14 +133,14 @@ class _NotificationPanelState extends ConsumerState<_NotificationPanel> {
             ),
             if (_showFilters)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: EdgeInsets.fromLTRB(tokens.space.md, 0, tokens.space.md, tokens.space.xs),
                 child: _TagFilterRow(notifications: async.value ?? const [], muted: muted),
               ),
             const Divider(height: 1),
             Expanded(
-              child: async.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(child: Text('Failed to load: $error')),
+              child: async.stateView(
+                describeError: (error) => 'Failed to load: $error',
+                onRetry: () => ref.invalidate(notificationControllerProvider),
                 data: (notifications) => _NotificationList(notifications: notifications, muted: muted),
               ),
             ),
@@ -155,16 +161,18 @@ class _TagFilterRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tags = {for (final n in notifications) ...n.tags, ...muted}.toList()..sort();
 
+    final tokens = Theme.of(context).tokens;
+
     if (tags.isEmpty) {
       return Text(
         'No tags yet.',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
       );
     }
 
     return Wrap(
-      spacing: 6,
-      runSpacing: 6,
+      spacing: tokens.space.xs,
+      runSpacing: tokens.space.xs,
       children: [
         for (final tag in tags)
           FilterChip(
@@ -187,18 +195,19 @@ class _NotificationList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final visible = notifications.where((n) => !notificationIsMuted(n, muted)).toList()
       ..sort((a, b) => b.seq.compareTo(a.seq));
 
     if (visible.isEmpty) {
       final reason = notifications.isEmpty ? 'No notifications yet.' : 'Every notification here is muted.';
       return Center(
-        child: Text(reason, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        child: Text(reason, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.content.secondary)),
       );
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: tokens.space.xs),
       itemCount: visible.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) => NotificationTile(notification: visible[index]),
@@ -210,25 +219,26 @@ class NotificationTile extends ConsumerWidget {
   const NotificationTile({super.key, required this.notification});
   final AppNotification notification;
 
-  static Color? _levelColor(AppTokens tokens, String level) => switch (level) {
-    'error' => tokens.status.bad.fg,
-    'warning' || 'warn' => tokens.status.warn.fg,
-    'info' => tokens.status.info.fg,
-    _ => null,
+  static StatusKind _levelKind(String level) => switch (level) {
+    'error' => StatusKind.bad,
+    'warning' || 'warn' => StatusKind.warn,
+    'info' => StatusKind.info,
+    _ => StatusKind.neutral,
   };
 
-  static const _levelIcons = {
-    'error': Icons.error_outline,
-    'warning': Icons.warning_amber_outlined,
-    'warn': Icons.warning_amber_outlined,
-    'info': Icons.info_outline,
+  static PhosphorIconData Function(PhosphorIconsStyle) _levelGlyph(String level) => switch (level) {
+    'error' => AppIcons.error,
+    'warning' || 'warn' => AppIcons.warning,
+    'info' => AppIcons.info,
+    _ => AppIcons.notification,
   };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final color = _levelColor(theme.tokens, notification.level) ?? theme.tokens.content.secondary;
-    final icon = _levelIcons[notification.level] ?? Icons.circle_notifications_outlined;
+    final tokens = theme.tokens;
+    final color = _levelKind(notification.level).fg(tokens);
+    final glyph = _levelGlyph(notification.level);
 
     final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
       fontWeight: notification.read ? FontWeight.normal : FontWeight.w600,
@@ -243,12 +253,12 @@ class NotificationTile extends ConsumerWidget {
         if (url != null) FileOpener.openUrl(url);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 10),
+            AppIcon(glyph, size: IconSize.sm, color: color),
+            SizedBox(width: tokens.space.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,16 +269,16 @@ class NotificationTile extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: bodyStyle,
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: tokens.space.xs),
                   Row(
                     children: [
                       Text(
                         relativeTime(notification.ts),
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                       ),
                       if (url != null) ...[
-                        const SizedBox(width: 6),
-                        Icon(Icons.open_in_new_rounded, size: 12, color: theme.colorScheme.primary.withValues(alpha: 0.7)),
+                        SizedBox(width: tokens.space.xs),
+                        AppIcon(AppIcons.openExternal, size: IconSize.sm, color: theme.colorScheme.primary.withValues(alpha: 0.7)),
                       ],
                     ],
                   ),
@@ -276,15 +286,15 @@ class NotificationTile extends ConsumerWidget {
               ),
             ),
             if (notification.imageKey != null) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: tokens.space.xs),
               SizedBox(width: 40, height: 40, child: AgentImage(imageKey: notification.imageKey, width: 80)),
             ],
             if (!notification.read) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: tokens.space.xs),
               Container(
                 width: 8,
                 height: 8,
-                margin: const EdgeInsets.only(top: 4),
+                margin: EdgeInsets.only(top: tokens.space.xs),
                 decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
               ),
             ],

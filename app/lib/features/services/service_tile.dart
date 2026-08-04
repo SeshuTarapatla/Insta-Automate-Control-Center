@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
 import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import 'service_status_kind.dart';
 import 'services_controller.dart';
 
@@ -27,99 +30,73 @@ class ServiceTile extends ConsumerWidget {
     ref.watch(uptimeTickProvider);
 
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final color = status.state.color(theme);
 
-    return Material(
-      color: selected ? scheme.surfaceContainerHighest : scheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? scheme.primary.withValues(alpha: 0.7) : scheme.outlineVariant,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return AppCard(
+      onTap: onTap,
+      selected: selected,
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  StatusDot(kind: status.state.statusKind, pulsing: status.state.isTransient),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      status.label,
-                      style: theme.textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (!status.selfHeal)
-                    Tooltip(
-                      message: 'Self-heal is off — a crash stays a crash',
-                      child: Icon(
-                        Icons.healing_outlined,
-                        size: 15,
-                        color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  // The state and its origin badge give way to the uptime
-                  // rather than pushing it off the tile: at 300 px "Restarting"
-                  // beside an "external" badge already fills the row.
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            status.state.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelMedium?.copyWith(color: color),
-                          ),
-                        ),
-                        if (status.origin == ServiceOrigin.adopted ||
-                            status.origin == ServiceOrigin.external) ...[
-                          const SizedBox(width: 6),
-                          Flexible(child: _Pill(text: status.origin.label)),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (status.liveUptimeS != null) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      formatUptime(status.liveUptimeS!),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _subtitle(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
-                  fontFamily: theme.tokens.type.mono,
+              StatusDot(kind: status.state.statusKind, pulsing: status.state.isTransient),
+              SizedBox(width: tokens.space.sm),
+              Expanded(
+                child: Text(
+                  status.label,
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (!status.selfHeal)
+                Tooltip(
+                  message: 'Self-heal is off — a crash stays a crash',
+                  child: AppIcon(AppIcons.selfHeal, size: IconSize.sm, color: tokens.content.secondary),
+                ),
             ],
           ),
-        ),
+          SizedBox(height: tokens.space.sm),
+          Row(
+            children: [
+              // The state and its origin badge give way to the uptime
+              // rather than pushing it off the tile: at 300 px "Restarting"
+              // beside an "external" badge already fills the row.
+              Expanded(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        status.state.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(color: color),
+                      ),
+                    ),
+                    if (status.origin == ServiceOrigin.adopted ||
+                        status.origin == ServiceOrigin.external) ...[
+                      SizedBox(width: tokens.space.xs),
+                      Flexible(child: StatusChip(kind: StatusKind.neutral, label: status.origin.label, dense: true)),
+                    ],
+                  ],
+                ),
+              ),
+              if (status.liveUptimeS != null) ...[
+                SizedBox(width: tokens.space.sm),
+                NumericText(formatUptime(status.liveUptimeS!), role: TextRole.caption, color: tokens.content.secondary),
+              ],
+            ],
+          ),
+          SizedBox(height: tokens.space.xs),
+          MonoText(
+            _subtitle(),
+            role: TextRole.caption,
+            color: tokens.content.secondary.withValues(alpha: 0.8),
+          ),
+        ],
       ),
     );
   }
@@ -135,30 +112,5 @@ class ServiceTile extends ConsumerWidget {
     if (probe == null) return 'port ${status.port} · no probe yet';
     final latency = '${probe.latencyMs.round()} ms';
     return probe.ok ? '$latency · ${probe.detail}' : probe.detail;
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-      ),
-    );
   }
 }

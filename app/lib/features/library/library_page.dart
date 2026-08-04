@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/feedback.dart';
 import '../../core/library_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/page.dart';
+import '../../ui/surfaces.dart';
 import 'library_controller.dart';
 import 'library_grid.dart';
 import 'library_rail.dart';
@@ -36,21 +39,22 @@ class LibraryPage extends ConsumerWidget {
 
     final flat = foldersAsync.value?.where((f) => f.name == selectedFolder).firstOrNull?.flat ?? true;
     final showGrid = selectedFolder != null && (flat || selectedEntity != null);
+    final tokens = Theme.of(context).tokens;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-      child: Row(
+    return AppPage(
+      title: 'Library',
+      body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 220, child: Card(margin: EdgeInsets.zero, child: const FolderRail())),
+          SizedBox(width: 220, child: AppPanel(padding: EdgeInsets.zero, child: const FolderRail())),
           if (!flat) ...[
-            const SizedBox(width: 12),
-            SizedBox(width: 220, child: Card(margin: EdgeInsets.zero, child: const EntityList())),
+            SizedBox(width: tokens.space.md),
+            SizedBox(width: 220, child: AppPanel(padding: EdgeInsets.zero, child: const EntityList())),
           ],
-          const SizedBox(width: 12),
+          SizedBox(width: tokens.space.md),
           Expanded(
-            child: Card(
-              margin: EdgeInsets.zero,
+            child: AppPanel(
+              padding: EdgeInsets.zero,
               child: selectedFolder == null
                   ? const EmptyView(icon: Icons.folder_off_outlined, title: 'No folders yet.')
                   : !showGrid

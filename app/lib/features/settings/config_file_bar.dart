@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/file_opener.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/surfaces.dart';
 
 /// Quick access to the file every control on this page ultimately writes to.
 /// Shows where config.env actually lives, and opens it in the user's default
@@ -34,53 +36,47 @@ class ConfigFileBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.lg, vertical: tokens.space.md),
       child: Row(
         children: [
-          Icon(Icons.description_outlined, size: 20, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 12),
+          AppIcon(AppIcons.document, size: IconSize.md, color: tokens.content.secondary),
+          SizedBox(width: tokens.space.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('config.env', style: theme.textTheme.labelLarge),
-                const SizedBox(height: 2),
+                SizedBox(height: tokens.space.xs / 2),
                 Text(
                   path,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontFamily: theme.tokens.type.mono,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.type.mono, color: tokens.content.secondary),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: tokens.space.md),
           IconButton(
-            icon: const Icon(Icons.content_copy_outlined),
+            icon: AppIcon(AppIcons.copy, size: IconSize.md),
             tooltip: 'Copy path',
             onPressed: () => _copy(context),
           ),
           IconButton(
-            icon: const Icon(Icons.folder_open_outlined),
+            icon: AppIcon(AppIcons.folderOpen, size: IconSize.md),
             tooltip: 'Show in folder',
             onPressed: () => _reveal(context),
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: tokens.space.xs),
           Tooltip(
             message: 'Open in your editor  (Ctrl+E)',
             child: FilledButton.tonalIcon(
               onPressed: () => _open(context),
-              icon: const Icon(Icons.open_in_new, size: 18),
+              icon: AppIcon(AppIcons.openExternal, size: IconSize.sm),
               label: const Text('Open'),
             ),
           ),

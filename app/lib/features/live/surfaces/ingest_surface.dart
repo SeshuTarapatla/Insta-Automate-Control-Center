@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/flow_event_models.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../ui/icons.dart';
 import '../../../ui/status.dart';
+import '../../../ui/surfaces.dart';
 import 'surface_common.dart';
 
 /// entity-ingest: a metadata card per entity added this run. Ingest never
@@ -24,9 +28,9 @@ class IngestSurface extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(Theme.of(context).tokens.space.md),
       itemCount: added.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => SizedBox(height: Theme.of(context).tokens.space.sm),
       itemBuilder: (context, index) {
         // Newest first, no scrolling needed to see the latest.
         final event = added[added.length - 1 - index];
@@ -36,11 +40,11 @@ class IngestSurface extends StatelessWidget {
   }
 }
 
-IconData _iconForType(String? type) => switch (type?.toLowerCase()) {
-  'reel' => Icons.movie_outlined,
-  'post' => Icons.grid_on_outlined,
-  'profile' => Icons.person_outline,
-  _ => Icons.help_outline,
+PhosphorIconData Function(PhosphorIconsStyle) _iconForType(String? type) => switch (type?.toLowerCase()) {
+  'reel' => AppIcons.movie,
+  'post' => AppIcons.grid,
+  'profile' => AppIcons.person,
+  _ => AppIcons.help,
 };
 
 class _EntityCard extends StatelessWidget {
@@ -55,58 +59,56 @@ class _EntityCard extends StatelessWidget {
     final access = event.extra['access'] as String?;
     final url = event.extra['url'] as String?;
 
+    final tokens = theme.tokens;
+
     return ResultCardActions(
       subject: event.entity ?? event.subject,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                child: Icon(_iconForType(type), color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '@${event.entity ?? event.subject ?? '?'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
+      child: AppCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              child: AppIcon(_iconForType(type), color: tokens.content.secondary),
+            ),
+            SizedBox(width: tokens.space.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '@${event.entity ?? event.subject ?? '?'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  if (url != null)
+                    Padding(
+                      padding: EdgeInsets.only(top: tokens.space.xs / 2),
+                      child: Text(
+                        url,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
+                      ),
                     ),
-                    if (url != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          url,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                        ),
+                  if (type != null || access != null)
+                    Padding(
+                      padding: EdgeInsets.only(top: tokens.space.xs),
+                      child: Wrap(
+                        spacing: tokens.space.xs,
+                        children: [
+                          if (type != null) OutcomeBadge(label: type.toUpperCase(), kind: StatusKind.neutral),
+                          if (access != null)
+                            OutcomeBadge(label: access.toUpperCase(), kind: toneFor(access.toUpperCase())),
+                        ],
                       ),
-                    if (type != null || access != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Wrap(
-                          spacing: 6,
-                          children: [
-                            if (type != null) OutcomeBadge(label: type.toUpperCase(), kind: StatusKind.neutral),
-                            if (access != null)
-                              OutcomeBadge(label: access.toUpperCase(), kind: toneFor(access.toUpperCase())),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

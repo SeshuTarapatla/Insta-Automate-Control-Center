@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/config_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
 import 'config_controller.dart';
 
 /// One limit key: a slider + numeric field with instant apply, a dirty dot
@@ -109,15 +112,14 @@ class _LimitCardState extends ConsumerState<LimitCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final sliderMax = _sliderMax;
     final range = (sliderMax - _min).round();
 
     return SizedBox(
       width: 340,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      child: AppCard(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -136,21 +138,14 @@ class _LimitCardState extends ConsumerState<LimitCard> {
                             ),
                           ),
                           if (_dirty || _applying) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: theme.colorScheme.tertiary,
-                              ),
-                            ),
+                            SizedBox(width: tokens.space.xs),
+                            StatusDot(kind: StatusKind.warn, pulsing: _applying, size: 8),
                           ],
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: tokens.space.md),
                   SizedBox(
                     width: 84,
                     child: TextField(
@@ -173,10 +168,10 @@ class _LimitCardState extends ConsumerState<LimitCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: tokens.space.xs),
               Text(
                 widget.schema.help,
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
               Slider(
                 value: _sliderValue.clamp(_min.toDouble(), sliderMax),
@@ -195,7 +190,6 @@ class _LimitCardState extends ConsumerState<LimitCard> {
               ),
             ],
           ),
-        ),
       ),
     );
   }

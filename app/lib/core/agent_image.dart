@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'agent_client.dart';
+import 'theme/tokens.dart';
 
 /// `GET /api/images/{key}` (original) or `.../thumb?w=` — fetched through
 /// `dio` so the bearer token interceptor applies, since a plain
@@ -46,9 +47,10 @@ class AgentImage extends ConsumerWidget {
       );
     }
 
+    final tokens = theme.tokens;
     final framed = ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: ColoredBox(color: theme.colorScheme.surfaceContainerHighest, child: child),
+      borderRadius: BorderRadius.circular(tokens.geometry.radiusSm),
+      child: ColoredBox(color: tokens.surface.raised, child: child),
     );
 
     return aspectRatio == null ? framed : AspectRatio(aspectRatio: aspectRatio!, child: framed);
@@ -58,17 +60,25 @@ class AgentImage extends ConsumerWidget {
   // a wide aspect ratio (the 1080:198 row-crop shape) sized narrow enough
   // that icon + spacing + label no longer fits its height — a real overflow
   // caught by live_layout_test.dart, not a hypothetical one.
-  Widget _placeholder(ThemeData theme, IconData icon, String label) => Center(
-    child: FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(height: 4),
-          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ],
+  //
+  // A raw `Icon` widget, not `AppIcon` — `AppIcon`/`AppIcons` live in `ui/`,
+  // and `core/` importing `ui/` would invert the layering `ui/` sits between
+  // `core/` and `features/` for (D100's precedent); callers already pass a
+  // Material `IconData` in.
+  Widget _placeholder(ThemeData theme, IconData icon, String label) {
+    final tokens = theme.tokens;
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: tokens.space.iconMd, color: tokens.content.secondary),
+            SizedBox(height: tokens.space.xs),
+            Text(label, style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary)),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

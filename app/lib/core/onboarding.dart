@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'shortcuts_reference.dart';
+import 'theme/tokens.dart';
 
 /// Whether the first-run welcome dialog has been shown — persisted
 /// client-side (`shared_preferences`, the same store
@@ -35,7 +36,7 @@ Future<void> showWelcomeDialog(BuildContext context) {
     context: context,
     builder: (context) {
       final theme = Theme.of(context);
-      final scheme = theme.colorScheme;
+      final tokens = theme.tokens;
       return AlertDialog(
         title: const Text('Welcome to the Control Center'),
         content: SizedBox(
@@ -49,22 +50,22 @@ Future<void> showWelcomeDialog(BuildContext context) {
                 'the curation library, and everything they depend on, in one place.',
                 style: theme.textTheme.bodyMedium,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: tokens.space.md),
               Text(
                 'The rail on the left is every screen. Overview gives you the whole picture at a '
                 'glance; each of the others goes deep on one part of it.',
                 style: theme.textTheme.bodyMedium,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: tokens.space.md),
               Text(
                 'Closing this window doesn\'t stop anything — it keeps running from the system '
                 'tray. Press Ctrl+Alt+I anywhere, any app, to bring it back.',
                 style: theme.textTheme.bodyMedium,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: tokens.space.md),
               Text(
                 'Press "?" any time to see every keyboard shortcut.',
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
             ],
           ),

@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/config_models.dart';
 import '../../core/flow_switch_confirm.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
 import 'config_controller.dart';
 
 /// The order the pipeline actually runs in, so the switches read as a pipeline
@@ -43,39 +46,38 @@ class SwitchesTab extends ConsumerWidget {
     final byName = {for (final key in config.schema) key.name: key};
     final enabledCount = _flowOrder.where((k) => config.values.switches[k] ?? false).length;
 
+    final tokens = theme.tokens;
+
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(tokens.space.lg),
       children: [
         Row(
           children: [
             Text('Flow triggers', style: theme.textTheme.titleLarge),
-            const SizedBox(width: 12),
-            Chip(
-              label: Text('$enabledCount of ${_flowOrder.length} on'),
-              visualDensity: VisualDensity.compact,
-            ),
+            SizedBox(width: tokens.space.sm),
+            StatusChip(kind: StatusKind.neutral, label: '$enabledCount of ${_flowOrder.length} on', dense: true),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: tokens.space.xs),
         Text(
           'Switching a flow off stops it being triggered. Work already in progress finishes.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: tokens.space.lg),
         for (final key in _flowOrder)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Card(
-              margin: EdgeInsets.zero,
+            padding: EdgeInsets.only(bottom: tokens.space.md),
+            child: AppCard(
+              padding: EdgeInsets.symmetric(horizontal: tokens.space.lg, vertical: tokens.space.xs),
               child: SwitchListTile(
                 value: config.values.switches[key] ?? false,
                 onChanged: (value) => _toggle(context, ref, key, value),
                 title: Text(key, style: theme.textTheme.titleMedium),
                 subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4),
+                  padding: EdgeInsets.only(top: tokens.space.xs),
                   child: Text(byName[key]?.help ?? ''),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                contentPadding: EdgeInsets.zero,
               ),
             ),
           ),

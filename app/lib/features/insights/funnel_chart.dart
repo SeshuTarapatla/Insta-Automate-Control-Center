@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/tokens.dart';
+import '../../ui/text.dart';
+
 /// One stage of a sequential funnel — `count` is the real number at that
 /// stage, `caption` is optional extra context shown under the conversion
 /// line (e.g. the male-classified-instead note, or "real all-time total").
@@ -58,7 +61,7 @@ class FunnelChart extends StatelessWidget {
               painter: _FunnelPainter(fractions: fractions, color: scheme.primary, boundaryColor: scheme.surface),
             ),
           ),
-          const SizedBox(width: 20),
+          SizedBox(width: theme.tokens.space.xl),
           SizedBox(
             width: _labelWidth,
             child: Column(
@@ -95,13 +98,13 @@ class _FunnelLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final conversion = pctOfPrevious == null
         ? '${pctOfTotal.toStringAsFixed(0)}% of total'
         : '${pctOfPrevious!.toStringAsFixed(0)}% of $previousLabel · ${pctOfTotal.toStringAsFixed(0)}% of total';
 
+    final tokens = theme.tokens;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: tokens.space.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -110,28 +113,26 @@ class _FunnelLabel extends StatelessWidget {
           Row(
             children: [
               Text(stage.label, style: theme.textTheme.bodyMedium),
-              const SizedBox(width: 8),
+              SizedBox(width: tokens.space.xs),
               Flexible(
-                child: Text(
-                  '${stage.count}',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: NumericText(
+                  stage.count,
+                  role: TextRole.cardTitle,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: tokens.space.xs / 2),
           Text(
             conversion,
-            style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           if (stage.caption != null)
             Text(
               stage.caption!,
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

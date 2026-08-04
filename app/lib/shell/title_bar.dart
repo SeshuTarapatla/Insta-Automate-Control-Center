@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/connection_state.dart';
@@ -7,6 +8,7 @@ import '../core/shortcuts_reference.dart';
 import '../core/theme/tokens.dart';
 import '../core/window_work_area.dart';
 import '../features/notifications/notification_center.dart';
+import '../ui/icons.dart';
 
 class TitleBar extends ConsumerWidget {
   const TitleBar({super.key});
@@ -15,6 +17,7 @@ class TitleBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(connectionProvider);
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
 
     return SizedBox(
       height: 40,
@@ -24,18 +27,14 @@ class TitleBar extends ConsumerWidget {
             child: DragToMoveArea(
               child: Row(
                 children: [
-                  const SizedBox(width: 12),
-                  Icon(
-                    Icons.hub_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: tokens.space.sm),
+                  AppIcon(AppIcons.brand, size: IconSize.sm, color: theme.colorScheme.primary),
+                  SizedBox(width: tokens.space.xs),
                   Text(
                     'Insta-Automate Control Center',
                     style: theme.textTheme.labelLarge,
                   ),
-                  const SizedBox(width: 20),
+                  SizedBox(width: tokens.space.xl),
                   _StatusChip(status: status),
                 ],
               ),
@@ -45,7 +44,7 @@ class TitleBar extends ConsumerWidget {
             tooltip: 'Keyboard shortcuts  (?)',
             iconSize: 18,
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.help_outline),
+            icon: AppIcon(AppIcons.help, size: IconSize.sm),
             onPressed: () => showShortcutsReference(context),
           ),
           const NotificationCenter(),
@@ -79,7 +78,7 @@ class _StatusChip extends StatelessWidget {
           height: 8,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: tokens.space.xs),
         Text(label, style: theme.textTheme.bodySmall),
       ],
     );
@@ -154,21 +153,21 @@ class _WindowButtonsState extends State<_WindowButtons> with WindowListener {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _WindowButton(icon: Icons.remove, onPressed: windowManager.minimize),
+        _WindowButton(glyph: AppIcons.windowMinimize, onPressed: windowManager.minimize),
         _WindowButton(
-          icon: _maximized ? Icons.filter_none : Icons.crop_square,
+          glyph: _maximized ? AppIcons.windowRestore : AppIcons.windowMaximize,
           onPressed: _toggle,
         ),
-        _WindowButton(icon: Icons.close, onPressed: windowManager.close),
+        _WindowButton(glyph: AppIcons.windowClose, onPressed: windowManager.close),
       ],
     );
   }
 }
 
 class _WindowButton extends StatelessWidget {
-  const _WindowButton({required this.icon, required this.onPressed});
+  const _WindowButton({required this.glyph, required this.onPressed});
 
-  final IconData icon;
+  final PhosphorIconData Function(PhosphorIconsStyle) glyph;
   final Future<void> Function() onPressed;
 
   @override
@@ -176,7 +175,7 @@ class _WindowButton extends StatelessWidget {
     return SizedBox(
       width: 40,
       height: 40,
-      child: IconButton(iconSize: 16, icon: Icon(icon), onPressed: onPressed),
+      child: IconButton(iconSize: 16, icon: AppIcon(glyph, size: IconSize.sm), onPressed: onPressed),
     );
   }
 }

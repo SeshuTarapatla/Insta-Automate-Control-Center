@@ -187,11 +187,10 @@ class CountBadge extends StatelessWidget {
 }
 
 /// A verdict pill — `PRIVATE`/`FEMALE`/`FAILED`/etc — on the Live screen's
-/// per-item result cards. **Not yet wired up anywhere**: today's version
-/// (`features/live/surfaces/surface_common.dart`'s `OutcomeBadge` +
-/// `BadgeTone`) keeps its own hardcoded colors until V2.3 retargets its five
-/// call sites here — this is the destination, built against real tokens
-/// instead of `Color(0xFF1F4D34)`/`Color(0xFF6EE7A8)`.
+/// per-item result cards. All five call sites in
+/// `features/live/surfaces/` were retargeted here in V2.3 (D101), replacing
+/// the two hardcoded hex literals the original `surface_common.dart` version
+/// carried — this is the real destination, built against tokens throughout.
 class OutcomeBadge extends StatelessWidget {
   const OutcomeBadge({super.key, required this.label, required this.kind});
 

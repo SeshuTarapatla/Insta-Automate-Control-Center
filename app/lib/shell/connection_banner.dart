@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/agent_launcher.dart';
 import '../core/connection_state.dart';
+import '../core/theme/tokens.dart';
+import '../ui/icons.dart';
 
 class ConnectionBanner extends ConsumerWidget {
   const ConnectionBanner({super.key});
@@ -15,18 +17,15 @@ class ConnectionBanner extends ConsumerWidget {
     }
 
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     return Material(
       color: theme.colorScheme.errorContainer,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
         child: Row(
           children: [
-            Icon(
-              Icons.cloud_off,
-              color: theme.colorScheme.onErrorContainer,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
+            AppIcon(AppIcons.offline, color: theme.colorScheme.onErrorContainer, size: IconSize.sm),
+            SizedBox(width: tokens.space.xs),
             Expanded(
               child: Text(
                 status == AgentConnection.connecting
@@ -39,7 +38,7 @@ class ConnectionBanner extends ConsumerWidget {
               onPressed: () => ref.read(connectionProvider.notifier).check(),
               child: const Text('Retry'),
             ),
-            const SizedBox(width: 4),
+            SizedBox(width: tokens.space.xs / 2),
             FilledButton.tonal(
               onPressed: () => AgentLauncher.start(),
               child: const Text('Start agent'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../core/nav_state.dart';
 import '../core/onboarding.dart';
@@ -12,23 +13,24 @@ import '../features/live/live_page.dart';
 import '../features/overview/overview_page.dart';
 import '../features/services/services_page.dart';
 import '../features/settings/settings_page.dart';
+import '../ui/icons.dart';
 import 'connection_banner.dart';
 import 'title_bar.dart';
 
 class _Destination {
-  const _Destination(this.label, this.icon);
+  const _Destination(this.label, this.glyph);
   final String label;
-  final IconData icon;
+  final PhosphorIconData Function(PhosphorIconsStyle) glyph;
 }
 
 const _destinations = [
-  _Destination('Overview', Icons.dashboard_outlined),
-  _Destination('Flows', Icons.account_tree_outlined),
-  _Destination('Live', Icons.sensors_outlined),
-  _Destination('Services', Icons.dns_outlined),
-  _Destination('Library', Icons.photo_library_outlined),
-  _Destination('Insights', Icons.insights_outlined),
-  _Destination('Settings', Icons.settings_outlined),
+  _Destination('Overview', AppIcons.overview),
+  _Destination('Flows', AppIcons.flow),
+  _Destination('Live', AppIcons.sensor),
+  _Destination('Services', AppIcons.service),
+  _Destination('Library', AppIcons.library),
+  _Destination('Insights', AppIcons.insight),
+  _Destination('Settings', AppIcons.settings),
 ];
 
 class AppShell extends ConsumerStatefulWidget {
@@ -93,7 +95,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       destinations: [
                         for (final d in _destinations)
                           NavigationRailDestination(
-                            icon: Icon(d.icon),
+                            icon: AppIcon(d.glyph),
                             label: Text(d.label),
                           ),
                       ],

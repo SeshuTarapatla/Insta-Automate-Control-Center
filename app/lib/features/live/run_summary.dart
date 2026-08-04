@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/flow_event_models.dart';
 import '../../core/scheduler_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/layout.dart';
+import '../../ui/status.dart';
+import '../../ui/text.dart';
 import '../flows/flows_controller.dart';
 import 'live_controller.dart';
 
@@ -30,35 +33,44 @@ class RunSummary extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final live = ref.watch(liveControllerProvider).value;
     final schedulerSnapshot = ref.watch(flowsControllerProvider).value;
     final flow = live?.flow;
     final flowState = flow == null ? null : schedulerSnapshot?.flows[flow];
 
+    final tokens = theme.tokens;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(tokens.space.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Run summary', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
+          SizedBox(height: tokens.space.md),
           if (flowState == null)
-            Text('No scheduler data yet.', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))
-          else ...[
-            _SummaryRow(label: 'Phase', value: phaseLabel[flowState.phase] ?? flowState.phase),
-            if (_todayLine(flowState) != null) _SummaryRow(label: 'Today', value: _todayLine(flowState)!),
-            if (flowState.lastRun != null)
-              _SummaryRow(
-                label: 'Last run',
-                value: '${flowState.lastRun!.state}'
-                    '${flowState.lastRun!.durationS != null ? ' · ${flowState.lastRun!.durationS!.round()}s' : ''}',
-              ),
-            if (live?.runId != null) _SummaryRow(label: 'Run id', value: live!.runId!, mono: true),
-          ],
-          const SizedBox(height: 20),
+            Text('No scheduler data yet.', style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary))
+          else
+            KeyValueList(
+              labelWidth: 76,
+              rows: [
+                MetricRow(label: 'Phase', value: Text(phaseLabel[flowState.phase] ?? flowState.phase, style: theme.textTheme.bodyMedium)),
+                if (_todayLine(flowState) != null)
+                  MetricRow(label: 'Today', value: NumericText(_todayLine(flowState)!, role: TextRole.body)),
+                if (flowState.lastRun != null)
+                  MetricRow(
+                    label: 'Last run',
+                    value: Text(
+                      '${flowState.lastRun!.state}'
+                      '${flowState.lastRun!.durationS != null ? ' · ${flowState.lastRun!.durationS!.round()}s' : ''}',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                if (live?.runId != null) MetricRow(label: 'Run id', value: MonoText(live!.runId!, role: TextRole.caption)),
+              ],
+            ),
+          SizedBox(height: tokens.space.xl),
           Text('Counters this run', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          SizedBox(height: tokens.space.sm),
           _EventCounters(flow: flow),
         ],
       ),
@@ -120,52 +132,22 @@ class _EventCounters extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final events = ref.watch(liveControllerProvider).value?.events ?? const [];
     final counters = _liveCounters(flow, events);
     if (counters.isEmpty) {
       return Text(
         'No counters yet.',
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
       );
     }
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: tokens.space.xs,
+      runSpacing: tokens.space.xs,
       children: [
         for (final entry in counters.entries)
-          Chip(label: Text('${entry.key}: ${entry.value}'), visualDensity: VisualDensity.compact),
+          StatusChip(kind: StatusKind.neutral, label: '${entry.key}: ${entry.value}', dense: true),
       ],
-    );
-  }
-}
-
-class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, required this.value, this.mono = false});
-
-  final String label;
-  final String value;
-  final bool mono;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 76,
-            child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: mono ? theme.textTheme.bodySmall?.copyWith(fontFamily: theme.tokens.type.mono) : theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

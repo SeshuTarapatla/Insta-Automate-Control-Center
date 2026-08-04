@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/feedback.dart';
 import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/page.dart';
+import '../../ui/surfaces.dart';
 import '../flows/flows_controller.dart';
 import 'device_bar.dart';
 import 'live_controller.dart';
@@ -82,123 +85,107 @@ class _LivePageState extends ConsumerState<LivePage> {
     }
 
     final selectedFlow = ref.watch(selectedFlowProvider);
+    final tokens = Theme.of(context).tokens;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final flow in flowOrder)
-                      ChoiceChip(
-                        label: Text(flowTitle[flow] ?? flow),
-                        selected: selectedFlow == flow,
-                        onSelected: (_) => ref.read(selectedFlowProvider.notifier).select(flow),
-                      ),
-                  ],
-                ),
-              ),
-              // Trigger now / Stop the selected flow right from here — the
-              // point of these living in the header (not just on the Flows
-              // screen) is not having to switch tabs when the goal is
-              // simply "trigger this and watch its logs," or "something's
-              // wrong, stop it now" (D69 — added after a real incident with
-              // no way to do the latter short of uninstalling the release).
-              if (snapshot?.flows[selectedFlow] case final state?)
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (state.phase == 'running' && state.lastRun != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-                            onPressed: () => stopFlowRun(context, ref, state),
-                            child: const Text('Stop'),
-                          ),
-                        ),
-                      OutlinedButton(
-                        onPressed: () => forceRunFlow(context, ref, state),
-                        child: const Text('Trigger now'),
-                      ),
-                      if (state.flow == 'entity-follow')
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: OutlinedButton(
-                            onPressed: () => reduceReserveFlow(context, ref, state),
-                            child: const Text('Reduce reserve'),
-                          ),
-                        ),
-                    ],
+    return AppPage(
+      title: 'Live',
+      leading: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: tokens.space.xs,
+              children: [
+                for (final flow in flowOrder)
+                  ChoiceChip(
+                    label: Text(flowTitle[flow] ?? flow),
+                    selected: selectedFlow == flow,
+                    onSelected: (_) => ref.read(selectedFlowProvider.notifier).select(flow),
                   ),
-                )
-              else
-                // Before the first heartbeat arrives there's nothing to act
-                // on yet — say so instead of just not rendering the controls,
-                // which read as a layout glitch rather than "still loading."
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Text(
-                    'Waiting for scheduler data…',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                ),
-              // Device control lives here, not in RunSummary's body (D46) —
-              // this row already has the height to spare next to the flow
-              // chips, and it frees the whole left column below for the log
-              // console instead of competing with it for space.
-              const DeviceBar(),
-            ],
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Card(margin: const EdgeInsets.fromLTRB(12, 12, 12, 6), child: const RunSummary()),
-                    Expanded(
-                      child: Card(margin: const EdgeInsets.fromLTRB(12, 6, 12, 12), child: const LogConsole()),
+          // Trigger now / Stop the selected flow right from here — the
+          // point of these living in the header (not just on the Flows
+          // screen) is not having to switch tabs when the goal is
+          // simply "trigger this and watch its logs," or "something's
+          // wrong, stop it now" (D69 — added after a real incident with
+          // no way to do the latter short of uninstalling the release).
+          if (snapshot?.flows[selectedFlow] case final state?)
+            Padding(
+              padding: EdgeInsets.only(right: tokens.space.md),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (state.phase == 'running' && state.lastRun != null)
+                    Padding(
+                      padding: EdgeInsets.only(right: tokens.space.sm),
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                        onPressed: () => stopFlowRun(context, ref, state),
+                        child: const Text('Stop'),
+                      ),
                     ),
-                  ],
-                ),
+                  OutlinedButton(
+                    onPressed: () => forceRunFlow(context, ref, state),
+                    child: const Text('Trigger now'),
+                  ),
+                  if (state.flow == 'entity-follow')
+                    Padding(
+                      padding: EdgeInsets.only(left: tokens.space.sm),
+                      child: OutlinedButton(
+                        onPressed: () => reduceReserveFlow(context, ref, state),
+                        child: const Text('Reduce reserve'),
+                      ),
+                    ),
+                ],
               ),
-              // Fixed, not Expanded, and tightly sized rather than round —
-              // the visualization surface's cards already wrap to fill
-              // whatever width they're given (D44), so any width beyond what
-              // a card actually needs just becomes more of the same wasted
-              // space D44 was fixing, not more information. 420 is scrape's
-              // own card (D44's 380px `_ScrapeCard`) plus the surface's 16px
-              // padding on each side plus a few px for the scrollbar gutter
-              // — exactly one column, no leftover. Deliberately tuned to
-              // scrape, the only flow tested so far (D45) — classify's cards
-              // are narrower (fit fine) and follow's are wider (420, D44),
-              // so this may need revisiting once follow/classify get a real
-              // test; nothing here assumes scrape's number is universal.
-              SizedBox(
-                width: 420,
-                child: Card(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  child: const _VisualizationSurface(),
-                ),
+            )
+          else
+            // Before the first heartbeat arrives there's nothing to act
+            // on yet — say so instead of just not rendering the controls,
+            // which read as a layout glitch rather than "still loading."
+            Padding(
+              padding: EdgeInsets.only(right: tokens.space.md),
+              child: Text(
+                'Waiting for scheduler data…',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
-            ],
+            ),
+          // Device control lives here, not in RunSummary's body (D46) —
+          // this row already has the height to spare next to the flow
+          // chips, and it frees the whole left column below for the log
+          // console instead of competing with it for space.
+          const DeviceBar(),
+        ],
+      ),
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(padding: EdgeInsets.only(bottom: tokens.space.sm), child: AppCard(child: const RunSummary())),
+                Expanded(child: AppCard(child: const LogConsole())),
+              ],
+            ),
           ),
-        ),
-      ],
+          SizedBox(width: tokens.space.md),
+          // Fixed, not Expanded, and tightly sized rather than round —
+          // the visualization surface's cards already wrap to fill
+          // whatever width they're given (D44), so any width beyond what
+          // a card actually needs just becomes more of the same wasted
+          // space D44 was fixing, not more information. 420 is scrape's
+          // own card (D44's 380px `_ScrapeCard`) plus the surface's 16px
+          // padding on each side plus a few px for the scrollbar gutter
+          // — exactly one column, no leftover. Deliberately tuned to
+          // scrape, the only flow tested so far (D45) — classify's cards
+          // are narrower (fit fine) and follow's are wider (420, D44),
+          // so this may need revisiting once follow/classify get a real
+          // test; nothing here assumes scrape's number is universal.
+          SizedBox(width: 420, child: AppCard(child: const _VisualizationSurface())),
+        ],
+      ),
     );
   }
 }

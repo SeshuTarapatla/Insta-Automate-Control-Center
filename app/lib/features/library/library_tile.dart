@@ -6,6 +6,7 @@ import '../../core/file_opener.dart';
 import '../../core/instagram_url.dart';
 import '../../core/library_image.dart';
 import '../../core/library_models.dart';
+import '../../ui/icons.dart';
 
 /// One grid cell: a thumbnail, a selection ring/badge, and the three
 /// interactions CP 5.3 asks for — double-click copies the id, right-click
@@ -54,10 +55,10 @@ class LibraryTile extends StatelessWidget {
       context: context,
       position: RelativeRect.fromRect(position & const Size(1, 1), Offset.zero & overlay.size),
       items: [
-        const PopupMenuItem(value: 'open', child: Row(children: [Icon(Icons.open_in_new, size: 18), SizedBox(width: 10), Text('Open on Instagram')])),
-        const PopupMenuItem(value: 'copy_id', child: Row(children: [Icon(Icons.copy, size: 18), SizedBox(width: 10), Text('Copy id')])),
+        PopupMenuItem(value: 'open', child: Row(children: [AppIcon(AppIcons.openExternal, size: IconSize.sm), const SizedBox(width: 10), const Text('Open on Instagram')])),
+        PopupMenuItem(value: 'copy_id', child: Row(children: [AppIcon(AppIcons.copy, size: IconSize.sm), const SizedBox(width: 10), const Text('Copy id')])),
         if (entityLabel != null)
-          const PopupMenuItem(value: 'copy_entity', child: Row(children: [Icon(Icons.folder_copy_outlined, size: 18), SizedBox(width: 10), Text('Copy entity name')])),
+          PopupMenuItem(value: 'copy_entity', child: Row(children: [AppIcon(AppIcons.copy, size: IconSize.sm), const SizedBox(width: 10), const Text('Copy entity name')])),
       ],
     );
     if (!context.mounted) return;
@@ -105,7 +106,7 @@ class LibraryTile extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 9,
                   backgroundColor: scheme.primary,
-                  child: Icon(Icons.check, size: 12, color: scheme.onPrimary),
+                  child: AppIcon(AppIcons.check, size: IconSize.sm, color: scheme.onPrimary),
                 ),
               ),
           ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/config_models.dart';
+import '../../core/theme/tokens.dart';
 import 'limit_card.dart';
 
 const _groupOrder = ['scan', 'scrape', 'follow', 'timing'];
@@ -24,22 +25,24 @@ class LimitsTab extends StatelessWidget {
       byGroup.putIfAbsent(key.group, () => []).add(key);
     }
 
+    final tokens = Theme.of(context).tokens;
+
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(tokens.space.lg),
       children: [
         for (final group in _groupOrder)
           if (byGroup[group] case final keys?) ...[
             Text(_groupTitles[group]!, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
+            SizedBox(height: tokens.space.md),
             Wrap(
-              spacing: 16,
-              runSpacing: 16,
+              spacing: tokens.space.lg,
+              runSpacing: tokens.space.lg,
               children: [
                 for (final schema in keys)
                   LimitCard(schema: schema, committedValue: config.values.limits[schema.name]!),
               ],
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: tokens.space.xxl),
           ],
       ],
     );

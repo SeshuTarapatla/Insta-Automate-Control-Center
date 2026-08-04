@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'agent_client.dart';
+import 'theme/tokens.dart';
 
 /// `GET /api/library/image/thumb?path=&w=` — the Library screen's sibling to
 /// `agent_image.dart`'s `imageBytesProvider`, keyed by `IA_DIR`-relative path
@@ -34,16 +35,19 @@ class LibraryThumbnail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final async = ref.watch(libraryThumbBytesProvider((path, width)));
 
     return ColoredBox(
-      color: theme.colorScheme.surfaceContainerHighest,
+      color: tokens.surface.raised,
       child: async.when(
         loading: () => const Center(
           child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         ),
+        // A raw `Icon`, not `AppIcon` — see `agent_image.dart`'s identical
+        // note on why `ui/` can't be reached from `core/`.
         error: (_, _) => Center(
-          child: Icon(Icons.broken_image_outlined, size: 20, color: theme.colorScheme.onSurfaceVariant),
+          child: Icon(Icons.broken_image_outlined, size: tokens.space.iconMd, color: tokens.content.secondary),
         ),
         data: (bytes) => Image.memory(bytes, fit: BoxFit.contain, gaplessPlayback: true),
       ),

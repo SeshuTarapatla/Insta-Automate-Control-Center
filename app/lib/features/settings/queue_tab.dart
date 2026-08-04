@@ -5,6 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/queue_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import 'config_controller.dart';
 import 'queue_controller.dart';
 
@@ -25,9 +30,9 @@ class QueueTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queueAsync = ref.watch(queueProvider);
 
-    return queueAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Failed to load queue: $error')),
+    return queueAsync.stateView(
+      describeError: (error) => 'Failed to load queue: $error',
+      onRetry: () => ref.invalidate(queueProvider),
       data: (data) => _QueueBody(
         data: data,
         onReorder: (names) => _save(context, ref, names),
@@ -57,37 +62,34 @@ class _QueueBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
 
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(tokens.space.lg),
       children: [
         Text('Priority order', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
+        SizedBox(height: tokens.space.xs),
         Text(
           'One list, used by both scrape and follow — each stage applies this order to its own '
           'folder. Anything not listed still runs, after these, oldest first.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: tokens.space.lg),
 
         if (data.queued.isEmpty)
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Icon(Icons.low_priority, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'No priority set. All ${data.unqueued.length} entities run in date order, '
-                      'oldest first.',
-                      style: theme.textTheme.bodyMedium,
-                    ),
+          AppCard(
+            child: Row(
+              children: [
+                AppIcon(AppIcons.sort, color: tokens.content.secondary),
+                SizedBox(width: tokens.space.md),
+                Expanded(
+                  child: Text(
+                    'No priority set. All ${data.unqueued.length} entities run in date order, '
+                    'oldest first.',
+                    style: theme.textTheme.bodyMedium,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           )
         else
@@ -108,14 +110,14 @@ class _QueueBody extends StatelessWidget {
             ],
           ),
 
-        const SizedBox(height: 32),
+        SizedBox(height: tokens.space.xxl),
         Text('Not prioritised (${data.unqueued.length})', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 4),
+        SizedBox(height: tokens.space.xs),
         Text(
           'Runs after the list above, oldest first.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: tokens.space.md),
         for (final entry in data.unqueued)
           _QueueTile(entry: entry, onAdd: () => _add(entry.name)),
       ],
@@ -142,65 +144,53 @@ class _QueueTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return Padding(
+      padding: EdgeInsets.only(bottom: tokens.space.sm),
+      child: AppCard(
+        padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
         child: Row(
           children: [
             if (dragIndex case final index?)
               ReorderableDragStartListener(
                 index: index,
                 child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(Icons.drag_indicator, color: theme.colorScheme.onSurfaceVariant),
+                  padding: EdgeInsets.only(right: tokens.space.sm),
+                  child: AppIcon(AppIcons.dragHandle, color: tokens.content.secondary),
                 ),
               ),
             if (position case final p?) ...[
-              SizedBox(
-                width: 28,
-                child: Text('$p', style: theme.textTheme.titleMedium),
-              ),
-              const SizedBox(width: 4),
+              SizedBox(width: 28, child: NumericText(p, role: TextRole.cardTitle)),
+              SizedBox(width: tokens.space.xs),
             ],
             Expanded(
               child: Row(
                 children: [
-                  Flexible(
-                    child: Text(
-                      entry.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(fontFamily: theme.tokens.type.mono),
-                    ),
-                  ),
+                  Flexible(child: MonoText(entry.name, role: TextRole.bodyStrong)),
                   if (!entry.hasEntityImage) ...[
-                    const SizedBox(width: 8),
+                    SizedBox(width: tokens.space.sm),
                     Tooltip(
                       message: 'No entities/${entry.name}.jpg — the pipeline would reject this',
-                      child: Icon(
-                        Icons.warning_amber_rounded,
-                        size: 16,
-                        color: theme.colorScheme.error,
-                      ),
+                      child: AppIcon(AppIcons.warning, size: IconSize.sm, color: theme.colorScheme.error),
                     ),
                   ],
                 ],
               ),
             ),
             _CountChip(label: 'scrape', count: entry.scrapeCount),
-            const SizedBox(width: 6),
+            SizedBox(width: tokens.space.xs),
             _CountChip(label: 'follow', count: entry.followCount),
-            const SizedBox(width: 8),
+            SizedBox(width: tokens.space.sm),
             if (onRemove != null)
               IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
+                icon: AppIcon(AppIcons.remove, size: IconSize.md),
                 tooltip: 'Remove from priority list',
                 onPressed: onRemove,
               ),
             if (onAdd != null)
               IconButton(
-                icon: const Icon(Icons.arrow_upward),
+                icon: AppIcon(AppIcons.arrowUp, size: IconSize.md),
                 tooltip: 'Add to priority list',
                 onPressed: onAdd,
               ),
@@ -219,23 +209,7 @@ class _CountChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final muted = count == 0;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: muted ? theme.colorScheme.surfaceContainerHighest : theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        '$label $count',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: muted
-              ? theme.colorScheme.onSurfaceVariant
-              : theme.colorScheme.onSecondaryContainer,
-        ),
-      ),
-    );
+    return StatusChip(kind: muted ? StatusKind.neutral : StatusKind.info, label: '$label $count', dense: true);
   }
 }

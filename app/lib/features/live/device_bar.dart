@@ -1,10 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/agent_client.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/device_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
 
 /// `GET /api/device` is the only state source (CP 4.5) — no WS channel for
 /// this yet, so a light periodic poll keeps it current while the Live screen
@@ -60,7 +63,7 @@ class DeviceBar extends ConsumerWidget {
     });
 
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final async = ref.watch(deviceControllerProvider);
 
     return async.when(
@@ -69,19 +72,19 @@ class DeviceBar extends ConsumerWidget {
         height: 18,
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
-      error: (error, _) => _Status(theme: theme, icon: Icons.error_outline, message: 'device error'),
+      error: (error, _) => _Status(theme: theme, glyph: AppIcons.error, message: 'device error'),
       data: (status) {
         if (!status.bridgeReachable) {
-          return _Status(theme: theme, icon: Icons.link_off, message: 'bridge down');
+          return _Status(theme: theme, glyph: AppIcons.linkOff, message: 'bridge down');
         }
         if (status.serial == null) {
-          return _Status(theme: theme, icon: Icons.phone_android_outlined, message: 'no device');
+          return _Status(theme: theme, glyph: AppIcons.device, message: 'no device');
         }
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.phone_android_outlined, size: 18, color: scheme.onSurfaceVariant),
-            const SizedBox(width: 6),
+            AppIcon(AppIcons.device, size: IconSize.sm, color: tokens.content.secondary),
+            SizedBox(width: tokens.space.xs),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 140),
               child: Text(
@@ -91,11 +94,11 @@ class DeviceBar extends ConsumerWidget {
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: tokens.space.sm),
             SizedBox(
               height: 32,
               child: OutlinedButton(
-                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
+                style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: tokens.space.sm)),
                 onPressed: () async {
                   try {
                     await ref.read(deviceControllerProvider.notifier).toggleMirror();
@@ -116,20 +119,21 @@ class DeviceBar extends ConsumerWidget {
 }
 
 class _Status extends StatelessWidget {
-  const _Status({required this.theme, required this.icon, required this.message});
+  const _Status({required this.theme, required this.glyph, required this.message});
 
   final ThemeData theme;
-  final IconData icon;
+  final PhosphorIconData Function(PhosphorIconsStyle) glyph;
   final String message;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = theme.tokens;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 6),
-        Text(message, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        AppIcon(glyph, size: IconSize.sm, color: tokens.content.secondary),
+        SizedBox(width: tokens.space.xs),
+        Text(message, style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
       ],
     );
   }

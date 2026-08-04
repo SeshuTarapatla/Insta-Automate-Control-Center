@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/file_opener.dart';
@@ -8,6 +9,9 @@ import '../../core/flow_switch_confirm.dart';
 import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import '../settings/config_controller.dart';
 import 'flows_controller.dart';
 
@@ -156,151 +160,141 @@ class FlowCard extends ConsumerWidget {
     // fast, but the worker actually picking up the run can lag a few
     // seconds, long enough for an impatient second click on Trigger now.
     final pending = ref.read(pendingCommandProvider.notifier).isPending(state.flow);
+    final tokens = theme.tokens;
 
     return SizedBox(
       width: 360,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _FlowStatusIndicator(kind: kind, state: state, observedAt: observedAt, color: _statusColor(theme)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          flowTitle[state.flow] ?? state.flow,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                _subtitleFor(kind, state),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                              ),
-                            ),
-                            if (infoText.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Tooltip(
-                                message: infoText,
-                                child: Icon(
-                                  Icons.info_outline,
-                                  size: 14,
-                                  color: gateText != null && !state.gate.ok
-                                      ? scheme.error
-                                      : scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: state.switchOn,
-                    onChanged: (value) => _toggleSwitch(context, ref, value),
-                  ),
-                ],
-              ),
-              if (_todayLine() != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _todayLine()!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              const SizedBox(height: 12),
-              // Sized to content, not a fixed height — this row can now wrap
-              // to two lines (entity-follow can show 4 buttons at once), and
-              // a fixed height here silently clipped the second row instead
-              // of growing for it (caught live: "Reduce reserve" rendered
-              // unclickable, overlapping the "Last run" line below it).
-              pending
-                  ? SizedBox(
-                      height: 36,
-                      child: Row(
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _FlowStatusIndicator(kind: kind, state: state, observedAt: observedAt, color: _statusColor(theme)),
+                SizedBox(width: tokens.space.xs),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        flowTitle[state.flow] ?? state.flow,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      Row(
                         children: [
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: scheme.primary),
-                          ),
-                          const SizedBox(width: 10),
                           Flexible(
                             child: Text(
-                              'Command sent — waiting for it to take effect…',
+                              _subtitleFor(kind, state),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                              style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                             ),
                           ),
+                          if (infoText.isNotEmpty) ...[
+                            SizedBox(width: tokens.space.xs),
+                            Tooltip(
+                              message: infoText,
+                              child: AppIcon(
+                                AppIcons.info,
+                                size: IconSize.sm,
+                                color: gateText != null && !state.gate.ok ? scheme.error : tokens.content.secondary,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
-                    )
-                  : Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: state.switchOn,
+                  onChanged: (value) => _toggleSwitch(context, ref, value),
+                ),
+              ],
+            ),
+            if (_todayLine() != null) ...[
+              SizedBox(height: tokens.space.sm),
+              NumericText(_todayLine()!, role: TextRole.caption),
+            ],
+            SizedBox(height: tokens.space.md),
+            // Sized to content, not a fixed height — this row can now wrap
+            // to two lines (entity-follow can show 4 buttons at once), and
+            // a fixed height here silently clipped the second row instead
+            // of growing for it (caught live: "Reduce reserve" rendered
+            // unclickable, overlapping the "Last run" line below it).
+            pending
+                ? SizedBox(
+                    height: 36,
+                    child: Row(
                       children: [
-                        // A manual trigger only ever means "run it now,
-                        // regardless of its condition" — "Run now"/"Skip
-                        // wait" was a softer nudge that only ended an
-                        // in-progress wait early without bypassing the gate,
-                        // which could still do nothing at all; removed per
-                        // your own framing, since that distinction never
-                        // matched how you actually use this button.
-                        OutlinedButton(
-                          onPressed: () => forceRunFlow(context, ref, state),
-                          child: const Text('Trigger now'),
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: scheme.primary),
                         ),
-                        if (state.flow == 'entity-follow')
-                          OutlinedButton(
-                            onPressed: () => reduceReserveFlow(context, ref, state),
-                            child: const Text('Reduce reserve'),
+                        SizedBox(width: tokens.space.sm),
+                        Flexible(
+                          child: Text(
+                            'Command sent — waiting for it to take effect…',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                           ),
-                        if (state.phase == 'running' && state.lastRun != null)
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
-                            onPressed: () => stopFlowRun(context, ref, state),
-                            child: const Text('Stop'),
-                          ),
+                        ),
                       ],
                     ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      lastRun == null
-                          ? 'No run yet this session'
-                          : 'Last run: ${lastRun.state}'
-                                '${lastRun.durationS != null ? ' · ${lastRun.durationS!.round()}s' : ''}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  )
+                : Wrap(
+                    spacing: tokens.space.xs,
+                    runSpacing: tokens.space.xs,
+                    children: [
+                      // A manual trigger only ever means "run it now,
+                      // regardless of its condition" — "Run now"/"Skip
+                      // wait" was a softer nudge that only ended an
+                      // in-progress wait early without bypassing the gate,
+                      // which could still do nothing at all; removed per
+                      // your own framing, since that distinction never
+                      // matched how you actually use this button.
+                      OutlinedButton(
+                        onPressed: () => forceRunFlow(context, ref, state),
+                        child: const Text('Trigger now'),
+                      ),
+                      if (state.flow == 'entity-follow')
+                        OutlinedButton(
+                          onPressed: () => reduceReserveFlow(context, ref, state),
+                          child: const Text('Reduce reserve'),
+                        ),
+                      if (state.phase == 'running' && state.lastRun != null)
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+                          onPressed: () => stopFlowRun(context, ref, state),
+                          child: const Text('Stop'),
+                        ),
+                    ],
                   ),
-                  if (lastRun != null)
-                    TextButton(
-                      onPressed: () => FileOpener.openUrl(_prefectRunUrl(lastRun.id)),
-                      child: const Text('View logs'),
-                    ),
-                ],
-              ),
-            ],
-          ),
+            SizedBox(height: tokens.space.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    lastRun == null
+                        ? 'No run yet this session'
+                        : 'Last run: ${lastRun.state}'
+                              '${lastRun.durationS != null ? ' · ${lastRun.durationS!.round()}s' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (lastRun != null)
+                  TextButton(
+                    onPressed: () => FileOpener.openUrl(_prefectRunUrl(lastRun.id)),
+                    child: const Text('View logs'),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -339,12 +333,12 @@ class _FlowStatusIndicator extends StatelessWidget {
     return '$minutes:$secondsPart';
   }
 
-  IconData get _icon => switch (kind) {
-    _StatusKind.running => Icons.play_arrow,
-    _StatusKind.dayPaused => Icons.pause,
-    _StatusKind.blocked => Icons.hourglass_empty,
-    _StatusKind.polling => Icons.autorenew,
-    _StatusKind.off || _StatusKind.cooldown => Icons.schedule,
+  PhosphorIconData Function(PhosphorIconsStyle) get _icon => switch (kind) {
+    _StatusKind.running => AppIcons.play,
+    _StatusKind.dayPaused => AppIcons.pause,
+    _StatusKind.blocked => AppIcons.hourglass,
+    _StatusKind.polling => AppIcons.sync,
+    _StatusKind.off || _StatusKind.cooldown => AppIcons.schedule,
   };
 
   Widget _iconBadge() => SizedBox(
@@ -352,7 +346,7 @@ class _FlowStatusIndicator extends StatelessWidget {
     height: _size,
     child: Container(
       decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.15)),
-      child: Icon(_icon, color: color, size: 24),
+      child: AppIcon(_icon, color: color, size: IconSize.lg),
     ),
   );
 
@@ -396,12 +390,7 @@ class _FlowStatusIndicator extends StatelessWidget {
               backgroundColor: color.withValues(alpha: 0.15),
             ),
           ),
-          Text(
-            _format(remaining),
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
-          ),
+          NumericText(_format(remaining), role: TextRole.micro),
         ],
       ),
     );

@@ -11,6 +11,8 @@ import '../../core/app_snack_bar.dart';
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
 import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/text.dart';
 import 'services_controller.dart';
 
 /// Matches the agent's own ring: 5000 chunks / 512 KB of scrollback, which is
@@ -293,51 +295,46 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
   Widget _header(ThemeData theme) {
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final live = widget.status.terminalAvailable;
 
     return Container(
-      height: 40,
-      padding: const EdgeInsets.only(left: 14, right: 6),
+      height: tokens.space.rowHeight,
+      padding: EdgeInsets.only(left: tokens.space.md, right: tokens.space.xs),
       decoration: BoxDecoration(
-        color: theme.tokens.terminal.headerBackground,
+        color: tokens.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.terminal,
-            size: 16,
-            color: live ? theme.tokens.status.good.fg : scheme.onSurfaceVariant,
+          AppIcon(
+            AppIcons.terminal,
+            size: IconSize.sm,
+            color: live ? tokens.status.good.fg : tokens.content.secondary,
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: tokens.space.xs),
           Text(
             live ? 'Terminal — live' : 'Terminal',
-            style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.labelLarge?.copyWith(color: tokens.content.secondary),
           ),
           if (_cols > 0) ...[
-            const SizedBox(width: 10),
-            Text(
-              '$_cols×$_rows',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: theme.tokens.type.mono,
-                color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
-              ),
-            ),
+            SizedBox(width: tokens.space.sm),
+            NumericText('$_cols×$_rows', role: TextRole.caption, color: tokens.content.secondary.withValues(alpha: 0.7)),
           ],
           const Spacer(),
           IconButton(
-            iconSize: 18,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Find  (Ctrl+F)',
             onPressed: _showsTerminal ? () => _toggleSearch() : null,
-            icon: const Icon(Icons.search),
+            icon: AppIcon(AppIcons.search, size: IconSize.sm),
           ),
           IconButton(
-            iconSize: 18,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Copy everything',
             onPressed: _showsTerminal ? _copyAll : null,
-            icon: const Icon(Icons.content_copy_outlined),
+            icon: AppIcon(AppIcons.copy, size: IconSize.sm),
           ),
         ],
       ),
@@ -346,15 +343,16 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
   Widget _searchBar(ThemeData theme) {
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final hits = _matches.isEmpty
         ? (_searchField.text.isEmpty ? '' : 'no matches')
         : '${_matchIndex + 1} of ${_matches.length}'
               '${_matches.length == _maxSearchHits ? '+' : ''}';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.xs),
       decoration: BoxDecoration(
-        color: theme.tokens.terminal.headerBackground,
+        color: tokens.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
@@ -363,7 +361,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
             child: TextField(
               controller: _searchField,
               focusNode: _searchFocus,
-              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: theme.tokens.type.mono),
+              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: tokens.type.mono),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -373,30 +371,27 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
               onSubmitted: (_) => _step(1),
             ),
           ),
-          Text(
-            hits,
-            style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
+          NumericText(hits, role: TextRole.caption, color: tokens.content.secondary),
           IconButton(
-            iconSize: 18,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Previous',
             onPressed: _matches.isEmpty ? null : () => _step(-1),
-            icon: const Icon(Icons.keyboard_arrow_up),
+            icon: AppIcon(AppIcons.chevronUp, size: IconSize.sm),
           ),
           IconButton(
-            iconSize: 18,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Next  (Enter)',
             onPressed: _matches.isEmpty ? null : () => _step(1),
-            icon: const Icon(Icons.keyboard_arrow_down),
+            icon: AppIcon(AppIcons.chevronDown, size: IconSize.sm),
           ),
           IconButton(
-            iconSize: 18,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Close  (Esc)',
             onPressed: () => _toggleSearch(open: false),
-            icon: const Icon(Icons.close),
+            icon: AppIcon(AppIcons.close, size: IconSize.sm),
           ),
         ],
       ),
@@ -419,6 +414,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
   Widget _historyNotice(ThemeData theme) {
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final message = widget.status.exitCode == null
         ? 'The process is not running. This is its final output, kept so you can read what happened.'
         : 'Exited with code ${widget.status.exitCode}. This is its final output, kept so you can '
@@ -426,17 +422,14 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.xs),
       color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
       child: Row(
         children: [
-          Icon(Icons.history_toggle_off, size: 15, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 8),
+          AppIcon(AppIcons.history, size: IconSize.sm, color: tokens.content.secondary),
+          SizedBox(width: tokens.space.xs),
           Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            child: Text(message, style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
           ),
         ],
       ),
@@ -463,7 +456,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
         scrollController: _scroll,
         theme: _terminalTheme(theme),
         textStyle: TerminalStyle(fontSize: 13, fontFamily: theme.tokens.type.mono),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: theme.tokens.space.md, vertical: theme.tokens.space.sm),
         // Nothing here is interactive: these panes replace terminal tabs the
         // user only ever read, and the agent exposes no write path to the pty.
         readOnly: true,

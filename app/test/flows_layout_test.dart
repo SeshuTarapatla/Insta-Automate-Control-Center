@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:ia_control_center/core/config_models.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/features/flows/flow_card.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
 import 'package:ia_control_center/features/settings/config_controller.dart';
+import 'package:ia_control_center/ui/icons.dart';
+
+// `AppIcon` resolves through Phosphor, not Material `Icons.*` — see
+// `notification_center_layout_test.dart`'s identical note on why
+// `PhosphorIconsStyle.regular` is the right weight for a bare `ThemeData()`.
+const _iconWeight = PhosphorIconsStyle.regular;
 
 /// FlowCard is a fixed 360 px width regardless of window size (unlike the
 /// Services detail pane, which is why services_layout_test.dart sweeps
@@ -148,7 +155,7 @@ void main() {
       find.byTooltip('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.byIcon(AppIcons.info(_iconWeight)), findsOneWidget);
   });
 
   testWidgets('FlowCard tooltip names the instant path for ingest, not just its poll fallback', (

@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/app_snack_bar.dart';
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/layout.dart';
 import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import 'service_status_kind.dart';
 import 'service_terminal.dart';
 import 'services_controller.dart';
@@ -148,6 +153,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
 
     final status = widget.status;
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
 
     // At the 1024 px minimum window this pane is ~550 wide, where the stat
     // chips wrap onto four rows and every card's text wraps with them — the
@@ -162,7 +168,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: (constraints.maxHeight - _minTerminalHeight - 16).clamp(
+              maxHeight: (constraints.maxHeight - _minTerminalHeight - tokens.space.lg).clamp(
                 0.0,
                 double.infinity,
               ),
@@ -172,16 +178,16 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _header(theme, status),
-                  const SizedBox(height: 16),
+                  SizedBox(height: tokens.space.lg),
                   _stats(theme, status),
-                  const SizedBox(height: 12),
+                  SizedBox(height: tokens.space.md),
                   _switches(theme, status),
-                  if (status.hasTest) ...[const SizedBox(height: 12), _testPanel(theme, status)],
+                  if (status.hasTest) ...[SizedBox(height: tokens.space.md), _testPanel(theme, status)],
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: tokens.space.lg),
           Expanded(child: ServiceTerminal(key: ValueKey(status.name), status: status)),
         ],
       ),
@@ -191,7 +197,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
   // ---------------------------------------------------------------- header
 
   Widget _header(ThemeData theme, ServiceStatus status) {
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,7 +209,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
               Row(
                 children: [
                   StatusDot(kind: status.state.statusKind, pulsing: status.state.isTransient, size: 12),
-                  const SizedBox(width: 10),
+                  SizedBox(width: tokens.space.sm),
                   // Flexible, not fixed: at the 1024 px minimum window the
                   // action buttons leave this row little to work with, and the
                   // name is the part that can afford to ellipsize.
@@ -215,7 +221,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: tokens.space.sm),
                   Text(
                     status.state.label.toUpperCase(),
                     style: theme.textTheme.labelSmall?.copyWith(
@@ -225,15 +231,15 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: tokens.space.xs),
               Text(
                 status.description,
-                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(color: tokens.content.secondary),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: tokens.space.lg),
         // A Row lays its non-flexible children out first, against the full
         // width — without a cap the button Wrap could take the lot and leave
         // the name nothing to render into.
@@ -251,25 +257,25 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
         if (status.canTakeover)
           FilledButton.icon(
             onPressed: busy ? null : _takeover,
-            icon: _icon('takeover', Icons.swap_horiz),
+            icon: _icon('takeover', AppIcons.swap),
             label: const Text('Take over'),
           )
         else if (status.isRunning)
           OutlinedButton.icon(
             onPressed: busy ? null : _restart,
-            icon: _icon('restart', Icons.refresh),
+            icon: _icon('restart', AppIcons.refresh),
             label: const Text('Restart'),
           )
         else
           FilledButton.icon(
             onPressed: busy ? null : _start,
-            icon: _icon('start', Icons.play_arrow),
+            icon: _icon('start', AppIcons.play),
             label: const Text('Start'),
           ),
         if (status.canStop)
           OutlinedButton.icon(
             onPressed: busy ? null : _stop,
-            icon: _icon('stop', Icons.stop),
+            icon: _icon('stop', AppIcons.stop),
             label: const Text('Stop'),
           ),
         if (status.hasTest)
@@ -277,25 +283,26 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
             // The test needs something to talk to; an external process still
             // answers on the port, so it is testable without being ours.
             onPressed: busy || !status.isRunning ? null : _test,
-            icon: _icon('test', Icons.biotech_outlined),
+            icon: _icon('test', AppIcons.science),
             label: const Text('Test'),
           ),
       ],
     );
   }
 
-  Widget _icon(String action, IconData icon) => _busy == action
+  Widget _icon(String action, PhosphorIconData Function(PhosphorIconsStyle) glyph) => _busy == action
       ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-      : Icon(icon, size: 18);
+      : AppIcon(glyph, size: IconSize.sm);
 
   // ----------------------------------------------------------------- stats
 
   Widget _stats(ThemeData theme, ServiceStatus status) {
     final probe = status.probe;
+    final tokens = theme.tokens;
 
     return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+      spacing: tokens.space.sm,
+      runSpacing: tokens.space.sm,
       children: [
         _Stat(
           label: 'Uptime',
@@ -304,7 +311,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
         _Stat(
           label: 'Restarts',
           value: '${status.restartCount}',
-          tone: status.restartCount > 0 ? theme.tokens.status.warn.fg : null,
+          tone: status.restartCount > 0 ? tokens.status.warn.fg : null,
         ),
         _Stat(label: 'PID', value: status.pid?.toString() ?? '—'),
         _Stat(label: 'Port', value: '${status.port}'),
@@ -313,7 +320,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
           value: probe == null ? '—' : '${probe.latencyMs.round()} ms',
           tone: probe == null
               ? null
-              : (probe.ok ? theme.tokens.status.good.fg : theme.colorScheme.error),
+              : (probe.ok ? tokens.status.good.fg : theme.colorScheme.error),
           detail: probe?.detail,
         ),
         if (status.exitCode != null)
@@ -357,7 +364,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
             onChanged: _busy != null ? null : _setSelfHeal,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: theme.tokens.space.md),
         Expanded(
           child: _SwitchCard(
             title: 'Start at logon',
@@ -375,53 +382,46 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
   // ------------------------------------------------------------------ test
 
   Widget _testPanel(ThemeData theme, ServiceStatus status) {
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final test = status.lastTest;
     final tone = test == null
-        ? scheme.onSurfaceVariant
-        : (test.ok ? theme.tokens.status.good.fg : scheme.error);
+        ? tokens.content.secondary
+        : (test.ok ? tokens.status.good.fg : theme.colorScheme.error);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                test == null
-                    ? Icons.science_outlined
-                    : (test.ok ? Icons.check_circle_outline : Icons.error_outline),
-                size: 16,
-                color: tone,
-              ),
-              const SizedBox(width: 8),
-              Text('Functional test', style: theme.textTheme.labelLarge),
-              const Spacer(),
-              if (test != null)
-                Text(
-                  '${test.durationMs.round()} ms',
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                AppIcon(
+                  test == null
+                      ? AppIcons.science
+                      : (test.ok ? AppIcons.success : AppIcons.error),
+                  size: IconSize.sm,
+                  color: tone,
                 ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            test?.summary ??
-                'Not run yet. Unlike the probe, this does real work — a shell command, an '
-                    'inference, a scrcpy round trip — and reports what it measured.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: test == null ? scheme.onSurfaceVariant : null,
+                SizedBox(width: tokens.space.xs),
+                Text('Functional test', style: theme.textTheme.labelLarge),
+                const Spacer(),
+                if (test != null) NumericText('${test.durationMs.round()} ms', role: TextRole.caption, color: tokens.content.secondary),
+              ],
             ),
-          ),
-          if (test != null && test.metrics.isNotEmpty) ..._metrics(theme, test),
-        ],
+            SizedBox(height: tokens.space.xs),
+            Text(
+              test?.summary ??
+                  'Not run yet. Unlike the probe, this does real work — a shell command, an '
+                      'inference, a scrcpy round trip — and reports what it measured.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: test == null ? tokens.content.secondary : null,
+              ),
+            ),
+            if (test != null && test.metrics.isNotEmpty) ..._metrics(theme, test),
+          ],
+        ),
       ),
     );
   }
@@ -440,13 +440,13 @@ List<Widget> _metrics(ThemeData theme, TestOutcome test) {
 
   return [
     if (short.isNotEmpty) ...[
-      const SizedBox(height: 10),
+      const Gap.sm(),
       // Wrap hands its children unbounded width, so even a chip that is meant
       // to be short is told the line width it has to fit inside.
       LayoutBuilder(
         builder: (context, constraints) => Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: theme.tokens.space.sm,
+          runSpacing: theme.tokens.space.sm,
           children: [
             for (final entry in short)
               _MetricChip(
@@ -459,7 +459,7 @@ List<Widget> _metrics(ThemeData theme, TestOutcome test) {
       ),
     ],
     for (final entry in long) ...[
-      const SizedBox(height: 8),
+      const Gap.sm(),
       _MetricLine(label: entry.key.replaceAll('_', ' '), value: '${entry.value}'),
     ],
   ];
@@ -474,32 +474,19 @@ class _MetricLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
     return Tooltip(
       message: value,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
+      child: AppPanel(
+        level: SurfaceLevel.raised,
+        padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.xs),
+        borderRadius: tokens.geometry.radiusSm,
         child: Row(
           children: [
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(fontFamily: theme.tokens.type.mono),
-              ),
-            ),
+            Text(label, style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary)),
+            SizedBox(width: tokens.space.xs),
+            Expanded(child: MonoText(value, role: TextRole.label)),
           ],
         ),
       ),
@@ -518,34 +505,21 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
-    final box = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
+    final box = AppPanel(
+      level: SurfaceLevel.raised,
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              letterSpacing: 0.8,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary, letterSpacing: 0.8),
           ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: tone,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
+          SizedBox(height: tokens.space.xs / 2),
+          NumericText(value, role: TextRole.cardTitle, color: tone),
         ],
       ),
     );
@@ -572,15 +546,11 @@ class _SwitchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.sm, tokens.space.sm, tokens.space.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -589,18 +559,15 @@ class _SwitchCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: theme.textTheme.labelLarge),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                ),
+                SizedBox(height: tokens.space.xs / 1.3),
+                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
               ],
             ),
           ),
           busy
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox.square(
+              ? Padding(
+                  padding: EdgeInsets.all(tokens.space.md),
+                  child: const SizedBox.square(
                     dimension: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
@@ -625,36 +592,20 @@ class _MetricChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
     final chip = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
+      child: AppPanel(
+        level: SurfaceLevel.raised,
+        padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.xs),
+        borderRadius: tokens.geometry.radiusSm,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontFamily: theme.tokens.type.mono,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
+            Text(label, style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary)),
+            SizedBox(width: tokens.space.xs),
+            Flexible(child: NumericText(value, role: TextRole.label)),
           ],
         ),
       ),

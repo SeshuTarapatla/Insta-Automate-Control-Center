@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/flowrun_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/text.dart';
 import 'live_controller.dart';
 
 const _levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
@@ -60,22 +63,23 @@ class _LogConsoleState extends ConsumerState<LogConsole> {
     final theme = Theme.of(context);
     final async = ref.watch(liveControllerProvider);
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Could not load logs: $error')),
+    return async.stateView(
+      describeError: (error) => 'Could not load logs: $error',
+      onRetry: () => ref.invalidate(liveControllerProvider),
       data: (state) {
         final entries = state.logs.where((e) => _enabledLevels.contains(e.level)).toList();
         final errors = state.logs.where((e) => e.level == 'ERROR' || e.level == 'CRITICAL').toList();
         _maybeFollow(entries.length);
+        final tokens = theme.tokens;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              padding: EdgeInsets.fromLTRB(tokens.space.sm, tokens.space.sm, tokens.space.sm, tokens.space.xs),
               child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: tokens.space.xs,
+                runSpacing: tokens.space.xs,
                 children: [
                   for (final level in _levels)
                     FilterChip(
@@ -98,12 +102,12 @@ class _LogConsoleState extends ConsumerState<LogConsole> {
                         state.runId == null
                             ? 'No run to follow yet for ${state.flow} — waiting for it to trigger.'
                             : 'No log lines yet for this run.',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                       ),
                     )
                   : ListView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.xs),
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
@@ -114,7 +118,7 @@ class _LogConsoleState extends ConsumerState<LogConsole> {
                           children: [
                             if (showTaskLabel)
                               Padding(
-                                padding: const EdgeInsets.only(top: 8, bottom: 2),
+                                padding: EdgeInsets.only(top: tokens.space.xs, bottom: tokens.space.xs / 2),
                                 child: Text(
                                   entry.task!,
                                   style: theme.textTheme.labelSmall?.copyWith(
@@ -131,13 +135,13 @@ class _LogConsoleState extends ConsumerState<LogConsole> {
             ),
             if (!_atBottom)
               Padding(
-                padding: const EdgeInsets.all(8),
+                padding: EdgeInsets.all(tokens.space.xs),
                 child: OutlinedButton.icon(
                   onPressed: () {
                     setState(() => _atBottom = true);
                     if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
                   },
-                  icon: const Icon(Icons.arrow_downward, size: 16),
+                  icon: AppIcon(AppIcons.arrowDown, size: IconSize.sm),
                   label: const Text('Jump to latest'),
                 ),
               ),
@@ -169,11 +173,12 @@ class _LogLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final scheduler = entry.source == 'scheduler';
     final levelColor = _levelColor(theme, entry.level);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: EdgeInsets.only(bottom: tokens.space.xs),
       // Scheduler-merged lines (D30 — the scheduler pod's own trigger/gate
       // log, interleaved into the flow's ring) used to get a left border and
       // indent to mark them apart from the flow's own lines, which read as
@@ -185,16 +190,13 @@ class _LogLine extends StatelessWidget {
         children: [
           SizedBox(
             width: 58,
-            child: Text(
-              _formatTime(entry.ts),
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            child: NumericText(_formatTime(entry.ts), role: TextRole.caption, color: tokens.content.secondary),
           ),
           Container(
             width: 66,
-            margin: const EdgeInsets.only(right: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: levelColor.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(4)),
+            margin: EdgeInsets.only(right: tokens.space.sm),
+            padding: EdgeInsets.symmetric(horizontal: tokens.space.xs, vertical: tokens.space.xs / 2),
+            decoration: BoxDecoration(color: levelColor.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(tokens.geometry.radiusSm)),
             child: Text(
               entry.level,
               textAlign: TextAlign.center,
@@ -232,43 +234,38 @@ class _StickyErrorsState extends State<_StickyErrors> {
   @override
   Widget build(BuildContext context) {
     final scheme = widget.theme.colorScheme;
+    final tokens = widget.theme.tokens;
     return Material(
       color: scheme.errorContainer,
       child: InkWell(
         onTap: () => setState(() => _expanded = !_expanded),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.xs),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.error_outline, size: 16, color: scheme.onErrorContainer),
-                  const SizedBox(width: 6),
+                  AppIcon(AppIcons.error, size: IconSize.sm, color: scheme.onErrorContainer),
+                  SizedBox(width: tokens.space.xs),
                   Text(
                     '${widget.errors.length} error${widget.errors.length == 1 ? '' : 's'} this run',
                     style: widget.theme.textTheme.labelMedium?.copyWith(color: scheme.onErrorContainer),
                   ),
                   const Spacer(),
-                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: scheme.onErrorContainer),
+                  AppIcon(_expanded ? AppIcons.chevronUp : AppIcons.chevronDown, size: IconSize.sm, color: scheme.onErrorContainer),
                 ],
               ),
               if (_expanded)
                 Padding(
-                  padding: const EdgeInsets.only(top: 6),
+                  padding: EdgeInsets.only(top: tokens.space.xs),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (final error in widget.errors)
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Text(
-                            error.message,
-                            style: widget.theme.textTheme.bodySmall?.copyWith(
-                              fontFamily: widget.theme.tokens.type.mono,
-                              color: scheme.onErrorContainer,
-                            ),
-                          ),
+                          padding: EdgeInsets.symmetric(vertical: tokens.space.xs / 2),
+                          child: MonoText(error.message, role: TextRole.caption, color: scheme.onErrorContainer, ellipsis: false),
                         ),
                     ],
                   ),

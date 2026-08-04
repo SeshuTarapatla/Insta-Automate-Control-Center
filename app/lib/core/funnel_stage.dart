@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'theme/tokens.dart';
+
 /// One bar: a fixed-height track plus a fill proportional to `count/maxCount`
 /// — the same hue throughout (one metric across stages, not several series,
 /// so there is nothing for color to distinguish), magnitude carried entirely
@@ -19,41 +21,46 @@ class FunnelStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final fraction = maxCount == 0 ? 0.0 : (count / maxCount).clamp(0.0, 1.0);
     final pct = maxCount == 0 ? 0.0 : (count / maxCount * 100);
+    // NumericText (`ui/text.dart`) can't be reached from here without
+    // inverting the `core/` → `ui/` layering (D100's precedent) — tabular
+    // figures on this count are a small enough loss to accept rather than
+    // move this widget out of `core/`.
+    final countStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFamily: tokens.type.mono);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: EdgeInsets.symmetric(vertical: tokens.space.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-              Text('$count', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 6),
+              Text('$count', style: countStyle),
+              SizedBox(width: tokens.space.xs),
               Text(
                 '(${pct.toStringAsFixed(0)}%)',
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: tokens.space.xs),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(tokens.geometry.radiusSm),
             child: LayoutBuilder(
               builder: (context, constraints) => Stack(
                 children: [
-                  Container(height: 10, width: constraints.maxWidth, color: scheme.surfaceContainerHighest),
-                  Container(height: 10, width: constraints.maxWidth * fraction, color: scheme.primary),
+                  Container(height: 10, width: constraints.maxWidth, color: tokens.surface.raised),
+                  Container(height: 10, width: constraints.maxWidth * fraction, color: tokens.accent.primary),
                 ],
               ),
             ),
           ),
           if (caption != null) ...[
-            const SizedBox(height: 3),
-            Text(caption!, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            SizedBox(height: tokens.space.xs * 0.75),
+            Text(caption!, style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary)),
           ],
         ],
       ),

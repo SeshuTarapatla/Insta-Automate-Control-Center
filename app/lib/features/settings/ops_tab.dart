@@ -11,6 +11,10 @@ import '../../core/ops_confirm.dart';
 import '../../core/ops_models.dart';
 import '../../core/relative_time.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/layout.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import '../services/services_controller.dart' show describeAgentError;
 import 'ops_controller.dart';
 
@@ -65,19 +69,21 @@ class _OpsTabState extends ConsumerState<OpsTab> {
     // and can't re-fire on an unrelated rebuild the way D69's bug did.
     if (_selectedJobId == null && jobs.isNotEmpty) _selectedJobId = jobs.first.id;
 
+    final tokens = theme.tokens;
+
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(tokens.space.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Ops jobs', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
+          SizedBox(height: tokens.space.xs),
           Text(
             'Build, deploy, backup and restart actions run as real commands against the live '
             'cluster, with output streamed below.',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: tokens.space.lg),
           // Capped and independently scrollable rather than left to size
           // itself: the real registry is ten jobs, several rows of cards at
           // this tab's minimum width — letting the `Wrap` claim whatever
@@ -88,15 +94,12 @@ class _OpsTabState extends ConsumerState<OpsTab> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 190),
             child: SingleChildScrollView(
-              child: specsAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (error, _) => Text('Failed to load job list: $error'),
+              child: specsAsync.stateView(
+                describeError: (error) => 'Failed to load job list: $error',
+                onRetry: () => ref.invalidate(opsSpecsProvider),
                 data: (specs) => Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: tokens.space.sm,
+                  runSpacing: tokens.space.sm,
                   children: [
                     for (final spec in specs)
                       _JobButton(spec: spec, busy: runningId != null, onPressed: () => _run(spec)),
@@ -105,13 +108,13 @@ class _OpsTabState extends ConsumerState<OpsTab> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: tokens.space.xl),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: _OpsLogPanel(jobId: _selectedJobId)),
-                const SizedBox(width: 16),
+                SizedBox(width: tokens.space.lg),
                 SizedBox(
                   width: 280,
                   child: _JobHistory(
@@ -141,42 +144,36 @@ class _JobButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
     return SizedBox(
       width: 260,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: busy ? null : onPressed,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: AppCard(
+        onTap: busy ? null : onPressed,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      spec.confirm ? Icons.warning_amber_rounded : Icons.play_arrow_rounded,
-                      size: 18,
-                      color: spec.confirm ? scheme.error : scheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(spec.label, style: theme.textTheme.titleSmall, overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
+                AppIcon(
+                  spec.confirm ? AppIcons.warning : AppIcons.trigger,
+                  size: IconSize.sm,
+                  color: spec.confirm ? scheme.error : scheme.primary,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  spec.description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                SizedBox(width: tokens.space.xs),
+                Expanded(
+                  child: Text(spec.label, style: theme.textTheme.titleSmall, overflow: TextOverflow.ellipsis),
                 ),
               ],
             ),
-          ),
+            SizedBox(height: tokens.space.xs),
+            Text(
+              spec.description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
+            ),
+          ],
         ),
       ),
     );
@@ -194,37 +191,24 @@ class _JobHistory extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-            child: Text('History', style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant)),
+            padding: EdgeInsets.fromLTRB(tokens.space.md, tokens.space.sm, tokens.space.md, tokens.space.xs),
+            child: Text('History', style: theme.textTheme.labelLarge?.copyWith(color: tokens.content.secondary)),
           ),
-          const Divider(height: 1),
+          const AppDivider(),
           Expanded(
             child: loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const LoadingView()
                 : jobs.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No jobs run yet.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                      ),
-                    ),
-                  )
+                ? const EmptyView(icon: Icons.history_toggle_off, title: 'No jobs run yet.')
                 : ListView.builder(
                     itemCount: jobs.length,
                     itemBuilder: (context, index) {
@@ -250,11 +234,12 @@ class _JobHistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final (icon, color) = switch (job.status) {
-      OpsJobStatus.running => (Icons.sync, scheme.primary),
-      OpsJobStatus.succeeded => (Icons.check_circle_outline, theme.tokens.status.good.fg),
-      OpsJobStatus.failed => (Icons.error_outline, scheme.error),
-      OpsJobStatus.interrupted => (Icons.link_off, scheme.onSurfaceVariant),
+    final tokens = theme.tokens;
+    final (glyph, color) = switch (job.status) {
+      OpsJobStatus.running => (AppIcons.sync, scheme.primary),
+      OpsJobStatus.succeeded => (AppIcons.success, tokens.status.good.fg),
+      OpsJobStatus.failed => (AppIcons.error, scheme.error),
+      OpsJobStatus.interrupted => (AppIcons.linkOff, tokens.content.secondary),
     };
 
     return Material(
@@ -262,11 +247,11 @@ class _JobHistoryTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: EdgeInsets.symmetric(horizontal: tokens.space.md, vertical: tokens.space.sm),
           child: Row(
             children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 10),
+              AppIcon(glyph, size: IconSize.sm, color: color),
+              SizedBox(width: tokens.space.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +259,7 @@ class _JobHistoryTile extends StatelessWidget {
                     Text(job.label, style: theme.textTheme.bodyMedium, overflow: TextOverflow.ellipsis),
                     Text(
                       relativeTime(job.startedAt),
-                      style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                      style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary),
                     ),
                   ],
                 ),
@@ -409,19 +394,14 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
     });
 
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return AppPanel(
+      level: SurfaceLevel.raised,
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           _header(theme),
-          const Divider(height: 1),
+          const AppDivider(),
           Expanded(child: _body()),
         ],
       ),
@@ -429,22 +409,22 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
   }
 
   Widget _header(ThemeData theme) {
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     return Container(
-      height: 36,
-      padding: const EdgeInsets.only(left: 12, right: 6),
+      height: tokens.space.rowHeight,
+      padding: EdgeInsets.only(left: tokens.space.md, right: tokens.space.xs),
       child: Row(
         children: [
-          Icon(Icons.terminal, size: 14, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text('Output', style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+          AppIcon(AppIcons.terminal, size: IconSize.sm, color: tokens.content.secondary),
+          SizedBox(width: tokens.space.xs),
+          Text('Output', style: theme.textTheme.labelSmall?.copyWith(color: tokens.content.secondary)),
           const Spacer(),
           IconButton(
-            iconSize: 16,
+            iconSize: tokens.space.iconSm,
             visualDensity: VisualDensity.compact,
             tooltip: 'Copy log output',
             onPressed: _entries.isEmpty ? null : _copyAll,
-            icon: const Icon(Icons.content_copy_outlined),
+            icon: AppIcon(AppIcons.copy, size: IconSize.sm),
           ),
         ],
       ),
@@ -478,7 +458,7 @@ class _OpsLogPanelState extends ConsumerState<_OpsLogPanel> {
 
     return ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(Theme.of(context).tokens.space.md),
       itemCount: _entries.length,
       itemBuilder: (context, index) => _OpsLogLine(entry: _entries[index]),
     );
@@ -499,19 +479,18 @@ class _OpsLogLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final isStep = entry.kind == 'step';
     final isError = entry.kind == 'error';
-    final color = isError ? scheme.error : (isStep ? scheme.primary : scheme.onSurface);
+    final color = isError ? scheme.error : (isStep ? scheme.primary : null);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
+      padding: EdgeInsets.only(bottom: tokens.space.xs),
+      child: MonoText(
         entry.text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontFamily: theme.tokens.type.mono,
-          color: color,
-          fontWeight: isStep ? FontWeight.w600 : FontWeight.normal,
-        ),
+        role: TextRole.caption,
+        color: color,
+        ellipsis: false,
       ),
     );
   }

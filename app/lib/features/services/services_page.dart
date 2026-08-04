@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/feedback.dart';
 import '../../core/service_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/page.dart';
+import '../../ui/status.dart';
 import 'dependencies_tab.dart';
 import 'service_detail.dart';
 import 'service_tile.dart';
@@ -18,26 +21,10 @@ class ServicesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
       length: 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
-            child: TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: [
-                Tab(text: 'Supervised'),
-                Tab(text: 'Dependencies'),
-              ],
-            ),
-          ),
-          const Expanded(
-            child: TabBarView(
-              children: [_SupervisedTab(), DependenciesTab()],
-            ),
-          ),
-        ],
+      child: AppPage(
+        title: 'Services',
+        tabs: const [AppTab(label: 'Supervised'), AppTab(label: 'Dependencies')],
+        body: const TabBarView(children: [_SupervisedTab(), DependenciesTab()]),
       ),
     );
   }
@@ -64,20 +51,18 @@ class _SupervisedTab extends ConsumerWidget {
           (service) => service.name == selectedName,
           orElse: () => services.first,
         );
+        final tokens = theme.tokens;
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 300,
-                child: _ServiceList(services: services, selected: selected, theme: theme),
-              ),
-              const SizedBox(width: 20),
-              Expanded(child: ServiceDetail(status: selected)),
-            ],
-          ),
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 300,
+              child: _ServiceList(services: services, selected: selected, theme: theme),
+            ),
+            SizedBox(width: tokens.space.xl),
+            Expanded(child: ServiceDetail(status: selected)),
+          ],
         );
       },
     );
@@ -93,7 +78,7 @@ class _ServiceList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     final healthy = services.where((s) => s.state == ServiceState.running).length;
     final external = services.where((s) => s.canTakeover).length;
 
@@ -103,14 +88,15 @@ class _ServiceList extends ConsumerWidget {
         Row(
           children: [
             Text('Core services', style: theme.textTheme.titleMedium),
-            const SizedBox(width: 10),
-            Chip(
-              label: Text('$healthy of ${services.length} up'),
-              visualDensity: VisualDensity.compact,
+            SizedBox(width: tokens.space.sm),
+            StatusChip(
+              kind: healthy == services.length ? StatusKind.good : StatusKind.neutral,
+              label: '$healthy of ${services.length} up',
+              dense: true,
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: tokens.space.xs),
         Text(
           external > 0
               // The honest description of today's state: the startup shortcut
@@ -119,13 +105,13 @@ class _ServiceList extends ConsumerWidget {
               ? '$external still running outside the agent — take one over to have the agent '
                     'supervise it and stream its terminal here.'
               : 'Started, watched and restarted by the agent. Their output is streamed below.',
-          style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: tokens.space.md),
         Expanded(
           child: ListView.separated(
             itemCount: services.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => SizedBox(height: tokens.space.sm),
             itemBuilder: (context, index) {
               final service = services[index];
               return ServiceTile(

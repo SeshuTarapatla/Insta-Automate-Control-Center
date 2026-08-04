@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/app_snack_bar.dart';
 import '../../../core/file_opener.dart';
 import '../../../core/instagram_url.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../ui/status.dart';
 
 /// Which [StatusKind] a verdict string reads as — `OutcomeBadge` itself
@@ -72,13 +73,14 @@ class SurfaceEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(tokens.space.xxl),
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodyMedium?.copyWith(color: tokens.content.secondary),
         ),
       ),
     );

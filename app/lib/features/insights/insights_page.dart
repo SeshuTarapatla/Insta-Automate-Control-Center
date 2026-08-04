@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/feedback.dart';
 import '../../core/insights_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/icons.dart';
+import '../../ui/page.dart';
+import '../../ui/status.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import '../library/entity_yield_dialog.dart';
 import 'burndown_chart.dart';
 import 'funnel_chart.dart';
@@ -21,27 +27,14 @@ class InsightsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
-            child: TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: [
-                Tab(text: 'Funnel'),
-                Tab(text: 'Ranking'),
-                Tab(text: 'Daily limits'),
-              ],
-            ),
-          ),
-          const Expanded(
-            child: TabBarView(
-              children: [FunnelTab(), RankingTab(), BurndownTab()],
-            ),
-          ),
+      child: AppPage(
+        title: 'Insights',
+        tabs: const [
+          AppTab(label: 'Funnel'),
+          AppTab(label: 'Ranking'),
+          AppTab(label: 'Daily limits'),
         ],
+        body: const TabBarView(children: [FunnelTab(), RankingTab(), BurndownTab()]),
       ),
     );
   }
@@ -81,8 +74,9 @@ class FunnelTab extends ConsumerWidget {
           ),
         ];
 
+        final tokens = theme.tokens;
         return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          padding: EdgeInsets.all(tokens.space.lg),
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 900),
@@ -92,20 +86,17 @@ class FunnelTab extends ConsumerWidget {
                   Row(
                     children: [
                       Text('Whole library', style: theme.textTheme.titleMedium),
-                      const SizedBox(width: 10),
-                      Chip(
-                        label: Text('${summary.entities} entities'),
-                        visualDensity: VisualDensity.compact,
-                      ),
+                      SizedBox(width: tokens.space.sm),
+                      StatusChip(kind: StatusKind.neutral, label: '${summary.entities} entities', dense: true),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: tokens.space.xs),
                   Text(
                     'Every entity with any scan or scrape activity. Each stage shows its share of the '
                     'whole library and, more usefully, its real conversion from the stage right before it.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: tokens.space.xl),
                   FunnelChart(stages: stages),
                 ],
               ),
@@ -163,8 +154,9 @@ class RankingTabState extends ConsumerState<RankingTab> {
 
   Widget _headerRow(ThemeData theme) {
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      padding: EdgeInsets.symmetric(vertical: tokens.space.sm, horizontal: tokens.space.md),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
       child: Row(
         children: [
@@ -215,10 +207,11 @@ class RankingTabState extends ConsumerState<RankingTab> {
 
   Widget _dataRow(BuildContext context, ThemeData theme, EntityRanking row) {
     final scheme = theme.colorScheme;
+    final tokens = theme.tokens;
     return InkWell(
       onTap: () => showEntityYieldDialog(context, row.root),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        padding: EdgeInsets.symmetric(vertical: tokens.space.md, horizontal: tokens.space.md),
         decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
         ),
@@ -227,9 +220,9 @@ class RankingTabState extends ConsumerState<RankingTab> {
             Expanded(child: Text(row.root, overflow: TextOverflow.ellipsis, maxLines: 1)),
             SizedBox(width: _typeWidth, child: Text(row.type, style: theme.textTheme.bodyMedium)),
             SizedBox(width: _accessWidth, child: Text(row.access, style: theme.textTheme.bodyMedium)),
-            SizedBox(width: _metricWidth, child: Text('${row.scanned}', textAlign: TextAlign.right)),
-            SizedBox(width: _metricWidth, child: Text('${row.private}', textAlign: TextAlign.right)),
-            SizedBox(width: _metricWidth, child: Text('${row.female}', textAlign: TextAlign.right)),
+            SizedBox(width: _metricWidth, child: NumericText(row.scanned, textAlign: TextAlign.right)),
+            SizedBox(width: _metricWidth, child: NumericText(row.private, textAlign: TextAlign.right)),
+            SizedBox(width: _metricWidth, child: NumericText(row.female, textAlign: TextAlign.right)),
           ],
         ),
       ),
@@ -263,31 +256,28 @@ class RankingTabState extends ConsumerState<RankingTab> {
           );
         }
 
+        final tokens = theme.tokens;
         final searchRow = Row(
           children: [
             SizedBox(
               width: 280,
               child: TextField(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
+                  prefixIcon: AppIcon(AppIcons.search, size: IconSize.sm),
                   hintText: 'Filter by root…',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
                 onChanged: (value) => setState(() => _query = value),
               ),
             ),
-            const SizedBox(width: 12),
-            Text(
-              '${sorted.length} of ${rows.length}',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+            SizedBox(width: tokens.space.md),
+            NumericText('${sorted.length} of ${rows.length}', role: TextRole.caption, color: tokens.content.secondary),
           ],
         );
 
-        final tableCard = Card(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
+        final tableCard = AppPanel(
+          padding: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -304,8 +294,8 @@ class RankingTabState extends ConsumerState<RankingTab> {
         // window can produce (D77): Entity absorbs whatever space is left
         // over, the rest stay fixed.
         return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-          children: [searchRow, const SizedBox(height: 12), tableCard],
+          padding: EdgeInsets.all(tokens.space.lg),
+          children: [searchRow, SizedBox(height: tokens.space.md), tableCard],
         );
       },
     );
@@ -334,8 +324,8 @@ class _HeaderCell extends StatelessWidget {
         children: [
           Text(label, style: theme.textTheme.titleSmall),
           if (active) ...[
-            const SizedBox(width: 2),
-            Icon(ascending ? Icons.arrow_upward : Icons.arrow_downward, size: 14),
+            SizedBox(width: theme.tokens.space.xs / 2),
+            AppIcon(ascending ? AppIcons.arrowUp : AppIcons.arrowDown, size: IconSize.sm),
           ],
         ],
       ),
@@ -354,11 +344,12 @@ class BurndownTab extends ConsumerWidget {
     final selectedDays = ref.watch(burndownDaysProvider);
     final async = ref.watch(burndownProvider);
 
+    final tokens = theme.tokens;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: EdgeInsets.all(tokens.space.lg),
       children: [
         Wrap(
-          spacing: 8,
+          spacing: tokens.space.xs,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text('Last', style: theme.textTheme.bodyMedium),
@@ -370,13 +361,13 @@ class BurndownTab extends ConsumerWidget {
               ),
           ],
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: tokens.space.lg),
         async.stateView(
           describeError: describeInsightsError,
           onRetry: () => ref.invalidate(burndownProvider),
           data: (burndown) => Wrap(
-            spacing: 16,
-            runSpacing: 16,
+            spacing: tokens.space.lg,
+            runSpacing: tokens.space.lg,
             children: [
               _burndownCard(context, 'Scan — profiles', burndown.scan, 'profiles', burndown.limits['profiles']),
               _burndownCard(context, 'Scan — reels', burndown.scan, 'reels', burndown.limits['reels']),

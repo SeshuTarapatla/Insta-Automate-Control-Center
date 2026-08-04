@@ -5,6 +5,10 @@ import '../../ui/feedback.dart';
 import '../../core/insights_models.dart';
 import '../../core/nav_state.dart';
 import '../../core/scheduler_models.dart';
+import '../../core/theme/tokens.dart';
+import '../../ui/layout.dart';
+import '../../ui/page.dart';
+import '../../ui/surfaces.dart';
 import '../flows/flow_card.dart';
 import '../flows/flows_controller.dart';
 import '../insights/burndown_chart.dart';
@@ -26,21 +30,25 @@ class OverviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: const [
-        _SectionHeader(title: 'Flows', navIndex: flowsIndex),
-        SizedBox(height: 12),
-        _FlowsSection(),
-        SizedBox(height: 28),
-        _TwoColumn(left: _ServicesSection(), right: _DependenciesSection()),
-        SizedBox(height: 28),
-        _SectionHeader(title: 'Daily limits', navIndex: insightsIndex),
-        SizedBox(height: 12),
-        _BurndownSection(),
-        SizedBox(height: 28),
-        _TwoColumn(flexLeft: 2, left: _NotificationsSection(), right: _DeviceSection()),
-      ],
+    return AppPage(
+      title: 'Overview',
+      scrollable: true,
+      body: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: 'Flows', navIndex: flowsIndex),
+          Gap.sm(),
+          _FlowsSection(),
+          Gap.xl(),
+          _TwoColumn(left: _ServicesSection(), right: _DependenciesSection()),
+          Gap.xl(),
+          SectionHeader(title: 'Daily limits', navIndex: insightsIndex),
+          Gap.sm(),
+          _BurndownSection(),
+          Gap.xl(),
+          _TwoColumn(flexLeft: 2, left: _NotificationsSection(), right: _DeviceSection()),
+        ],
+      ),
     );
   }
 }
@@ -58,36 +66,9 @@ class _TwoColumn extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(flex: flexLeft, child: left),
-        const SizedBox(width: 20),
+        SizedBox(width: Theme.of(context).tokens.space.lg),
         Expanded(child: right),
       ],
-    );
-  }
-}
-
-class _SectionHeader extends ConsumerWidget {
-  const _SectionHeader({required this.title, this.navIndex});
-
-  final String title;
-  final int? navIndex;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final header = Row(
-      children: [
-        Text(title, style: theme.textTheme.titleMedium),
-        if (navIndex != null) ...[
-          const SizedBox(width: 6),
-          Icon(Icons.chevron_right, size: 18, color: theme.colorScheme.onSurfaceVariant),
-        ],
-      ],
-    );
-    if (navIndex == null) return header;
-    return InkWell(
-      onTap: () => ref.read(selectedNavIndexProvider.notifier).select(navIndex!),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: header),
     );
   }
 }
@@ -105,8 +86,8 @@ class _FlowsSection extends ConsumerWidget {
           return const EmptyView(icon: Icons.hourglass_empty, title: 'Waiting for the first heartbeat');
         }
         return Wrap(
-          spacing: 16,
-          runSpacing: 16,
+          spacing: Theme.of(context).tokens.space.lg,
+          runSpacing: Theme.of(context).tokens.space.lg,
           children: [
             for (final flow in flowOrder)
               if (snapshot.flows[flow] != null) FlowCard(state: snapshot.flows[flow]!),
@@ -123,42 +104,39 @@ class _ServicesSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final async = ref.watch(servicesControllerProvider);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionHeader(title: 'Services', navIndex: servicesIndex),
-            const SizedBox(height: 12),
-            async.stateView(
-              describeError: describeAgentError,
-              data: (services) {
-                if (services.isEmpty) {
-                  return Text(
-                    'The agent supervises no services.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  );
-                }
-                return Column(
-                  children: [
-                    for (final service in services)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ServiceTile(
-                          status: service,
-                          selected: false,
-                          onTap: () => ref.read(selectedNavIndexProvider.notifier).select(servicesIndex),
-                        ),
-                      ),
-                  ],
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(title: 'Services', navIndex: servicesIndex),
+          SizedBox(height: tokens.space.md),
+          async.stateView(
+            describeError: describeAgentError,
+            data: (services) {
+              if (services.isEmpty) {
+                return Text(
+                  'The agent supervises no services.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                 );
-              },
-            ),
-          ],
-        ),
+              }
+              return Column(
+                children: [
+                  for (final service in services)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: tokens.space.sm),
+                      child: ServiceTile(
+                        status: service,
+                        selected: false,
+                        onTap: () => ref.read(selectedNavIndexProvider.notifier).select(servicesIndex),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -169,19 +147,16 @@ class _DependenciesSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = Theme.of(context).tokens;
     final async = ref.watch(dependenciesControllerProvider);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionHeader(title: 'Dependencies', navIndex: servicesIndex),
-            const SizedBox(height: 12),
-            async.stateView(describeError: describeAgentError, data: (snapshot) => DependencyStrip(snapshot: snapshot)),
-          ],
-        ),
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(title: 'Dependencies', navIndex: servicesIndex),
+          SizedBox(height: tokens.space.md),
+          async.stateView(describeError: describeAgentError, data: (snapshot) => DependencyStrip(snapshot: snapshot)),
+        ],
       ),
     );
   }
@@ -193,11 +168,12 @@ class _BurndownSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(burndownProvider);
+    final tokens = Theme.of(context).tokens;
     return async.stateView(
       describeError: describeInsightsError,
       data: (burndown) => Wrap(
-        spacing: 16,
-        runSpacing: 16,
+        spacing: tokens.space.lg,
+        runSpacing: tokens.space.lg,
         children: [
           _burndownCard('Scan — profiles', burndown.scan, 'profiles', burndown.limits['profiles']),
           _burndownCard('Scan — reels', burndown.scan, 'reels', burndown.limits['reels']),
@@ -219,18 +195,15 @@ class _NotificationsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Recent notifications', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            const RecentNotificationsCard(),
-          ],
-        ),
+    final tokens = Theme.of(context).tokens;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Recent notifications', style: Theme.of(context).textTheme.titleMedium),
+          SizedBox(height: tokens.space.sm),
+          const RecentNotificationsCard(),
+        ],
       ),
     );
   }
@@ -241,18 +214,15 @@ class _DeviceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Device', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            const DeviceBar(),
-          ],
-        ),
+    final tokens = Theme.of(context).tokens;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Device', style: Theme.of(context).textTheme.titleMedium),
+          SizedBox(height: tokens.space.md),
+          const DeviceBar(),
+        ],
       ),
     );
   }

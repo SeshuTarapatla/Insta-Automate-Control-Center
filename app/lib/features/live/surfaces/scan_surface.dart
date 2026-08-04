@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../ui/text.dart';
 import 'surface_common.dart';
 
 /// entity-scan: a live-growing filmstrip of the followers/following (or
@@ -29,9 +31,10 @@ class _ScanSurfaceState extends State<ScanSurface> {
     }
 
     final counters = (completed ?? items.lastOrNull)?.counters;
+    final tokens = theme.tokens;
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(tokens.space.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -42,7 +45,7 @@ class _ScanSurfaceState extends State<ScanSurface> {
                   width: 90,
                   child: AgentImage(imageKey: started.imageKey, width: 200, aspectRatio: 1080 / 2246),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: tokens.space.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,22 +55,19 @@ class _ScanSurfaceState extends State<ScanSurface> {
                         Text(
                           'list: ${started.extra['list']} '
                           '(f1=${started.extra['f1']}, f2=${started.extra['f2']})',
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
                         ),
                       if (counters != null)
                         Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            'added ${counters['added']} / scanned ${counters['scanned']}',
-                            style: theme.textTheme.bodyMedium,
-                          ),
+                          padding: EdgeInsets.only(top: tokens.space.xs),
+                          child: NumericText('added ${counters['added']} / scanned ${counters['scanned']}', role: TextRole.body),
                         ),
                     ],
                   ),
                 ),
               ],
             ),
-          const SizedBox(height: 16),
+          SizedBox(height: tokens.space.md),
           Expanded(
             child: items.isEmpty
                 ? const SurfaceEmpty(message: 'No rows scanned yet.')
@@ -80,7 +80,7 @@ class _ScanSurfaceState extends State<ScanSurface> {
                 // arrive above them.
                 : ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => SizedBox(height: tokens.space.sm),
                     itemBuilder: (context, index) {
                       final item = items[items.length - 1 - index];
                       return ResultCardActions(
@@ -92,7 +92,7 @@ class _ScanSurfaceState extends State<ScanSurface> {
                             // 1080:198 row crop was cramped and hard to read
                             // at 180px wide next to its caption.
                             AgentImage(imageKey: item.imageKey, width: 400, aspectRatio: 1080 / 198),
-                            const SizedBox(height: 4),
+                            SizedBox(height: tokens.space.xs),
                             Text(
                               '@${item.subject ?? '?'}',
                               maxLines: 1,

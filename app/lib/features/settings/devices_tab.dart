@@ -9,6 +9,10 @@ import '../../core/app_snack_bar.dart';
 import '../../core/pairing_models.dart';
 import '../../core/relative_time.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/icons.dart';
+import '../../ui/surfaces.dart';
+import '../../ui/text.dart';
 import 'devices_controller.dart';
 
 /// CP 6.3 — the desktop half of mobile pairing (ARCHITECTURE §7). Placement
@@ -23,41 +27,31 @@ class DevicesTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final devicesAsync = ref.watch(devicesControllerProvider);
 
+    final tokens = theme.tokens;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(tokens.space.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Pair a phone', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
+          SizedBox(height: tokens.space.xs),
           Text(
             'Scan the QR code from the Insta-Automate mobile app to receive live notifications '
             'on your phone.',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: tokens.space.lg),
           const _PairingCard(),
-          const SizedBox(height: 32),
+          SizedBox(height: tokens.space.xxl),
           Text('Paired devices', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          devicesAsync.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (error, _) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text('Failed to load devices: $error'),
-            ),
-            data: (devices) => devices.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'No devices paired yet.',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  )
-                : Column(children: [for (final d in devices) _DeviceTile(device: d)]),
+          SizedBox(height: tokens.space.sm),
+          devicesAsync.stateView(
+            describeError: (error) => 'Failed to load devices: $error',
+            onRetry: () => ref.invalidate(devicesControllerProvider),
+            emptyWhen: (devices) => devices.isEmpty,
+            emptyView: const EmptyView(icon: Icons.phone_android_outlined, title: 'No devices paired yet'),
+            data: (devices) => Column(children: [for (final d in devices) _DeviceTile(device: d)]),
           ),
         ],
       ),
@@ -154,11 +148,8 @@ class _PairingCardState extends ConsumerState<_PairingCard> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
+    return AppPanel(
+      level: SurfaceLevel.raised,
       child: switch (_phase) {
         _PairingPhase.idle => _IdleContent(onGenerate: _startPairing),
         _PairingPhase.minting => const SizedBox(height: 96, child: Center(child: CircularProgressIndicator())),
@@ -177,17 +168,18 @@ class _IdleContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     return Row(
       children: [
-        Icon(Icons.qr_code_2, size: 40, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 16),
+        AppIcon(AppIcons.pair, size: IconSize.lg, color: tokens.content.secondary),
+        SizedBox(width: tokens.space.lg),
         Expanded(
           child: Text('Generate a QR code to pair a new phone. It expires in 2 minutes.', style: theme.textTheme.bodyMedium),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: tokens.space.lg),
         FilledButton.icon(
           onPressed: onGenerate,
-          icon: const Icon(Icons.qr_code_2, size: 18),
+          icon: AppIcon(AppIcons.pair, size: IconSize.sm),
           label: const Text('Generate QR code'),
         ),
       ],
@@ -205,41 +197,39 @@ class _CodeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final seconds = remaining.inSeconds.clamp(0, 999);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: theme.tokens.chart.qrQuietZone, borderRadius: BorderRadius.circular(8)),
+          padding: EdgeInsets.all(tokens.space.md),
+          decoration: BoxDecoration(color: tokens.chart.qrQuietZone, borderRadius: BorderRadius.circular(tokens.geometry.radiusSm)),
           // qr_flutter renders black modules regardless of app theme — wrapped
           // in an explicit light card so it stays scannable in dark mode.
-          child: QrImageView(data: code.qrPayload, size: 160, backgroundColor: theme.tokens.chart.qrQuietZone),
+          child: QrImageView(data: code.qrPayload, size: 160, backgroundColor: tokens.chart.qrQuietZone),
         ),
-        const SizedBox(width: 20),
+        SizedBox(width: tokens.space.xl),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('Scan with the Insta-Automate app', style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 10),
+              SizedBox(height: tokens.space.sm),
               Text(
                 'Or enter this code manually:',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
-              const SizedBox(height: 2),
-              Text(
-                code.code,
-                style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 6, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 10),
+              SizedBox(height: tokens.space.xs / 2),
+              NumericText(code.code, role: TextRole.pageTitle),
+              SizedBox(height: tokens.space.sm),
               Text(
                 'Expires in ${seconds}s',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: tokens.space.md),
               OutlinedButton(onPressed: onRegenerate, child: const Text('Generate a new code')),
             ],
           ),
@@ -256,12 +246,13 @@ class _ExpiredContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     return Row(
       children: [
-        Icon(Icons.timer_off_outlined, size: 32, color: theme.colorScheme.error),
-        const SizedBox(width: 16),
+        AppIcon(AppIcons.hourglass, size: IconSize.lg, color: theme.colorScheme.error),
+        SizedBox(width: tokens.space.lg),
         Expanded(child: Text('That code expired before it was claimed.', style: theme.textTheme.bodyMedium)),
-        const SizedBox(width: 16),
+        SizedBox(width: tokens.space.lg),
         FilledButton(onPressed: onRegenerate, child: const Text('Generate a new code')),
       ],
     );
@@ -275,10 +266,11 @@ class _PairedContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     return Row(
       children: [
-        Icon(Icons.check_circle_outline, size: 32, color: theme.tokens.status.good.fg),
-        const SizedBox(width: 16),
+        AppIcon(AppIcons.success, size: IconSize.lg, color: tokens.status.good.fg),
+        SizedBox(width: tokens.space.lg),
         Expanded(child: Text('Paired "$name" successfully.', style: theme.textTheme.bodyMedium)),
       ],
     );
@@ -291,16 +283,20 @@ class _DeviceTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.phone_android_outlined),
-        title: Text(device.name, overflow: TextOverflow.ellipsis),
-        subtitle: Text('Paired ${relativeTime(device.createdAt)} · last seen ${relativeTime(device.lastSeen)}'),
-        trailing: IconButton(
-          tooltip: 'Revoke access',
-          icon: const Icon(Icons.link_off),
-          onPressed: () => _confirmRevoke(context, ref),
+    final tokens = Theme.of(context).tokens;
+    return Padding(
+      padding: EdgeInsets.only(bottom: tokens.space.sm),
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        child: ListTile(
+          leading: AppIcon(AppIcons.device),
+          title: Text(device.name, overflow: TextOverflow.ellipsis),
+          subtitle: Text('Paired ${relativeTime(device.createdAt)} · last seen ${relativeTime(device.lastSeen)}'),
+          trailing: IconButton(
+            tooltip: 'Revoke access',
+            icon: AppIcon(AppIcons.linkOff),
+            onPressed: () => _confirmRevoke(context, ref),
+          ),
         ),
       ),
     );

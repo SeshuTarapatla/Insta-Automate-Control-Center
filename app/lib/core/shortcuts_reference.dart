@@ -39,6 +39,7 @@ Future<void> showShortcutsReference(BuildContext context) {
     builder: (context) {
       final theme = Theme.of(context);
       final scheme = theme.colorScheme;
+      final tokens = theme.tokens;
       final byScope = <String, List<ShortcutEntry>>{};
       for (final entry in shortcutReference) {
         byScope.putIfAbsent(entry.scope, () => []).add(entry);
@@ -55,7 +56,7 @@ Future<void> showShortcutsReference(BuildContext context) {
               children: [
                 for (final scope in byScope.keys) ...[
                   Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 6),
+                    padding: EdgeInsets.only(top: tokens.space.md, bottom: tokens.space.xs),
                     child: Text(
                       scope,
                       style: theme.textTheme.labelLarge?.copyWith(color: scheme.primary),
@@ -63,25 +64,25 @@ Future<void> showShortcutsReference(BuildContext context) {
                   ),
                   for (final entry in byScope[scope]!)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: EdgeInsets.symmetric(vertical: tokens.space.xs / 2),
                       child: Row(
                         children: [
                           SizedBox(
                             width: 150,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: EdgeInsets.symmetric(horizontal: tokens.space.xs, vertical: tokens.space.xs / 1.3),
                               decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: scheme.outlineVariant),
+                                color: tokens.surface.raised,
+                                borderRadius: BorderRadius.circular(tokens.geometry.radiusSm),
+                                border: Border.all(color: tokens.surface.border),
                               ),
                               child: Text(
                                 entry.keys,
-                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: theme.tokens.type.mono),
+                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.type.mono),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: tokens.space.md),
                           Expanded(child: Text(entry.description, style: theme.textTheme.bodySmall)),
                         ],
                       ),
