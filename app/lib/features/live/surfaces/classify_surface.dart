@@ -73,29 +73,32 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final event = verdicts[index];
-              return Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AgentImage(imageKey: event.imageKey, width: 400, aspectRatio: 1080 / 198),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '@${event.subject ?? '?'}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium,
+              return ResultCardActions(
+                subject: event.subject,
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AgentImage(imageKey: event.imageKey, width: 400, aspectRatio: 1080 / 198),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '@${event.subject ?? '?'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium,
+                              ),
                             ),
-                          ),
-                          OutcomeBadge(label: event.verdict ?? '?', tone: toneFor(event.verdict)),
-                        ],
-                      ),
-                    ],
+                            OutcomeBadge(label: event.verdict ?? '?', tone: toneFor(event.verdict)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );

@@ -5,6 +5,59 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 — Live-flow result cards: click opens the subject, right-click/long-press opens the root
+
+### D85 · Click-to-open-profile added to all five Live-flow result surfaces, on both clients
+
+**Asked:** the Live screen's (and mobile `FlowDetailScreen`'s) per-item result cards — the same
+five surfaces CP 4.4/CP 6.4 built (Scan, Classify, Scrape, Follow, Ingest) — had no click
+interaction at all. Requested: clicking a card opens that item's own Instagram profile; a
+long-press opens the *root* entity's profile (the entity a Scrape/Follow candidate was found
+under, already shown as "root: `<entity>`" via `rootFromImage()`) — a no-op when there's no root.
+Also asked, explicitly: how "long press" should map to a mouse on Windows.
+
+**Chosen — right-click is the desktop mapping for long-press, direct action, no menu.** This
+repo already has an established precedent for exactly this pairing: the Library screen maps
+mobile's touch long-press (`entity_card.dart`'s "Hold to open Instagram") to right-click
+(`library_tile.dart`'s `onSecondaryTapDown`) for the desktop. Kept that same mapping here rather
+than a literal click-and-hold — `GestureDetector.onLongPress` technically does fire for a held
+mouse button too, but it isn't a discoverable desktop idiom and would diverge from what Library
+already ships. Confirmed with the user as a direct single action (open the root profile
+immediately) rather than Library's richer right-click-opens-a-menu pattern, since only one action
+is needed here.
+
+**Scope — all five surfaces, root gesture only fires where a root exists.** Scan/Classify/Ingest
+have a subject but no root concept at all (confirmed by reading `rootFromImage()`'s own doc
+comment and each surface's fields — only `scrape_queued/<root>/<user>.jpg` and
+`follow_queued/<root>/<user>.jpg` carry one); those three get left-click-to-open-subject only,
+with no right-click/long-press handler attached at all — not a handler that's attached and then
+does nothing, so there's no dead click/vibration on a card with no root. Scrape and Follow get
+both gestures.
+
+**Implementation — one shared wrapper widget per app, not per-surface gesture code.** Both
+`surface_common.dart` files (desktop `app/lib/features/live/surfaces/`, mobile
+`flutter/Insta-Automate-Client/lib/widgets/flow_surfaces/`) gained a `ResultCardActions` widget:
+`subject`/`root` in, wraps `child` with the platform gesture pair, resolves via the existing
+`instagramUrl()`/`instagramUri()` helper (already shared/mirrored across both apps and the
+pipeline per its own doc comment) and opens it — `FileOpener.openUrl()` +
+`AppSnackBar` on the desktop, `url_launcher`'s `launchUrl()` + a plain `ScaffoldMessenger` snackbar
+on mobile, matching each app's own existing pattern for this exact action
+(`library_tile.dart`/`entity_card.dart`). Either gesture is `null` (unregistered, not a no-op
+callback) when its target is `null`. Wired into all five surface files on both apps around each
+card's existing subject/root computation — no new state, no changed layout.
+
+**Verified:** `flutter analyze` clean on both apps (one pre-existing, unrelated
+`unnecessary_import` lint in mobile's `thumbnail_cache.dart`, untouched here). Desktop
+`flutter test` 52/52, unchanged — no test needed new fixtures since no layout changed, only a
+gesture wrapper added around existing widgets. No test suite exists in the mobile repo (CP 6.4's
+own precedent). Desktop: `flutter build windows --debug` succeeds, built and started for you per
+rule 5. Mobile: built a real debug APK and installed it on the adb-connected test phone (D57's
+ground rules — that phone's `IA_DIR` is stale, fine for exercising app logic). **You tested both
+clients live and confirmed everything worked** — click-to-open-subject and right-click/long-press-
+to-open-root both behave as designed on desktop and mobile.
+
+---
+
 ## 2026-08-04 — Flows screen: separating "poll" from "trigger" from "cooldown"
 
 ### D84 · FlowCard's single countdown ring conflated three different waits — split into a mechanism line, a blocked state, and a cooldown-only ring

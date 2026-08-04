@@ -54,55 +54,58 @@ class _EntityCard extends StatelessWidget {
     final access = event.extra['access'] as String?;
     final url = event.extra['url'] as String?;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              child: Icon(_iconForType(type), color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '@${event.entity ?? event.subject ?? '?'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  if (url != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        url,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  if (type != null || access != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Wrap(
-                        spacing: 6,
-                        children: [
-                          if (type != null) OutcomeBadge(label: type.toUpperCase(), tone: BadgeTone.neutral),
-                          if (access != null)
-                            OutcomeBadge(label: access.toUpperCase(), tone: toneFor(access.toUpperCase())),
-                        ],
-                      ),
-                    ),
-                ],
+    return ResultCardActions(
+      subject: event.entity ?? event.subject,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                child: Icon(_iconForType(type), color: theme.colorScheme.onSurfaceVariant),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '@${event.entity ?? event.subject ?? '?'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    if (url != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          url,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    if (type != null || access != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Wrap(
+                          spacing: 6,
+                          children: [
+                            if (type != null) OutcomeBadge(label: type.toUpperCase(), tone: BadgeTone.neutral),
+                            if (access != null)
+                              OutcomeBadge(label: access.toUpperCase(), tone: toneFor(access.toUpperCase())),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

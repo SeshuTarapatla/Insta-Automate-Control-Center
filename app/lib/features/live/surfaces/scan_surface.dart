@@ -83,21 +83,24 @@ class _ScanSurfaceState extends State<ScanSurface> {
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final item = items[items.length - 1 - index];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Full pane width, not a fixed thumbnail - the
-                          // 1080:198 row crop was cramped and hard to read
-                          // at 180px wide next to its caption.
-                          AgentImage(imageKey: item.imageKey, width: 400, aspectRatio: 1080 / 198),
-                          const SizedBox(height: 4),
-                          Text(
-                            '@${item.subject ?? '?'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelSmall,
-                          ),
-                        ],
+                      return ResultCardActions(
+                        subject: item.subject,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Full pane width, not a fixed thumbnail - the
+                            // 1080:198 row crop was cramped and hard to read
+                            // at 180px wide next to its caption.
+                            AgentImage(imageKey: item.imageKey, width: 400, aspectRatio: 1080 / 198),
+                            const SizedBox(height: 4),
+                            Text(
+                              '@${item.subject ?? '?'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),

@@ -1122,6 +1122,20 @@ repo (CP 6.4's own precedent). Built a real debug APK, installed on the adb-conn
 agent, per the mobile-reinstall-setup precedent. Full reasoning and rejected alternatives for both
 sides in DECISIONS.md's D84.
 
+**Same day: click-to-open-profile added to the Live/FlowDetail result cards on both clients
+(D85).** All five per-item result surfaces (Scan, Classify, Scrape, Follow, Ingest) now support
+click (open the card's own subject profile) and right-click on desktop / long-press on mobile
+(open the *root* entity's profile — Scrape/Follow only, the only two surfaces with a root at all;
+no handler is attached where there's no root, so it's a true no-op, not a silent click). Right-
+click was chosen as the desktop mapping for long-press — not a literal click-and-hold — matching
+the precedent the Library screen already set (`entity_card.dart`'s mobile long-press ↔
+`library_tile.dart`'s desktop right-click). New shared `ResultCardActions` widget in both apps'
+`surface_common.dart`, reusing each app's existing `instagramUrl`/open-link plumbing
+(`FileOpener`/`AppSnackBar` on desktop, `url_launcher` on mobile). `flutter analyze` clean both
+apps, desktop `flutter test` 52/52 unchanged. Built and started for you (desktop) / built and
+installed on the test phone (mobile) — **you tested both live and confirmed everything worked**.
+Full account in DECISIONS.md's D85.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

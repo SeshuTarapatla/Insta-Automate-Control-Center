@@ -134,17 +134,21 @@ class _ScrapeCard extends StatelessWidget {
     // out as a strip on top rather than squeezed into the portrait-oriented
     // Row every resolved card uses, which assumes a tall image.
     if (large && inProgress) {
-      return Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
-              const SizedBox(height: 10),
-              details,
-            ],
+      return ResultCardActions(
+        subject: (done ?? skipped ?? started)?.subject,
+        root: root,
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
+                const SizedBox(height: 10),
+                details,
+              ],
+            ),
           ),
         ),
       );
@@ -154,24 +158,28 @@ class _ScrapeCard extends StatelessWidget {
     // (portrait, ~1080×2000); `skipped` never gets one, so it still only
     // ever has the queued row crop — shown at its own real (wide) shape
     // rather than squeezed into the composite's, same reasoning as above.
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: large ? 140.0 : 90.0,
-              child: AgentImage(
-                imageKey: (done ?? skipped ?? started)?.imageKey,
-                width: large ? 200 : 100,
-                aspectRatio: done != null ? 1080 / 2000 : 1080 / 198,
+    return ResultCardActions(
+      subject: (done ?? skipped ?? started)?.subject,
+      root: root,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: large ? 140.0 : 90.0,
+                child: AgentImage(
+                  imageKey: (done ?? skipped ?? started)?.imageKey,
+                  width: large ? 200 : 100,
+                  aspectRatio: done != null ? 1080 / 2000 : 1080 / 198,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: details),
-          ],
+              const SizedBox(width: 12),
+              Expanded(child: details),
+            ],
+          ),
         ),
       ),
     );

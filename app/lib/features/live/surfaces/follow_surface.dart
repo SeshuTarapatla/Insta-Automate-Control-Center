@@ -62,43 +62,47 @@ class _FollowCard extends StatelessWidget {
     final subject = (result ?? attempt)?.subject ?? '?';
     final root = rootFromImage((result ?? attempt)?.image);
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 90,
-              // follow_queued/<root>/<user>.jpg is the same scraped composite
-              // entity-scrape produces (1080×~2000, not the 1080×2246 entity
-              // page) — profile_follow's own `img` parameter is that file.
-              child: AgentImage(imageKey: (result ?? attempt)?.imageKey, width: 180, aspectRatio: 1080 / 2000),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('@$subject', style: theme.textTheme.bodyMedium),
-                  if (root != null)
-                    Text(
-                      'root: $root',
-                      style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  if (result != null && result.reason != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        result.reason!,
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                ],
+    return ResultCardActions(
+      subject: (result ?? attempt)?.subject,
+      root: root,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 90,
+                // follow_queued/<root>/<user>.jpg is the same scraped composite
+                // entity-scrape produces (1080×~2000, not the 1080×2246 entity
+                // page) — profile_follow's own `img` parameter is that file.
+                child: AgentImage(imageKey: (result ?? attempt)?.imageKey, width: 180, aspectRatio: 1080 / 2000),
               ),
-            ),
-            OutcomeBadge(label: result?.verdict ?? 'attempting…', tone: toneFor(result?.verdict)),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('@$subject', style: theme.textTheme.bodyMedium),
+                    if (root != null)
+                      Text(
+                        'root: $root',
+                        style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    if (result != null && result.reason != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          result.reason!,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              OutcomeBadge(label: result?.verdict ?? 'attempting…', tone: toneFor(result?.verdict)),
+            ],
+          ),
         ),
       ),
     );

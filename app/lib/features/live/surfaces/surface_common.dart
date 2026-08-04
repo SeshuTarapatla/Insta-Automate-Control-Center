@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app_snack_bar.dart';
+import '../../../core/file_opener.dart';
+import '../../../core/instagram_url.dart';
+
 /// Shared by all five per-flow surfaces (CP 4.4) — a colored outcome pill.
 /// Kept to one shared widget rather than one per surface, since every surface
 /// needs exactly this and nothing fancier.
@@ -48,6 +52,41 @@ String? rootFromImage(String? image) {
   if (image == null) return null;
   final parts = image.split('/');
   return parts.length >= 3 ? parts[parts.length - 2] : null;
+}
+
+/// Wraps a result card with the two open-profile gestures every per-item
+/// surface needs: left-click opens [subject]'s own Instagram profile;
+/// right-click — this app's desktop equivalent of a mobile long-press, per
+/// `library_tile.dart`'s existing precedent for the same mapping — opens
+/// [root]'s profile. Either gesture is simply not attached when its target
+/// is null, so a surface with no root concept (Scan/Classify/Ingest) or an
+/// item still mid-flight with no subject yet gets no gesture and no visual
+/// feedback for that action, rather than a click that silently does nothing.
+class ResultCardActions extends StatelessWidget {
+  const ResultCardActions({super.key, required this.child, this.subject, this.root});
+
+  final Widget child;
+  final String? subject;
+  final String? root;
+
+  void _open(BuildContext context, String idOrFilename) {
+    final uri = instagramUrl(idOrFilename);
+    if (!FileOpener.openUrl(uri.toString()) && context.mounted) {
+      AppSnackBar.show(context, 'Could not open $uri', isError: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: subject != null ? SystemMouseCursors.click : MouseCursor.defer,
+      child: GestureDetector(
+        onTap: subject == null ? null : () => _open(context, subject!),
+        onSecondaryTap: root == null ? null : () => _open(context, root!),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// A blank-state message, styled like every other empty pane in this app
