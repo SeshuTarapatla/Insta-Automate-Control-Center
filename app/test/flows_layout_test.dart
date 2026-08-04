@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ia_control_center/core/config_models.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/features/flows/flow_card.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
+import 'package:ia_control_center/features/settings/config_controller.dart';
 
 /// FlowCard is a fixed 360 px width regardless of window size (unlike the
 /// Services detail pane, which is why services_layout_test.dart sweeps
@@ -19,6 +21,34 @@ class _FakeFlowsController extends FlowsController {
 
   @override
   Future<SchedulerSnapshot> build() async => _snapshot;
+}
+
+/// FlowCard reads the timing keys (poll/cooldown seconds) for its always-on
+/// mechanism line — this fakes the round trip real config lookups need
+/// (`ConfigController.build()` otherwise hits a real `dio.get`), matching real
+/// `Config._DEFAULTS` (Insta-Automate/models/meta.py) so the rendered text
+/// matches what the pipeline actually uses.
+class _FakeConfigController extends ConfigController {
+  @override
+  Future<ConfigResponse> build() async => const ConfigResponse(
+    path: 'config.env',
+    values: ConfigValues(
+      switches: {},
+      entityQueue: [],
+      limits: {
+        'INGEST_POLL_WAIT': 600,
+        'SCAN_POLL_WAIT': 10,
+        'SCAN_WAIT': 0,
+        'CLASSIFY_POLL_WAIT': 10,
+        'SCRAPE_WAIT': 600,
+        'SCRAPE_BUFFER': 10,
+        'FOLLOW_WAIT': 1200,
+        'FOLLOW_BUFFER': 10,
+      },
+    ),
+    schema: [],
+    provenance: {},
+  );
 }
 
 FlowState _state({
@@ -59,6 +89,7 @@ Future<void> _render(WidgetTester tester, FlowState state, {bool pending = false
           () => _FakeFlowsController(SchedulerSnapshot(online: true, lastHeartbeatAt: 0, flows: {})),
         ),
         flowsTickProvider.overrideWith((ref) => const Stream<int>.empty()),
+        configControllerProvider.overrideWith(() => _FakeConfigController()),
         if (pending) pendingCommandProvider.overrideWith(() => _AlreadyPendingNotifier()),
       ],
       child: MaterialApp(
@@ -81,6 +112,46 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+    // Blocked on a false condition is not a countdown to anything — no ring,
+    // just the reason, so it can't be misread as "about to trigger."
+    expect(find.text('Waiting on condition'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('FlowCard lays out without overflow: scrape cooling down after a real run', (tester) async {
+    await _render(
+      tester,
+      _state(
+        flow: 'entity-scrape',
+        phase: 'waiting',
+        gate: const FlowGate(ok: true, reason: 'cooldown', detail: 'ran — next run allowed in up to 600s'),
+        nextTriggerAt: DateTime.now().add(const Duration(minutes: 9, seconds: 50)),
+        today: {'scraped': 43, 'limit': 300},
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    // The one wait that's a real, deterministic "eligible again at X" — this
+    // is the only state that gets the countdown ring back.
+    expect(find.text('Cooling down'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('FlowCard always shows its trigger mechanism, not just the countdown', (tester) async {
+    await _render(tester, _state(flow: 'entity-follow'));
+    expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('FlowCard names the instant path for ingest, not just its poll fallback', (tester) async {
+    await _render(tester, _state(flow: 'entity-ingest'));
+    expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Instant on a new channel message · 10m poll as fallback'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('FlowCard lays out without overflow: scan with all three counters', (tester) async {

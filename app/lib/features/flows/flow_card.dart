@@ -15,6 +15,65 @@ import 'flows_controller.dart';
 /// viewer doesn't exist yet, so "jump to its logs" opens this instead.
 String _prefectRunUrl(String runId) => 'http://localhost:4200/flow-runs/flow-run/$runId';
 
+/// The gate's `reason`/`detail` (ARCHITECTURE §4.3) already says exactly why a
+/// flow is or isn't triggering, but `phase`/`next_trigger_at` alone can't tell
+/// two very different waits apart: a mandatory post-run cooldown (a real,
+/// deterministic "eligible again at X") versus the recheck poll a false
+/// condition just sits behind (rechecking is not triggering — the point this
+/// whole card exists to stop conflating). `gate.reason == 'cooldown'`
+/// (Insta-Automate's `entity_scan/scrape/follow_trigger`, added alongside this
+/// card) is the one signal that distinguishes them; everything else here is
+/// derived from fields the heartbeat already carried.
+enum _StatusKind { off, running, dayPaused, cooldown, blocked, polling }
+
+_StatusKind _kindOf(FlowState state) {
+  if (!state.switchOn) return _StatusKind.off;
+  if (state.phase == 'running') return _StatusKind.running;
+  if (state.phase == 'day_paused') return _StatusKind.dayPaused;
+  if (state.gate.ok && state.gate.reason == 'cooldown' && state.nextTriggerAt != null) {
+    return _StatusKind.cooldown;
+  }
+  if (!state.gate.ok) return _StatusKind.blocked;
+  return _StatusKind.polling;
+}
+
+String _subtitleFor(_StatusKind kind, FlowState state) => switch (kind) {
+  _StatusKind.off => 'skipped: switch OFF',
+  _StatusKind.running => switch (state.gate.reason) {
+    'message' => 'Running · triggered by message',
+    'forced' => 'Running · forced',
+    _ => 'Running',
+  },
+  _StatusKind.dayPaused => 'Paused for the day',
+  _StatusKind.cooldown => 'Cooling down',
+  _StatusKind.blocked => 'Waiting on condition',
+  _StatusKind.polling => 'Checking…',
+};
+
+/// Falls back to Insta-Automate's own `Config._DEFAULTS` (meta.py) whenever
+/// live config hasn't loaded yet — e.g. this card renders before Settings has
+/// ever fetched it, or in a widget test with no config fixture. These are
+/// display-only explainer text, not the authoritative value (the cooldown
+/// ring's own countdown always comes from the real `next_trigger_at`), so a
+/// stale fallback here is a cosmetic gap at worst, never a wrong action.
+const _defaultTimingSeconds = {
+  'INGEST_POLL_WAIT': 600,
+  'SCAN_POLL_WAIT': 10,
+  'SCAN_WAIT': 0,
+  'CLASSIFY_POLL_WAIT': 10,
+  'SCRAPE_WAIT': 600,
+  'SCRAPE_BUFFER': 10,
+  'FOLLOW_WAIT': 1200,
+  'FOLLOW_BUFFER': 10,
+};
+
+String _humanizeSeconds(int seconds) {
+  if (seconds <= 0) return '0s';
+  if (seconds % 3600 == 0) return '${seconds ~/ 3600}h';
+  if (seconds % 60 == 0) return '${seconds ~/ 60}m';
+  return '${seconds}s';
+}
+
 class FlowCard extends ConsumerWidget {
   const FlowCard({super.key, required this.state});
 
@@ -28,6 +87,33 @@ class FlowCard extends ConsumerWidget {
     if (!state.gate.ok) return palette.statusWarn;
     return palette.statusInfo;
   }
+
+  int _secondsFor(WidgetRef ref, String key) =>
+      ref.watch(configControllerProvider).value?.values.limits[key] ?? _defaultTimingSeconds[key]!;
+
+  /// Always shown, regardless of current state — the plain-language answer to
+  /// "what actually makes this run," so the poll cadence and any mandatory
+  /// cooldown never have to be inferred from a single ambiguous countdown.
+  String _mechanismLine(WidgetRef ref) => switch (state.flow) {
+    'entity-ingest' =>
+      'Instant on a new channel message · '
+          '${_humanizeSeconds(_secondsFor(ref, 'INGEST_POLL_WAIT'))} poll as fallback',
+    'entity-scan' =>
+      'Runs when entities are queued · checked every '
+          '${_humanizeSeconds(_secondsFor(ref, 'SCAN_POLL_WAIT'))}',
+    'entity-classify' =>
+      'Runs when files land in scanned/ · checked every '
+          '${_humanizeSeconds(_secondsFor(ref, 'CLASSIFY_POLL_WAIT'))}',
+    'entity-scrape' =>
+      'Runs when scraped+follow_queued is below the reserve · checked every '
+          '${_humanizeSeconds(_secondsFor(ref, 'SCRAPE_BUFFER'))} · min '
+          '${_humanizeSeconds(_secondsFor(ref, 'SCRAPE_WAIT'))} between runs',
+    'entity-follow' =>
+      'Runs when follow_queued has files · checked every '
+          '${_humanizeSeconds(_secondsFor(ref, 'FOLLOW_BUFFER'))} · min '
+          '${_humanizeSeconds(_secondsFor(ref, 'FOLLOW_WAIT'))} between runs',
+    _ => '',
+  };
 
   String? _todayLine() {
     final today = state.today;
@@ -69,7 +155,9 @@ class FlowCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final observedAt = ref.watch(flowsControllerProvider.notifier).observedAtFor(state.flow);
+    final kind = _kindOf(state);
     final gateText = state.gate.detail ?? (state.gate.ok ? null : state.gate.reason);
+    final mechanismLine = _mechanismLine(ref);
     final lastRun = state.lastRun;
     // Optimistic feedback only - the agent's queue/heartbeat round trip is
     // fast, but the worker actually picking up the run can lag a few
@@ -87,7 +175,7 @@ class FlowCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  _CountdownRing(state: state, observedAt: observedAt, color: _statusColor(theme)),
+                  _FlowStatusIndicator(kind: kind, state: state, observedAt: observedAt, color: _statusColor(theme)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -100,9 +188,7 @@ class FlowCard extends ConsumerWidget {
                           style: theme.textTheme.titleMedium,
                         ),
                         Text(
-                          state.switchOn
-                              ? (phaseLabel[state.phase] ?? state.phase)
-                              : 'skipped: switch OFF',
+                          _subtitleFor(kind, state),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -115,6 +201,16 @@ class FlowCard extends ConsumerWidget {
                     onChanged: (value) => _toggleSwitch(context, ref, value),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Tooltip(
+                message: mechanismLine,
+                child: Text(
+                  mechanismLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                ),
               ),
               if (gateText != null) ...[
                 const SizedBox(height: 10),
@@ -210,9 +306,20 @@ class FlowCard extends ConsumerWidget {
   }
 }
 
-class _CountdownRing extends StatelessWidget {
-  const _CountdownRing({required this.state, required this.observedAt, required this.color});
+/// A countdown ring only for [_StatusKind.cooldown] — the one wait that's a
+/// real, deterministic "eligible again at X." Every other state (blocked on a
+/// false condition, mid-poll, off, day-paused) renders a static icon instead,
+/// so a number ticking to zero never implies a trigger that isn't actually
+/// coming (the illusion the old single-ring design gave every flow).
+class _FlowStatusIndicator extends StatelessWidget {
+  const _FlowStatusIndicator({
+    required this.kind,
+    required this.state,
+    required this.observedAt,
+    required this.color,
+  });
 
+  final _StatusKind kind;
   final FlowState state;
   final DateTime? observedAt;
   final Color color;
@@ -231,28 +338,30 @@ class _CountdownRing extends StatelessWidget {
     return '$minutes:$secondsPart';
   }
 
-  IconData get _phaseIcon => switch (state.phase) {
-    'running' => Icons.play_arrow,
-    'day_paused' => Icons.pause,
-    _ => Icons.schedule,
+  IconData get _icon => switch (kind) {
+    _StatusKind.running => Icons.play_arrow,
+    _StatusKind.dayPaused => Icons.pause,
+    _StatusKind.blocked => Icons.hourglass_empty,
+    _StatusKind.polling => Icons.autorenew,
+    _StatusKind.off || _StatusKind.cooldown => Icons.schedule,
   };
+
+  Widget _iconBadge() => SizedBox(
+    width: _size,
+    height: _size,
+    child: Container(
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.15)),
+      child: Icon(_icon, color: color, size: 24),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final deadline = state.nextTriggerAt;
-    final showCountdown = state.phase == 'waiting' && deadline != null;
-    final remaining = showCountdown ? deadline.difference(DateTime.now()) : null;
+    if (kind != _StatusKind.cooldown) return _iconBadge();
 
-    if (!showCountdown || remaining == null || remaining.isNegative) {
-      return SizedBox(
-        width: _size,
-        height: _size,
-        child: Container(
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.15)),
-          child: Icon(_phaseIcon, color: color, size: 24),
-        ),
-      );
-    }
+    final deadline = state.nextTriggerAt!;
+    final remaining = deadline.difference(DateTime.now());
+    if (remaining.isNegative) return _iconBadge();
 
     final total = observedAt == null ? remaining : deadline.difference(observedAt!);
     final fraction = total.inMilliseconds <= 0

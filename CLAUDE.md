@@ -1081,6 +1081,28 @@ a healthy rollout) matched D82's fix, D39's precedent again. **You retested live
 real not-found profile now shows SKIPPED with the NOT_FOUND reason.** Full account in DECISIONS.md's
 D82/D83.
 
+**2026-08-04: the Flows screen's single countdown ring conflated poll, trigger, and cooldown into
+one number — reworked (D84).** You flagged the Flows screen as looking odd; reading the trigger
+loops (`Insta-Automate/controllers/prefect.py`) directly confirmed the pipeline's own trigger/
+poll/cooldown/daily-limit logic is correct — the gap was entirely in how the control center
+represented state that already existed. Every flow's `wait_until()` is reused for both the fast
+condition-recheck poll and (Scrape/Follow's) mandatory post-run cooldown, and never touches
+`gate`, so a false condition and a just-ran cooldown both rendered as an identical countdown ring
+with `gate.ok: true`. Fixed cross-repo: one additive `gate=_gate(True, "cooldown", ...)` call added
+in Insta-Automate right before `entity_scan/scrape/follow_trigger`'s post-run `wait_until`, the one
+signal genuinely missing from the emitted state (Ingest's instant path already tagged
+`gate.reason: "message"` per D66, untouched). `FlowCard` now shows three distinct things instead of
+one ambiguous ring: an always-visible mechanism line naming the condition/poll cadence/cooldown
+from live config (e.g. "Runs when scraped+follow_queued is below the reserve · checked every 10s ·
+min 10m between runs"), a **blocked** state (condition false) with no ring at all — just the gate's
+own detail text — and a **cooldown** state that keeps the only real countdown ring, since it's the
+only wait that's a deterministic "eligible again at X." Verified: Insta-Automate's edit
+import/ruff-clean (no test suite there); `flutter analyze` clean, `flutter test` 52/52 (48 prior +
+4 new), with `flows_layout_test.dart`/`overview_layout_test.dart` both needing a `ConfigController`
+fake added since `FlowCard`'s new mechanism line reads live timing config and `OverviewPage`
+embeds `FlowCard` directly (D79). **Not yet live-tested** — built and started for you per rule 5;
+full reasoning and rejected alternatives in DECISIONS.md's D84.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

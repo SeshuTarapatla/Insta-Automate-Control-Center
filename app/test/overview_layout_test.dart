@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ia_control_center/core/config_models.dart';
 import 'package:ia_control_center/core/dependency_models.dart';
 import 'package:ia_control_center/core/device_models.dart';
 import 'package:ia_control_center/core/insights_models.dart';
@@ -15,6 +16,7 @@ import 'package:ia_control_center/features/notifications/notification_controller
 import 'package:ia_control_center/features/overview/overview_page.dart';
 import 'package:ia_control_center/features/services/dependencies_controller.dart';
 import 'package:ia_control_center/features/services/services_controller.dart';
+import 'package:ia_control_center/features/settings/config_controller.dart';
 
 /// Overflow is a paint-time error `flutter analyze` is blind to (D19's
 /// precedent, every UI checkpoint since has added one of these). Overview
@@ -56,6 +58,32 @@ class _FakeNotificationController extends NotificationController {
   final List<AppNotification> _notifications;
   @override
   Future<List<AppNotification>> build() async => _notifications;
+}
+
+/// The embedded FlowCards read timing config for their mechanism line —
+/// fakes that round trip the same way flows_layout_test.dart does, so this
+/// page's own ConfigController.build() never issues a real dio.get.
+class _FakeConfigController extends ConfigController {
+  @override
+  Future<ConfigResponse> build() async => const ConfigResponse(
+    path: 'config.env',
+    values: ConfigValues(
+      switches: {},
+      entityQueue: [],
+      limits: {
+        'INGEST_POLL_WAIT': 600,
+        'SCAN_POLL_WAIT': 10,
+        'SCAN_WAIT': 0,
+        'CLASSIFY_POLL_WAIT': 10,
+        'SCRAPE_WAIT': 600,
+        'SCRAPE_BUFFER': 10,
+        'FOLLOW_WAIT': 1200,
+        'FOLLOW_BUFFER': 10,
+      },
+    ),
+    schema: [],
+    provenance: {},
+  );
 }
 
 FlowState _flow(String flow, {String phase = 'waiting', Map<String, dynamic>? today}) => FlowState(
@@ -141,6 +169,7 @@ Future<void> _pump(
         burndownProvider.overrideWith((ref) async => burndown),
         deviceControllerProvider.overrideWith(() => _FakeDeviceController(device)),
         notificationControllerProvider.overrideWith(() => _FakeNotificationController(notifications)),
+        configControllerProvider.overrideWith(() => _FakeConfigController()),
       ],
       child: MaterialApp(
         theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),

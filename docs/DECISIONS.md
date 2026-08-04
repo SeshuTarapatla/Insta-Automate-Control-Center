@@ -5,6 +5,77 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 — Flows screen: separating "poll" from "trigger" from "cooldown"
+
+### D84 · FlowCard's single countdown ring conflated three different waits — split into a mechanism line, a blocked state, and a cooldown-only ring
+
+**Found:** you flagged the Flows screen (screenshot attached) as looking "odd" — every flow card
+shows one countdown ring, but the ring's number is really just whichever `wait_until()` call the
+trigger loop (`Insta-Automate/controllers/prefect.py`) happens to be sleeping through, and that
+loop reuses the same mechanism for two conceptually unrelated things: the fast poll that rechecks
+a condition, and (for Scrape/Follow) a genuine mandatory cooldown enforced after a real run. The
+Scrape card's own screenshot showed this directly — `0:08`, `SCRAPE_BUFFER`'s poll tick, while
+gated by backpressure — reading exactly like "runs in 8s" when it wouldn't.
+
+**Root cause, confirmed by reading the trigger loops directly, not guessed:** every flow's loop
+only ever emits `phase` (`idle`/`running`/`waiting`/`day_paused`), a `gate` (`ok`/`reason`/
+`detail`), and `next_trigger_at`. `wait_until()` — reused for every kind of wait — never touches
+`gate`, only `phase`/`next_trigger_at`. So a false condition (waiting to recheck) and a just-ran
+mandatory cooldown (`SCRAPE_WAIT`/`FOLLOW_WAIT`, chained before the trailing poll buffer) both
+render identically: `phase: "waiting"`, `gate.ok: true` (a leftover from the trigger that just
+fired), `next_trigger_at` some future instant. You confirmed the pipeline's own trigger/poll/
+cooldown/daily-limit logic is correct — the gap is entirely in how the control center represents
+state that already exists, except for this one missing distinction.
+
+**Chosen, cross-repo:**
+- **Insta-Automate (`feat/control-center`, `controllers/prefect.py`):** one additive
+  `self._set_state(flow, gate=_gate(True, "cooldown", ...))` call added right before each of
+  `entity_scan_trigger`/`entity_scrape_trigger`/`entity_follow_trigger`'s post-run
+  `wait_until(..., "*_WAIT")`. Since `wait_until` never touches `gate`, this one line covers the
+  whole cooldown stretch (including the trailing poll-buffer chained after it) with no trigger
+  logic changed — the same additive, state-only-reporting pattern as the existing `"forced"`/
+  `"message"` gate reasons. Ingest's instant path already tagged `gate.reason: "message"` on a
+  Telegram-triggered run (D66) — no change needed there.
+- **Control center (`FlowCard`):** replaced "one ring = `next_trigger_at`" with three explicit
+  things. (1) An always-visible, config-driven mechanism line per card — e.g. Scrape's reads
+  "Runs when scraped+follow_queued is below the reserve · checked every 10s · min 10m between
+  runs" — naming the condition, poll cadence, and cooldown as three separate facts instead of one
+  ambiguous number. (2) A **blocked** state (`gate.ok == false`, day-paused excluded): no ring at
+  all, just a static icon and the gate's own `detail` text as the headline — a countdown here
+  implies "runs at 0," which is false. (3) A **cooldown** state (`gate.reason == "cooldown"`): the
+  only state that keeps the big animated ring, relabeled "Cooling down" — the one wait that really
+  is a deterministic "eligible again at X." A **polling** state (condition true, no cooldown —
+  Ingest/Classify/Scan's ordinary case) gets a static refresh icon, no live-decrementing number,
+  since polling every 10s doesn't need per-second animation. `Running`'s subtitle now also names
+  *why* it's running when the gate says so (`"Running · triggered by message"` /
+  `"Running · forced"`), reusing gate reasons that already existed but were never surfaced.
+
+**Rejected:** teaching the pipeline to emit a new structured "mechanism" object (condition text +
+poll/cooldown seconds) instead of one gate-reason string, and/or moving the per-flow mechanism
+metadata into a shared model in `scheduler_models.dart`. Neither pulled its weight: the poll/
+cooldown *seconds* already exist as ordinary config (`SCAN_POLL_WAIT`, `SCRAPE_WAIT`, etc.,
+Settings > Limits > Timings since CP 3.5) that `FlowCard` can read directly, and the condition
+*text* is static per-flow knowledge with nowhere else in the app that needs it — matching how
+`flowTitle`/`_todayLine()` already hardcode per-flow formatting in this exact file rather than
+fetching it from the backend.
+
+**Verified:** Insta-Automate — `uv run python -c "import insta_automate.controllers.prefect"` and
+`ruff check` both clean (no test suite there, same precedent as every prior checkpoint in that
+repo); change is on `feat/control-center`, undeployed, same standing rule as every other change in
+that repo until the whole control center is accepted. Control center — `flutter analyze` clean,
+`flutter test` all green (52 — 48 prior + 4 new cases in `flows_layout_test.dart` covering the
+blocked/cooldown/mechanism-line/instant-path states). Two existing suites needed a
+`ConfigController` fake added alongside their existing fakes
+(`flows_layout_test.dart`, and `overview_layout_test.dart` since `OverviewPage` embeds `FlowCard`
+directly per D79) — without it, `FlowCard`'s new mechanism line triggers a real `dio.get
+('/api/config')` with no override, which left a pending `Timer` past test teardown and failed the
+suite (the same class of gap `ops_layout_test.dart`'s own offline Dio adapter, noted in CP 7.3,
+exists to avoid). **Not yet live-tested** — built and started for you per rule 5; awaiting your
+check that the new mechanism line, blocked/cooldown states, and running-reason subtitle read
+correctly against the real pipeline.
+
+---
+
 ## 2026-08-03 — Live bug-fixing pass: missing not-found events, kubectl wrapper casing
 
 A new post-acceptance bug-fixing session (Phase 7 is done; these are ordinary bugs found live, not
