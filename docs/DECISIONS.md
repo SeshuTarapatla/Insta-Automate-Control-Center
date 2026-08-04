@@ -5,6 +5,105 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — v2.0.0 UI/UX overhaul: planned, not yet built
+
+### D94 · Own token layer on Material 3, not a component framework
+
+**Asked:** the user opened a session whose stated goal is a "MAJOR OVERHAUL" of the control
+center's UI/UX — the app works correctly everywhere, but looks generic, and they want real themes
+that change its character completely. Planned under Opus, to be implemented under Sonnet from the
+docs produced. Everything below is **planning only** — no `app/` code changed this session.
+
+**The diagnosis, from reading all 90 files under `app/lib/`:** the entire theme is four lines
+(`app.dart:15-21`) — `useMaterial3`, `brightness: dark`, one `colorSchemeSeed`, one transparent
+background. **None** of `ThemeData`'s ~40 component sub-themes are set, and there is no `textTheme`
+customization at all. So every card, button, chip, field, tab, tooltip and dialog renders at
+Material's default. The app doesn't look generic because it uses Material — it looks generic
+because it uses Material's *defaults*. `core/app_theme.dart` (the CP 7.3 centralization) holds
+only three status colors and a terminal palette; 13 hardcoded colors survive outside it, three of
+which (`service_detail.dart:305/314/380`) are the exact same hex values as `AppPalette`'s,
+re-typed by hand.
+
+**Chosen:** build an `AppTokens` `ThemeExtension` covering surface/content/accent/status/type/
+geometry/effects/space/motion/chart/terminal, and a `build_theme.dart` that fills every one of
+those ~40 sub-themes from it. Six themes ship: Classic (today's look, preserved, derived from the
+real seed rather than transcribed), Command Deck, Nocturne, Mica, Daylight, Swiss.
+
+**Rejected: adopting `shadcn_ui` (0.56.0), `forui` (0.25.0) or `fluent_ui`.** All three are good.
+All three would mean rewriting 90 files against a new widget vocabulary — and those files encode
+roughly a dozen hard-won overflow and constraint fixes (D19, D43–D46, D77, D87, D89, D93) that a
+rewrite would have to rediscover live, on a single-screen laptop, against a real pipeline. Both
+shadcn_ui and forui are also pre-1.0 and moving fast. `fluent_ui` would serve exactly one of the
+six themes well and fight the other five.
+
+**Why the token layer wins:** a `Card` with a themed shape, border, elevation strategy and surface
+color is not recognisably a Material `Card`. The widget tree barely changes; the theme does all the
+work. It also makes a seventh theme one file plus one registry line, which is the real test of
+whether the abstraction holds.
+
+**Cost:** V2.3 is a 90-file mechanical migration with real regression potential. Mitigated by the
+ten existing layout tests (D19's precedent — overflow is a paint-time error `flutter analyze`
+cannot see) plus a `token_coverage_test.dart` enforcing that `grep -rn "Color(0x" app/lib` returns
+nothing outside `core/theme/`.
+
+### D95 · Flows renders as a vertical pipeline; Live splits vertically
+
+**Asked:** which screens are shaped wrongly, not merely styled plainly.
+
+**Chosen:** three re-architectures. **Flows** becomes a node/edge pipeline with the inter-stage
+backlog counts on the edges — `entity_ingest → scan → classify → scrape → follow` is a strict
+pipeline whose entire gating logic (D86's `SCRAPE_RESERVE_FACTOR`, D91's `SCAN_RESERVE_TARGET`) is
+about the size of those queues, and the current five-cards-in-a-`Wrap` shows none of them; they
+live on a different tab, in the Library folder rail. The two human-in-the-loop edges get marked and
+made clickable, which is the first time the app has ever shown that the pipeline *waits on the
+user* at two specific points. **Overview** becomes a bento grid with a computed hero status
+sentence, replacing a page that embeds five full 360px `FlowCard`s and therefore duplicates the
+Flows screen rather than summarising it. **Library** gets a keyboard-driven fullscreen review mode,
+because the current grid renders a 1080×2246 profile page into a ~120px thumbnail — you cannot
+actually read what you are judging.
+
+**Both new layouts are vertical, deliberately.** `main.dart` sizes the window to fill the space
+right of the scrcpy mirror — roughly 1250×1400 logical px, taller than it is wide. A horizontal
+five-stage diagram would either wrap awkwardly or shrink each node past usefulness; the Live
+screen's current fixed 420px visualization column is already flagged *in its own source comments*
+as tuned to `entity-scrape` only, with a warning that follow/classify will need different values.
+
+**Flagged as a bet, not a certainty:** I have never seen the app render (rule 5), so the aspect
+ratio is inferred from arithmetic in `main.dart`, not observed. `docs/v2/VISUAL_INPUTS.md` asks for
+one screenshot that confirms or kills all three vertical decisions before V2.5 begins.
+
+### D96 · Design-language triage — three styles argued against, not deferred
+
+**Asked:** the user supplied sixteen design inspirations (Minimalist, Glassmorphism, Neumorphism,
+Brutalism, Bento, Skeuomorphism, Neo-brutalism, Claymorphism, Cyberpunk, Y2K, Dark Academia,
+Swiss/International, Editorial, Luxury, Retro-futurism) and asked for a few that match the app,
+with the rest kept as a backlog.
+
+**Chosen for v2.0.0:** **Swiss/International** — the one classical design language that is
+actually *about dense information* (timetables, wayfinding, technical tables), which is all this
+app renders. **Bento** adopted as a *layout pattern* for Overview rather than a theme, since it's a
+composition idea with no color or type language of its own — that way it works in all six themes
+instead of one. **Glassmorphism** judged already served by Mica: real OS-composited Mica rather
+than stacked `BackdropFilter`s, same aesthetic at a fraction of the GPU cost, and native to the
+platform. **Minimalist** already served twice over, by Command Deck and Swiss from opposite
+directions.
+
+**Backlogged with real sketches:** Cyberpunk, Editorial, Dark Academia, Retro-futurism (v2.1 —
+good fit, low-to-medium cost); Neo-brutalism, Luxury, Y2K (v2.2 — prototype first).
+
+**Argued against outright, rather than merely deferred:** **Neumorphism** and **Claymorphism** —
+the aesthetic *is* low contrast, since soft embossing depends on foreground and background being
+nearly the same value. They fail the 4.5:1 floor by construction, not by execution, and cannot be
+made accessible while remaining recognisable. For a monitoring tool whose status colors must be
+unmissable, that is disqualifying. **Skeuomorphism** — needs bespoke raster assets per component;
+an art-production project, not a theming one, and it doesn't scale to 40 sub-themes.
+**Brutalism proper** (as distinct from neo-brutalism) — deliberately hostile ergonomics, directly
+opposed to rule 7.
+
+**Cost:** none yet. Adding any backlogged theme after V2.4 is one file plus one registry line.
+
+---
+
 ## 2026-08-04 (continued) — message-triggered ingest left a stale gate on the Flows card
 
 ### D92 · Wake the ingest poll loop right after a message-triggered run, instead of leaving a stale gate

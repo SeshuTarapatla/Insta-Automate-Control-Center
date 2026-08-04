@@ -1,5 +1,28 @@
 # CLAUDE.md — Insta-Automate Control Center
 
+> ## 🎨 Active work: v2.0.0 UI/UX overhaul — branch `feat/v2-ui-overhaul`
+>
+> **If you are here to work on the app's look, layout or theming, read
+> [docs/v2/README.md](docs/v2/README.md) and stop reading this file's history section.**
+> Everything below documents Phases 0–7, which are complete and accepted; v2 is a fresh
+> effort planned 2026-08-04 (D94–D96) and not yet implemented.
+>
+> Seven planning docs live in [docs/v2/](docs/v2/): an audit of the current UI's debt with
+> file:line evidence, a token-based design system, six themes with real values, a shared
+> component library, per-screen re-architecture, a thirteen-checkpoint plan, and a list of
+> visual inputs needed from the user. Start at
+> [docs/v2/PLAN_V2.md](docs/v2/PLAN_V2.md) and take one checkpoint at a time.
+>
+> **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
+> changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is
+> already served by an existing endpoint. If a checkpoint seems to need an agent change, it
+> almost certainly doesn't — stop and re-check.
+>
+> **Two questions in [docs/v2/VISUAL_INPUTS.md](docs/v2/VISUAL_INPUTS.md) need the user's
+> answer** (the Library double-click behaviour, and the default theme on first launch), and
+> the vertical-layout decisions for Flows and Live are bets on a window aspect ratio that
+> has never been observed — confirm with a screenshot before checkpoint V2.5.
+
 Read this first, then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/PLAN.md](docs/PLAN.md). Current state: **Phases 0, 1 and 2 complete and accepted**, **Phase 3
 complete and accepted** (CP 3.1–3.5, Trigger delays & conditions), **Phase 4 complete** (CP 4.1–4.5:
