@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../ui/status.dart';
 import 'surface_common.dart';
 
 /// entity-scrape: the queued row strip resolves into either a reason chip
@@ -112,7 +113,7 @@ class _ScrapeCard extends StatelessWidget {
           Text('root: $root', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(height: 6),
         if (done != null) ...[
-          OutcomeBadge(label: 'SCRAPED', tone: BadgeTone.good),
+          OutcomeBadge(label: 'SCRAPED', kind: StatusKind.good),
           const SizedBox(height: 6),
           Text(
             'posts ${done.counters['posts']} · followers ${done.counters['followers']} · '
@@ -120,7 +121,7 @@ class _ScrapeCard extends StatelessWidget {
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ] else if (skipped != null) ...[
-          OutcomeBadge(label: 'SKIPPED', tone: BadgeTone.bad),
+          OutcomeBadge(label: 'SKIPPED', kind: StatusKind.bad),
           const SizedBox(height: 6),
           Text(skipped.reason ?? '', style: theme.textTheme.bodySmall),
         ] else

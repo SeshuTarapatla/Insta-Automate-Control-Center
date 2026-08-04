@@ -304,7 +304,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
         _Stat(
           label: 'Restarts',
           value: '${status.restartCount}',
-          tone: status.restartCount > 0 ? const Color(0xFFFFB454) : null,
+          tone: status.restartCount > 0 ? theme.tokens.status.warn.fg : null,
         ),
         _Stat(label: 'PID', value: status.pid?.toString() ?? '—'),
         _Stat(label: 'Port', value: '${status.port}'),
@@ -313,7 +313,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
           value: probe == null ? '—' : '${probe.latencyMs.round()} ms',
           tone: probe == null
               ? null
-              : (probe.ok ? const Color(0xFF3DD68C) : theme.colorScheme.error),
+              : (probe.ok ? theme.tokens.status.good.fg : theme.colorScheme.error),
           detail: probe?.detail,
         ),
         if (status.exitCode != null)
@@ -379,7 +379,7 @@ class _ServiceDetailState extends ConsumerState<ServiceDetail> {
     final test = status.lastTest;
     final tone = test == null
         ? scheme.onSurfaceVariant
-        : (test.ok ? const Color(0xFF3DD68C) : scheme.error);
+        : (test.ok ? theme.tokens.status.good.fg : scheme.error);
 
     return Container(
       width: double.infinity,

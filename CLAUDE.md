@@ -4,14 +4,24 @@
 >
 > **If you are here to work on the app's look, layout or theming, read
 > [docs/v2/README.md](docs/v2/README.md) and stop reading this file's history section.**
-> Everything below documents Phases 0–7, which are complete and accepted; v2 is a fresh
-> effort planned 2026-08-04 (D94–D96) and not yet implemented.
+> Everything below documents Phases 0–7, which are complete and accepted; v2 is underway on
+> `feat/v2-ui-overhaul`, planned 2026-08-04 (D94–D96), implementation started 2026-08-04/05.
 >
 > Seven planning docs live in [docs/v2/](docs/v2/): an audit of the current UI's debt with
 > file:line evidence, a token-based design system, six themes with real values, a shared
 > component library, per-screen re-architecture, a thirteen-checkpoint plan, and a list of
 > visual inputs needed from the user. Start at
 > [docs/v2/PLAN_V2.md](docs/v2/PLAN_V2.md) and take one checkpoint at a time.
+>
+> **Progress: V2.1 and V2.2 done and accepted; V2.3 half done.** V2.1 (Token foundation, D99)
+> and V2.2 (Component library, D100) are both committed and user-checkpoint-tested. V2.3
+> (Migration) is the plan's largest checkpoint and was split into two halves per its own
+> sanctioned risk mitigation — **part 1 (D101) is committed**: the `AppPalette` shim deleted,
+> every hardcoded color AUDIT §2 found now reads a token, `OutcomeBadge` retargeted onto
+> `ui/status.dart`. **Part 2 is not started**: wrapping all seven screens in `AppPage`, the
+> `EdgeInsets`/`NumericText`/`AppIcon`/`Gap` sweep across ~90 files, the eleven remaining
+> `.when()` sites, and `test/token_coverage_test.dart`. Start the next session there —
+> V2.4–V2.13 all depend on V2.3 being finished first (PLAN_V2's own sequencing note).
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

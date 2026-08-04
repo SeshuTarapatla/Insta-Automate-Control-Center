@@ -252,7 +252,7 @@ class _JobHistoryTile extends StatelessWidget {
     final scheme = theme.colorScheme;
     final (icon, color) = switch (job.status) {
       OpsJobStatus.running => (Icons.sync, scheme.primary),
-      OpsJobStatus.succeeded => (Icons.check_circle_outline, Colors.green),
+      OpsJobStatus.succeeded => (Icons.check_circle_outline, theme.tokens.status.good.fg),
       OpsJobStatus.failed => (Icons.error_outline, scheme.error),
       OpsJobStatus.interrupted => (Icons.link_off, scheme.onSurfaceVariant),
     };

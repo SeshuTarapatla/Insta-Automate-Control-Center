@@ -5,6 +5,54 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 — V2.3 migration started, split into two halves (D101 · part 1 of 2)
+
+### D101 · The `AppPalette` shim deleted; every hardcoded color found by AUDIT §2 now reads a token
+
+**Chosen scope for this half:** PLAN_V2.md's V2.3 is explicitly flagged as the plan's largest
+single checkpoint, with its own sanctioned split ("split it by feature directory... each half
+is independently verifiable"). Rather than a shallow first pass across all ~90 files, this half
+does one thing completely: closes every real color-token gap AUDIT §2 named, verified against
+the acceptance grep. The rest of V2.3 — wrapping all seven screens in `AppPage`, the `EdgeInsets`
+sweep, `NumericText`/`AppIcon`/`Gap` conversion, the eleven remaining `.when()` sites, and
+`test/token_coverage_test.dart` — is unstarted and is part 2.
+
+**`core/app_theme.dart` (the `AppPalette`/`TerminalPalette` deprecated shim, kept for exactly
+one checkpoint per V2.1's own comment) is deleted.** Its five remaining call sites
+(`flow_card.dart`, `title_bar.dart`, `service_terminal.dart` ×5, `dependency_models.dart`,
+`service_models.dart`) now read `theme.tokens.status.*`/`theme.tokens.terminal` directly.
+
+**All thirteen hardcoded colors AUDIT §2 catalogued by file:line are gone**, each mapped to the
+token the audit table already named: `log_console.dart`'s `Colors.amber.shade700` →
+`tokens.status.warn.fg`; `service_detail.dart`'s three duplicate hex literals (`0xFFFFB454` /
+`0xFF3DD68C` ×2 — the audit's "sharpest example," typed by hand from `AppPalette.dark`'s own
+values) → `tokens.status.warn/good.fg`; `notification_center.dart`'s four `Colors.*Accent`
+level colors → a `_levelColor(tokens, level)` function replacing a `static const` map (which
+can't reach `theme` — the const-context constraint is why this one was a map literal instead of
+a switch in the first place); `devices_tab.dart`'s two `Colors.white` QR-background instances →
+`tokens.chart.qrQuietZone` (the token DESIGN_SYSTEM §1.4 built for exactly this — first real
+consumer) and its `Colors.green` → `tokens.status.good.fg`; `ops_tab.dart`'s `Colors.green` →
+same.
+
+**`OutcomeBadge`/`BadgeTone` retargeted onto `ui/status.dart`'s V2.2-built version, not just
+retokened in place** — `features/live/surfaces/surface_common.dart`'s local `OutcomeBadge`
+class and `BadgeTone` enum are deleted outright; its five call sites
+(`follow_surface.dart`, `ingest_surface.dart` ×2, `classify_surface.dart`,
+`scrape_surface.dart` ×2) now import `ui/status.dart` and pass `StatusKind` (`good`/`bad`/
+`neutral` map 1:1, no behavior change). `toneFor(verdict)` stays in `surface_common.dart` —
+domain logic (what `'PRIVATE'` means) has no business living in `ui/`, only its return type
+changed. This is COMPONENTS.md §3's plan for this widget, done as part of the migration rather
+than left stranded as an unused duplicate.
+
+**Verified:** `grep -rn "Color(0x" app/lib --include=*.dart | grep -v core/theme/` and
+`grep -rn "Colors\.[a-z]" app/lib --include=*.dart | grep -v Colors.transparent` both return
+nothing outside `core/theme/` (where token values are legitimately defined) — the first two of
+V2.3's three acceptance greps already pass, ahead of `token_coverage_test.dart` existing to
+enforce it. `flutter analyze` clean, `flutter test` 118/118 unchanged, `flutter build windows
+--debug` succeeds. Built and started for you.
+
+---
+
 ## 2026-08-04 (continued) — V2.2 component library implemented
 
 ### D100 · `app/lib/ui/` built against the tokens; only two pre-existing widgets actually moved

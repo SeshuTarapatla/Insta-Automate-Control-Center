@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_snack_bar.dart';
-import '../../core/app_theme.dart';
 import '../../core/file_opener.dart';
 import '../../core/flow_switch_confirm.dart';
 import '../../core/force_run.dart';
 import '../../core/scheduler_models.dart';
+import '../../core/theme/tokens.dart';
 import '../settings/config_controller.dart';
 import 'flows_controller.dart';
 
@@ -81,12 +81,11 @@ class FlowCard extends ConsumerWidget {
   final FlowState state;
 
   Color _statusColor(ThemeData theme) {
-    final scheme = theme.colorScheme;
-    final palette = theme.palette;
-    if (!state.switchOn) return scheme.onSurfaceVariant;
-    if (state.phase == 'running') return palette.statusGood;
-    if (!state.gate.ok) return palette.statusWarn;
-    return palette.statusInfo;
+    final tokens = theme.tokens;
+    if (!state.switchOn) return tokens.content.secondary;
+    if (state.phase == 'running') return tokens.status.good.fg;
+    if (!state.gate.ok) return tokens.status.warn.fg;
+    return tokens.status.info.fg;
   }
 
   int _secondsFor(WidgetRef ref, String key) =>

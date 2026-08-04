@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../ui/status.dart';
 import 'surface_common.dart';
 
 /// entity-classify: a verdict card stream (`classify.access`/`classify.gender`)
@@ -94,7 +95,7 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
                                 style: theme.textTheme.bodyMedium,
                               ),
                             ),
-                            OutcomeBadge(label: event.verdict ?? '?', tone: toneFor(event.verdict)),
+                            OutcomeBadge(label: event.verdict ?? '?', kind: toneFor(event.verdict)),
                           ],
                         ),
                       ],

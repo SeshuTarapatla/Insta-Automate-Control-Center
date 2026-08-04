@@ -6,6 +6,7 @@ import '../../core/file_opener.dart';
 import '../../core/notification_models.dart';
 import '../../core/notification_text.dart';
 import '../../core/relative_time.dart';
+import '../../core/theme/tokens.dart';
 import 'notification_controller.dart';
 
 /// The bell icon in the title bar (D54 — reachable from every screen rather
@@ -209,11 +210,11 @@ class NotificationTile extends ConsumerWidget {
   const NotificationTile({super.key, required this.notification});
   final AppNotification notification;
 
-  static const _levelColors = {
-    'error': Colors.redAccent,
-    'warning': Colors.orangeAccent,
-    'warn': Colors.orangeAccent,
-    'info': Colors.blueAccent,
+  static Color? _levelColor(AppTokens tokens, String level) => switch (level) {
+    'error' => tokens.status.bad.fg,
+    'warning' || 'warn' => tokens.status.warn.fg,
+    'info' => tokens.status.info.fg,
+    _ => null,
   };
 
   static const _levelIcons = {
@@ -226,7 +227,7 @@ class NotificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final color = _levelColors[notification.level] ?? theme.colorScheme.onSurfaceVariant;
+    final color = _levelColor(theme.tokens, notification.level) ?? theme.tokens.content.secondary;
     final icon = _levelIcons[notification.level] ?? Icons.circle_notifications_outlined;
 
     final bodyStyle = theme.textTheme.bodyMedium?.copyWith(

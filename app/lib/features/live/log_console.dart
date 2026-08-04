@@ -8,10 +8,10 @@ import 'live_controller.dart';
 const _levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
 
 Color _levelColor(ThemeData theme, String level) => switch (level) {
-  'ERROR' || 'CRITICAL' => theme.colorScheme.error,
-  'WARNING' => Colors.amber.shade700,
-  'DEBUG' => theme.colorScheme.onSurfaceVariant,
-  _ => theme.colorScheme.onSurface,
+  'ERROR' || 'CRITICAL' => theme.tokens.status.bad.fg,
+  'WARNING' => theme.tokens.status.warn.fg,
+  'DEBUG' => theme.tokens.content.tertiary,
+  _ => theme.tokens.content.primary,
 };
 
 /// The flow-run log stream: auto-follows the newest line, filters by level,

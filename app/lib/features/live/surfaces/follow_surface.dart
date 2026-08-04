@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
+import '../../../ui/status.dart';
 import 'surface_common.dart';
 
 /// entity-follow: the profile report card with its outcome — FOLLOWED,
@@ -100,7 +101,7 @@ class _FollowCard extends StatelessWidget {
                   ],
                 ),
               ),
-              OutcomeBadge(label: result?.verdict ?? 'attempting…', tone: toneFor(result?.verdict)),
+              OutcomeBadge(label: result?.verdict ?? 'attempting…', kind: toneFor(result?.verdict)),
             ],
           ),
         ),

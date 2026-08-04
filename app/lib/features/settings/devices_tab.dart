@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/app_snack_bar.dart';
 import '../../core/pairing_models.dart';
 import '../../core/relative_time.dart';
+import '../../core/theme/tokens.dart';
 import 'devices_controller.dart';
 
 /// CP 6.3 — the desktop half of mobile pairing (ARCHITECTURE §7). Placement
@@ -211,10 +212,10 @@ class _CodeContent extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: theme.tokens.chart.qrQuietZone, borderRadius: BorderRadius.circular(8)),
           // qr_flutter renders black modules regardless of app theme — wrapped
-          // in an explicit white card so it stays scannable in dark mode.
-          child: QrImageView(data: code.qrPayload, size: 160, backgroundColor: Colors.white),
+          // in an explicit light card so it stays scannable in dark mode.
+          child: QrImageView(data: code.qrPayload, size: 160, backgroundColor: theme.tokens.chart.qrQuietZone),
         ),
         const SizedBox(width: 20),
         Expanded(
@@ -276,7 +277,7 @@ class _PairedContent extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        const Icon(Icons.check_circle_outline, size: 32, color: Colors.green),
+        Icon(Icons.check_circle_outline, size: 32, color: theme.tokens.status.good.fg),
         const SizedBox(width: 16),
         Expanded(child: Text('Paired "$name" successfully.', style: theme.textTheme.bodyMedium)),
       ],

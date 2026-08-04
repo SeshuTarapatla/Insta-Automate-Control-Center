@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../core/app_theme.dart';
 import '../core/connection_state.dart';
 import '../core/shortcuts_reference.dart';
+import '../core/theme/tokens.dart';
 import '../core/window_work_area.dart';
 import '../features/notifications/notification_center.dart';
 
@@ -64,11 +64,11 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final palette = theme.palette;
+    final tokens = theme.tokens;
     final (Color color, String label) = switch (status) {
-      AgentConnection.connected => (palette.statusGood, 'Agent: connected'),
-      AgentConnection.connecting => (palette.statusInfo, 'Agent: connecting'),
-      AgentConnection.disconnected => (theme.colorScheme.error, 'Agent: disconnected'),
+      AgentConnection.connected => (tokens.status.good.fg, 'Agent: connected'),
+      AgentConnection.connecting => (tokens.status.info.fg, 'Agent: connecting'),
+      AgentConnection.disconnected => (tokens.status.bad.fg, 'Agent: disconnected'),
     };
 
     return Row(

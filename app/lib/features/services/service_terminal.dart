@@ -8,10 +8,9 @@ import 'package:xterm/xterm.dart';
 import '../../core/agent_client.dart';
 import '../../core/agent_ws.dart';
 import '../../core/app_snack_bar.dart';
-import '../../core/app_theme.dart';
-import '../../ui/feedback.dart';
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
 import 'services_controller.dart';
 
 /// Matches the agent's own ring: 5000 chunks / 512 KB of scrollback, which is
@@ -201,7 +200,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
           from = line.indexOf(needle, from + needle.length);
         }
       }
-      final highlightColor = Theme.of(context).palette.terminal.searchHitBackground.withValues(alpha: 0.4);
+      final highlightColor = Theme.of(context).tokens.terminal.searchHitBackground.withValues(alpha: 0.4);
       for (final match in _matches) {
         _highlights.add(
           _controller.highlight(
@@ -272,7 +271,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
 
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final terminalPalette = theme.palette.terminal;
+    final terminalPalette = theme.tokens.terminal;
 
     return Container(
       decoration: BoxDecoration(
@@ -300,7 +299,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
       height: 40,
       padding: const EdgeInsets.only(left: 14, right: 6),
       decoration: BoxDecoration(
-        color: theme.palette.terminal.headerBackground,
+        color: theme.tokens.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
@@ -308,7 +307,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
           Icon(
             Icons.terminal,
             size: 16,
-            color: live ? theme.palette.statusGood : scheme.onSurfaceVariant,
+            color: live ? theme.tokens.status.good.fg : scheme.onSurfaceVariant,
           ),
           const SizedBox(width: 8),
           Text(
@@ -355,7 +354,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.palette.terminal.headerBackground,
+        color: theme.tokens.terminal.headerBackground,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
@@ -512,7 +511,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
     };
   }
 
-  TerminalTheme _terminalTheme(ThemeData theme) => theme.palette.terminal.toXterm(
+  TerminalTheme _terminalTheme(ThemeData theme) => theme.tokens.terminal.toXterm(
     cursor: theme.colorScheme.primary,
     selection: theme.colorScheme.primary.withValues(alpha: 0.35),
   );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_theme.dart';
+import 'theme/tokens.dart';
 
 /// Mirrors `ia_agent.services.spec.ServiceState`.
 enum ServiceState {
@@ -23,17 +23,17 @@ enum ServiceState {
     ServiceState.failed => 'Failed',
   };
 
-  /// The status palette is deliberately not the seed scheme: green/amber/red
-  /// read as health at a glance, and the scheme's primary does not.
+  /// The status tokens are deliberately not the accent: green/amber/red read
+  /// as health at a glance, and the theme's accent does not.
   Color color(ThemeData theme) {
-    final palette = theme.palette;
+    final tokens = theme.tokens;
     return switch (this) {
-      ServiceState.running => palette.statusGood,
-      ServiceState.starting => palette.statusInfo,
-      ServiceState.backoff => palette.statusWarn,
-      ServiceState.unhealthy => palette.statusWarn,
-      ServiceState.failed => theme.colorScheme.error,
-      ServiceState.stopped => theme.colorScheme.onSurfaceVariant,
+      ServiceState.running => tokens.status.good.fg,
+      ServiceState.starting => tokens.status.info.fg,
+      ServiceState.backoff => tokens.status.warn.fg,
+      ServiceState.unhealthy => tokens.status.warn.fg,
+      ServiceState.failed => tokens.status.bad.fg,
+      ServiceState.stopped => tokens.content.secondary,
     };
   }
 

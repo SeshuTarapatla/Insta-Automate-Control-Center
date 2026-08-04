@@ -3,43 +3,16 @@ import 'package:flutter/material.dart';
 import '../../../core/app_snack_bar.dart';
 import '../../../core/file_opener.dart';
 import '../../../core/instagram_url.dart';
+import '../../../ui/status.dart';
 
-/// Shared by all five per-flow surfaces (CP 4.4) — a colored outcome pill.
-/// Kept to one shared widget rather than one per surface, since every surface
-/// needs exactly this and nothing fancier.
-class OutcomeBadge extends StatelessWidget {
-  const OutcomeBadge({super.key, required this.label, required this.tone});
-
-  final String label;
-  final BadgeTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final (background, foreground) = switch (tone) {
-      BadgeTone.good => (const Color(0xFF1F4D34), const Color(0xFF6EE7A8)),
-      BadgeTone.bad => (scheme.errorContainer, scheme.onErrorContainer),
-      BadgeTone.neutral => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(6)),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.labelSmall?.copyWith(color: foreground, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-enum BadgeTone { good, bad, neutral }
-
-BadgeTone toneFor(String? verdict) => switch (verdict) {
-  'PRIVATE' || 'FEMALE' || 'FOLLOWED' || 'REQUESTED' || 'FOLLOWING' => BadgeTone.good,
-  'PUBLIC' || 'MALE' || 'FAILED' => BadgeTone.bad,
-  _ => BadgeTone.neutral,
+/// Which [StatusKind] a verdict string reads as — `OutcomeBadge` itself
+/// moved to `ui/status.dart` (V2.2); this is the one piece of domain logic
+/// (mapping Instagram's verdict vocabulary onto the three-kind badge) that
+/// stays here, since `ui/` shouldn't know what `'PRIVATE'` means.
+StatusKind toneFor(String? verdict) => switch (verdict) {
+  'PRIVATE' || 'FEMALE' || 'FOLLOWED' || 'REQUESTED' || 'FOLLOWING' => StatusKind.good,
+  'PUBLIC' || 'MALE' || 'FAILED' => StatusKind.bad,
+  _ => StatusKind.neutral,
 };
 
 /// The source entity a scrape/follow candidate was found under —

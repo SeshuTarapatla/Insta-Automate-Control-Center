@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/flow_event_models.dart';
+import '../../../ui/status.dart';
 import 'surface_common.dart';
 
 /// entity-ingest: a metadata card per entity added this run. Ingest never
@@ -95,9 +96,9 @@ class _EntityCard extends StatelessWidget {
                         child: Wrap(
                           spacing: 6,
                           children: [
-                            if (type != null) OutcomeBadge(label: type.toUpperCase(), tone: BadgeTone.neutral),
+                            if (type != null) OutcomeBadge(label: type.toUpperCase(), kind: StatusKind.neutral),
                             if (access != null)
-                              OutcomeBadge(label: access.toUpperCase(), tone: toneFor(access.toUpperCase())),
+                              OutcomeBadge(label: access.toUpperCase(), kind: toneFor(access.toUpperCase())),
                           ],
                         ),
                       ),
