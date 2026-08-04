@@ -1329,6 +1329,25 @@ restarts. Worker untouched (trigger-loop-only change). **You tested live afterwa
 it works** — the Ingest card now settles to its real resting state promptly instead of sitting on
 "Checking…" for minutes. Committed. Full account in DECISIONS.md's D92.
 
+**2026-08-04 (continued): the Flows cards were decluttered — the always-visible mechanism
+sentence and raw gate formula moved behind a small info tooltip (D93).** The user flagged the
+screen as cluttered: every card always rendered D84's mechanism sentence plus, when blocked, the
+gate's raw condition string verbatim from the pipeline (variable names, `≥` comparisons, sometimes
+truncated mid-formula) — two stacked technical text blocks competing with the status/counters/
+buttons on every card. Presented three concrete mockups; chosen: an ⓘ icon next to the status
+subtitle, `Tooltip`-only — both texts move into the icon's tooltip message (joined by a blank
+line), off the card by default, tinting to the error color when the flow is genuinely blocked.
+Rejected an expandable disclosure (adds a click + card-height change for the same text) and
+inline-but-shortened (would need parsing arbitrary pipeline gate strings client-side — a real
+maintenance risk, since those strings' exact shape isn't a contract). **A first pass over-cropped
+the fix**, caught from your own live screenshot: the subtitle `Text` was `Expanded`, so on short
+subtitles the icon landed pinned at the row's far right next to the switch, with a dead gap before
+it — fixed by swapping to `Flexible`, so the icon now sits immediately after the text instead of
+at the row's edge. `flutter analyze` clean, `flutter test` 52/52 (two `flows_layout_test.dart`
+cases rewritten to assert via `find.byTooltip(...)` instead of inline text, since that's genuinely
+where it lives now). Built and started for you twice, not clicked through by Claude — **you
+confirmed both rounds live**. Full account in DECISIONS.md's D93.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

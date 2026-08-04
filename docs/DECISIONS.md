@@ -57,6 +57,45 @@ minutes. Committed.
 
 ---
 
+## 2026-08-04 (continued) — Flows cards decluttered: mechanism/gate text moved behind an info tooltip
+
+### D93 · Always-visible mechanism sentence + raw gate formula replaced with a small info icon + tooltip
+
+**Asked:** the user flagged the Flows screen as "kind of ugly" with "all this extra text" — every
+card always rendered two stacked technical text blocks below the status line: D84's plain-language
+mechanism sentence, and (when blocked) the gate's raw condition string verbatim from the pipeline
+(e.g. `scanned+gender_invalid+gender_valid+scrape_queued = 6581 ≥ SCAN_RESERVE_TARGET = 1000 (every
+queued e...)`), truncated mid-formula on longer flows. Both were always on, competing with the
+status/counters/buttons for attention on every card regardless of whether the user needed that
+detail right now.
+
+**Chosen, after presenting three concrete options with mockups:** an ⓘ icon next to the status
+subtitle, tooltip-only — the mechanism sentence and (when present) the gate detail move entirely
+into the icon's `Tooltip.message` (joined with a blank line), off the card by default. The icon
+tints to the theme's error color when the flow is genuinely blocked (`gate.detail/reason` present
+and `!gate.ok`), giving an at-a-glance signal without spelling out the formula. **Rejected:** an
+expandable "Details ⌄" disclosure (adds a click + card-height change just to read the same text)
+and keeping the text inline but shortened (would require parsing/humanizing arbitrary pipeline
+gate strings client-side, a real maintenance risk since those strings' shapes aren't a contract).
+
+**A first pass over-cropped the fix.** The subtitle `Text` was wrapped in `Expanded`, which
+stretches to fill the row before the icon — so on short subtitles ("Paused for the day", "Waiting
+on condition") the icon landed pinned to the far right of the row, next to the switch, with a wide
+dead gap between the text it explains and the icon itself. Caught by the user from a live
+screenshot, not anticipated. Fixed by swapping `Expanded` → `Flexible`: the text now only claims
+the width it needs (still ellipsizing correctly if it ever runs long, since `Flexible`'s default
+`FlexFit.loose` still gets the same max-width constraint `Expanded` did), and the icon sits
+immediately after it instead of at the row's far edge.
+
+**Verified:** `flutter analyze` clean, `flutter test` 52/52 (two cases in `flows_layout_test.dart`
+rewritten from asserting the mechanism text rendered inline to asserting it via
+`find.byTooltip(...)`, since that's genuinely where it lives now — not just a cosmetic tweak to the
+same assertion). `flutter build windows --debug` succeeds. Built and started for you twice (once
+per round), not clicked through by Claude. **You confirmed both rounds live** — the first pass
+read as much cleaner, the icon-placement bug was then caught and fixed the same session.
+
+---
+
 ## 2026-08-04 (continued) — entity-scan gets its own curation-backlog reserve gate
 
 ### D91 · A new `SCAN_RESERVE_TARGET` gate on entity-scan, scoped to PROFILE+PUBLIC only

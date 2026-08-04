@@ -136,20 +136,28 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
-  testWidgets('FlowCard always shows its trigger mechanism, not just the countdown', (tester) async {
+  testWidgets('FlowCard exposes its trigger mechanism via the info tooltip, not inline text', (
+    tester,
+  ) async {
+    // The mechanism sentence used to always render inline, cluttering every
+    // card; it now lives behind the small info icon's tooltip instead, kept
+    // out of the way until asked for.
     await _render(tester, _state(flow: 'entity-follow'));
     expect(tester.takeException(), isNull);
     expect(
-      find.textContaining('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
+      find.byTooltip('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
       findsOneWidget,
     );
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
   });
 
-  testWidgets('FlowCard names the instant path for ingest, not just its poll fallback', (tester) async {
+  testWidgets('FlowCard tooltip names the instant path for ingest, not just its poll fallback', (
+    tester,
+  ) async {
     await _render(tester, _state(flow: 'entity-ingest'));
     expect(tester.takeException(), isNull);
     expect(
-      find.textContaining('Instant on a new channel message · 10m poll as fallback'),
+      find.byTooltip('Instant on a new channel message · 10m poll as fallback'),
       findsOneWidget,
     );
   });

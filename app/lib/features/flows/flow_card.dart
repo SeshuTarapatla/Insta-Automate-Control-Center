@@ -151,6 +151,7 @@ class FlowCard extends ConsumerWidget {
     final kind = _kindOf(state);
     final gateText = state.gate.detail ?? (state.gate.ok ? null : state.gate.reason);
     final mechanismLine = _mechanismLine(ref);
+    final infoText = [mechanismLine, ?gateText].join('\n\n');
     final lastRun = state.lastRun;
     // Optimistic feedback only - the agent's queue/heartbeat round trip is
     // fast, but the worker actually picking up the run can lag a few
@@ -180,11 +181,30 @@ class FlowCard extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium,
                         ),
-                        Text(
-                          _subtitleFor(kind, state),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _subtitleFor(kind, state),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ),
+                            if (infoText.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Tooltip(
+                                message: infoText,
+                                child: Icon(
+                                  Icons.info_outline,
+                                  size: 14,
+                                  color: gateText != null && !state.gate.ok
+                                      ? scheme.error
+                                      : scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
@@ -195,32 +215,8 @@ class FlowCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Tooltip(
-                message: mechanismLine,
-                child: Text(
-                  mechanismLine,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-              ),
-              if (gateText != null) ...[
-                const SizedBox(height: 10),
-                Tooltip(
-                  message: gateText,
-                  child: Text(
-                    gateText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: state.gate.ok ? scheme.onSurfaceVariant : scheme.error,
-                    ),
-                  ),
-                ),
-              ],
               if (_todayLine() != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
                   _todayLine()!,
                   maxLines: 1,
