@@ -1225,6 +1225,29 @@ opened/tapped by Claude. **You tested live afterward and confirmed it works** �
 D86–D89 arc (Reduce reserve, the two live-caught bugs, the Trigger now rename, and this layout
 correction) as checkpoint-tested. Committed. Full account in DECISIONS.md's D89.
 
+**2026-08-04 (continued): a real Reduce-reserve/Syncthing race, found live, fixed with a mobile
+Library dual-write (D90).** Applying a scrape batch on mobile, then immediately pressing Reduce
+reserve, dropped `follow_queued` further than expected — mobile's Apply only writes the phone's own
+local `IA_DIR`, and the laptop (where the pool count Reduce reserve reads from actually lives) only
+catches up once Syncthing gets around to it, no guaranteed timing. Fixed by having mobile mirror
+the exact same explicit file changes to the paired agent's own `IA_DIR` directly, awaited before
+Apply's spinner clears, ahead of Syncthing — local UI stays exactly as instant as before; unpaired
+or unreachable falls back to today's Syncthing-only behavior unchanged. **A real data-loss risk was
+caught before writing any mobile code**: both Library screens paginate, so naively reusing the
+existing per-entity `apply()` endpoint (whole-directory scoped, trashes anything not selected)
+would have destroyed not-yet-reviewed images on other pages the moment one page was applied. Fixed
+instead with a new, deliberately dumb `ops.move()`/`POST /api/library/move` (explicit `{from, to}`
+pairs, touches nothing else) alongside the already-existing explicit-path `delete()` — both
+idempotent against a concurrent Syncthing catch-up landing the same change first, so a stray
+leftover copy is trashed rather than risking an overwrite, and neither side existing is a reported
+per-item error, never a crash or a silently-dropped selection. Verified: `agent/tests/test_library.py`
+82/82 (8 new checks), all 15 agent suites green, real agent restarted and smoke-tested live against
+a harmless nonexistent path (no real `IA_DIR` data touched, matching CP 5.2's own precedent).
+Mobile `flutter analyze` clean, built and installed on the test phone — not opened/tapped by
+Claude. **You tested live afterward and confirmed it works** — applied a batch on the paired
+phone, immediately triggered Reduce reserve, and the count landed correctly. Committed. Full
+account in DECISIONS.md's D90.
+
 **Startup is the agent's now (CP 2.5).** `agent/src/ia_agent/startup.py` — `install` / `remove` /
 `status`, run as `uv run --project agent python -m ia_agent.startup <action>` — registers the
 Task Scheduler logon task, flips the three `autostart` switches, and deletes the old shortcut after

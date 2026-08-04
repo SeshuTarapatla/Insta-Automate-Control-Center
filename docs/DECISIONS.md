@@ -5,6 +5,84 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-04 (continued) — Mobile Library apply/delete now dual-writes to the paired agent
+
+### D90 · Closing the Reduce-reserve/Syncthing race: mobile's Apply/Delete mirror straight to the desktop's own `IA_DIR`, not just locally
+
+**Asked:** a real live bug — applying a scrape batch on mobile (promoting 10 images into
+`follow_queued`) and immediately pressing Reduce reserve on the same phone dropped the count to 177
+instead of the expected 180. Root cause: mobile's Apply/Delete only ever write to the phone's own
+local `IA_DIR` copy; the laptop (where `entity_follow`'s pool count and Reduce reserve's stop
+condition actually read from) only sees that change once Syncthing has propagated it — a race with
+no guaranteed timing, so a trigger fired right after Apply can read a stale or half-synced count.
+You asked for a fix that's robust across corner cases with **zero risk of image data loss**, and
+confirmed the phone's own instant local UI feedback must stay exactly as instant as today.
+
+**Chosen — dual-write, local-first.** Mobile's local file moves/deletes are completely unchanged
+(same instant UI). Additionally, when paired and the agent is reachable, the exact same explicit
+file list is mirrored to the desktop's own `IA_DIR` directly over the existing pairing connection —
+so the laptop's canonical counts are correct by the time Apply's spinner stops, with no dependency
+on Syncthing's timing for this specific race. Unpaired or agent-unreachable: silently falls back to
+today's Syncthing-only behavior, zero regression.
+
+**A real correctness risk was found and designed around before writing any mobile code**: both
+`FolderScreen` and `EntityImagesScreen` paginate — Apply only ever acts on the current page
+(`_batch`), which can be a strict subset of one entity's images. The agent's existing
+`POST /api/library/apply` (CP 5.2) is coarse-grained by design — `selected` is treated as the
+*complete* keep-list for that entity's whole directory, trashing everything else present. Naively
+routing a per-page Apply through it would have trashed that entity's *other, not-yet-reviewed*
+pages the moment the first page was applied — a real data-loss bug, not just a timing nuisance, and
+exactly the kind of corner case you asked to be covered.
+
+**Fixed by adding one new, deliberately dumb endpoint instead of reusing `apply`.** New
+`ops.move(moves: list[{from, to}])` (`agent/src/ia_agent/library/ops.py`) + `POST
+/api/library/move` (`agent/src/ia_agent/api/library.py`) — moves exactly the named pairs and
+nothing else in either directory, mirroring precisely what mobile already computes locally
+(`File.rename(...)`). `/api/library/delete` (already explicit-path-based, CP 5.2) is reused as-is
+for the "unselected → trash" half — no agent change needed there. Both are permitted for a paired
+device token already (`/api/library/*` has no desktop-only gate, unlike the pairing-management
+routes), confirmed by reading `auth.py`/`pair.py` before assuming it.
+
+**Idempotent by construction, the actual "no data loss" guarantee.** The source files these
+operations touch (`scraped/`, `gender_valid/`, etc.) always originate on the laptop — the pipeline
+writes them there first, Syncthing syncs them *down* to the phone for review — so the race is only
+ever about the promote/delete decision propagating back *up*, never about the source file itself
+being absent. `move()` treats `to` already existing as already-converged (a concurrent Syncthing
+catch-up landing the identical file first, or a retried call) rather than an error, trashing any
+stray leftover `from` instead of overwriting onto the destination; `to` and `from` both absent is
+reported as a per-item error without aborting the rest of the batch. This also makes the whole
+mechanism safe under the residual edge case inherent to dual-writing into a bidirectionally-synced
+folder: if Syncthing's own upward sync of the identical rename lands moments after (or before) the
+agent call, both sides converge on byte-identical content, so at worst Syncthing does a harmless
+no-op re-confirmation — never a conflict that could lose a selection.
+
+**Mobile side:** new `services/agent_library_sync.dart` (`libraryRelPath()` + best-effort
+`syncLibraryChangeToAgent()`, silently swallowing any `DioException` — unreachable/offline is not
+an error state here, it's the expected unpaired case). Wired into `_applyAction`/`_deleteSelected`
+in both `folder_screen.dart` and `entity_images_screen.dart`: the local file loops now also collect
+the exact rel-path pairs/paths that actually succeeded locally, and the agent sync call is awaited
+right before the "Applying…" spinner clears — closing the whole race window before the button
+signals done, not a fire-and-forget that could still lose the race.
+
+**Verified:** `agent/tests/test_library.py` grew to 82/82 (6 new unit checks on `ops.move()` — a
+real relocation touching nothing else in either directory, the dest-already-exists idempotent
+no-op trashing the stray source, both-sides-absent as a reported error not a crash, path-traversal
+rejection, and a mixed batch where one bad item doesn't block the rest — plus 2 new REST checks
+over the live app). All 15 agent suites green (regression-free). Restarted the real agent (all
+three supervised services confirmed still `adopted`, uptime intact) and smoke-tested
+`POST /api/library/move` against a deliberately nonexistent path — confirmed live and reachable
+without touching any real file, matching CP 5.2's own precedent of never exercising `apply`/
+`delete`-shaped mutations against real `IA_DIR` data from a verification pass. Mobile: `flutter
+analyze` clean (mobile repo's one pre-existing, unrelated `thumbnail_cache.dart` lint, untouched);
+built a real debug APK and installed it on the adb-connected test phone — not opened or tapped
+through by Claude, per the mobile-reinstall precedent; on-device confirmation is yours to do.
+
+**You tested this live and confirmed it works** — applied a batch on the paired phone, immediately
+triggered Reduce reserve, and the pool count landed where expected instead of overshooting.
+Committed the same session.
+
+---
+
 ## 2026-08-04 (continued) — Mobile's button row: back to evenly-spaced, per your correction
 
 ### D89 · The full-width-row split (D87) over-corrected — one evenly-spaced row again, ellipsis instead

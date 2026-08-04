@@ -235,6 +235,47 @@ def ops_checks() -> None:
         str(result4),
     )
 
+    print("\n16b. move(): relocates exactly the named file, nothing else in either directory")
+    make_jpg("scrape_queued/henry/p1.jpg")
+    make_jpg("scrape_queued/henry/untouched.jpg")
+    result5 = ops.move([{"from": "scrape_queued/henry/p1.jpg", "to": "follow_queued/henry/p1.jpg"}])
+    check("reported under moved", result5 == {"moved": ["follow_queued/henry/p1.jpg"], "already_synced": [], "errors": []}, str(result5))
+    check("landed at the new path", (FAKE_IA_DIR / "follow_queued/henry/p1.jpg").exists())
+    check("gone from the old path", not (FAKE_IA_DIR / "scrape_queued/henry/p1.jpg").exists())
+    check("the sibling file was never touched", (FAKE_IA_DIR / "scrape_queued/henry/untouched.jpg").exists())
+
+    print("\n16c. move() is idempotent against a Syncthing-catch-up race: dest already there")
+    make_jpg("scrape_queued/henry/p2.jpg")
+    make_jpg("follow_queued/henry/p2.jpg")  # simulates Syncthing having already delivered this one
+    result6 = ops.move([{"from": "scrape_queued/henry/p2.jpg", "to": "follow_queued/henry/p2.jpg"}])
+    check("reported under already_synced, not moved", result6 == {"moved": [], "already_synced": ["follow_queued/henry/p2.jpg"], "errors": []}, str(result6))
+    check("the stray source copy was trashed, not overwritten onto", not (FAKE_IA_DIR / "scrape_queued/henry/p2.jpg").exists())
+    check("the destination is untouched", (FAKE_IA_DIR / "follow_queued/henry/p2.jpg").exists())
+
+    print("\n16d. move(): neither side exists is a reported error, not a crash")
+    result7 = ops.move([{"from": "scrape_queued/henry/ghost.jpg", "to": "follow_queued/henry/ghost.jpg"}])
+    check("one error, nothing moved or already_synced", len(result7["errors"]) == 1 and not result7["moved"] and not result7["already_synced"], str(result7))
+
+    print("\n16e. move(): a traversal attempt is a reported error, never raises or touches disk")
+    result8 = ops.move([{"from": "../outside.jpg", "to": "follow_queued/henry/x.jpg"}])
+    check("reported as an error", len(result8["errors"]) == 1, str(result8))
+    check("nothing created at the destination", not (FAKE_IA_DIR / "follow_queued/henry/x.jpg").exists())
+
+    print("\n16f. move(): one bad item in a batch doesn't block the rest")
+    make_jpg("scrape_queued/henry/p3.jpg")
+    result9 = ops.move([
+        {"from": "scrape_queued/henry/p3.jpg", "to": "follow_queued/henry/p3.jpg"},
+        {"from": "scrape_queued/henry/ghost2.jpg", "to": "follow_queued/henry/ghost2.jpg"},
+    ])
+    check("the good item still moved", result9["moved"] == ["follow_queued/henry/p3.jpg"], str(result9))
+    check("the bad item is the one error", len(result9["errors"]) == 1, str(result9))
+
+    # henry/follow_queued's henry only exist for the checks above — clear
+    # them so the live app's seed() below sees the same stable state the
+    # comment ahead of it already documents (scrape_queued: dave only, 2 files).
+    shutil.rmtree(FAKE_IA_DIR / "scrape_queued/henry", ignore_errors=True)
+    shutil.rmtree(FAKE_IA_DIR / "follow_queued/henry", ignore_errors=True)
+
 
 folders_checks()
 counts_checks()
@@ -389,6 +430,34 @@ async def live_checks() -> None:
             str(deleted_body),
         )
         check("gone from disk", not (FAKE_IA_DIR / "scrape_queued/grace/z.jpg").exists())
+
+        print("\n29. POST /api/library/move relocates an explicit path pair, over REST")
+        make_jpg("scrape_queued/iris/q1.jpg")
+        move_resp = await client.post(
+            "/api/library/move", json={"moves": [{"from": "scrape_queued/iris/q1.jpg", "to": "follow_queued/iris/q1.jpg"}]}
+        )
+        move_body = move_resp.json()
+        check(
+            "200, reported under moved",
+            move_resp.status_code == 200 and move_body == {"moved": ["follow_queued/iris/q1.jpg"], "already_synced": [], "errors": []},
+            str(move_body),
+        )
+        check("landed at the new path", (FAKE_IA_DIR / "follow_queued/iris/q1.jpg").exists())
+        check("gone from the old path", not (FAKE_IA_DIR / "scrape_queued/iris/q1.jpg").exists())
+
+        print("\n29b. POST /api/library/move is idempotent when the destination already exists, over REST")
+        make_jpg("scrape_queued/iris/q2.jpg")
+        make_jpg("follow_queued/iris/q2.jpg")
+        move_resp2 = await client.post(
+            "/api/library/move", json={"moves": [{"from": "scrape_queued/iris/q2.jpg", "to": "follow_queued/iris/q2.jpg"}]}
+        )
+        move_body2 = move_resp2.json()
+        check(
+            "reported under already_synced, no error",
+            move_body2 == {"moved": [], "already_synced": ["follow_queued/iris/q2.jpg"], "errors": []},
+            str(move_body2),
+        )
+        check("stray source trashed", not (FAKE_IA_DIR / "scrape_queued/iris/q2.jpg").exists())
 
 
 async def main() -> int:

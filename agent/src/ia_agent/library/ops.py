@@ -97,6 +97,48 @@ def apply(folder_name: str, entity: str | None, selected: list[str]) -> dict:
     }
 
 
+def move(moves: list[dict[str, str]]) -> dict:
+    """Moves each explicit `{from, to}` `IA_DIR`-relative pair and nothing
+    else — unlike `apply`, this never inspects or touches the rest of either
+    directory, so it's safe against a client that only ever sees one page of
+    a paginated batch (the mobile app's Library screens): it can only ever
+    move what it was explicitly told to.
+
+    Idempotent by design, since the caller (a phone syncing its own local
+    apply through to the desktop the instant it happens, ahead of Syncthing)
+    can race a Syncthing catch-up moving the identical file first: if `to`
+    already exists, that's treated as already-converged, not an error, and
+    any stray leftover `from` is trashed rather than overwritten onto — the
+    two are guaranteed byte-identical (the same originally-scraped image,
+    just relocated), so there's nothing to reconcile."""
+    moved: list[str] = []
+    already_synced: list[str] = []
+    errors: list[str] = []
+    for item in moves:
+        src_rel = item.get("from", "")
+        dst_rel = item.get("to", "")
+        if folders.resolve(folders.IA_DIR / src_rel) is None or folders.resolve(folders.IA_DIR / dst_rel) is None:
+            errors.append(f"not a library path: {src_rel} -> {dst_rel}")
+            continue
+        src = folders.IA_DIR / src_rel
+        dst = folders.IA_DIR / dst_rel
+        try:
+            if dst.is_file():
+                if src.is_file():
+                    send2trash(str(src))
+                already_synced.append(dst_rel)
+                continue
+            if not src.is_file():
+                errors.append(f"not found: {src_rel}")
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _move(str(src), str(dst))
+            moved.append(dst_rel)
+        except OSError as error:
+            errors.append(f"{src_rel} -> {dst_rel}: {error}")
+    return {"moved": moved, "already_synced": already_synced, "errors": errors}
+
+
 def delete(paths: list[str]) -> dict:
     """Trashes an explicit list of `IA_DIR`-relative paths (as returned by
     `GET /api/library/images`), regardless of which folder/entity each one is

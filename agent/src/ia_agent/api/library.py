@@ -24,6 +24,10 @@ class DeleteRequest(BaseModel):
     paths: list[str]
 
 
+class MoveRequest(BaseModel):
+    moves: list[dict[str, str]]
+
+
 class MoveTargetRequest(BaseModel):
     target: str
 
@@ -133,6 +137,10 @@ def create_library_router(counts: LibraryCounts) -> APIRouter:
             return await asyncio.to_thread(ops.apply, body.folder, body.entity, body.selected)
         except ops.LibraryOpError as error:
             raise HTTPException(status_code=400, detail=str(error))
+
+    @router.post("/move")
+    async def move_library(body: MoveRequest) -> dict:
+        return await asyncio.to_thread(ops.move, body.moves)
 
     @router.post("/delete")
     async def delete_library(body: DeleteRequest) -> dict:
