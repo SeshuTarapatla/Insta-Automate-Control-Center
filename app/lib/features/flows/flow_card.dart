@@ -319,7 +319,17 @@ class _FlowStatusIndicator extends StatelessWidget {
   final DateTime? observedAt;
   final Color color;
 
-  static const _size = 56.0;
+  // The outer bounding box — shared with `_iconBadge()` (every non-cooldown
+  // state) so the indicator's footprint, and everything laid out next to it
+  // in `FlowCard`'s row, never shifts when a flow flips in or out of
+  // cooldown. Tune icon-badge size here.
+  static const _size = 64.0;
+
+  // The cooldown ring's own drawn size (backdrop disc + progress arc),
+  // independent of `_size` — centered inside the same `_size` box via the
+  // `Stack`'s `alignment: center`, so this can be tuned freely without
+  // resizing the icon badges the other flow states use. Tune ring size here.
+  static const _ringSize = 48.0;
 
   /// mm:ss (or h:mm:ss past an hour) — denser and more immediately readable
   /// as a countdown than "20m15s", especially once a wait runs to minutes.
@@ -369,6 +379,18 @@ class _FlowStatusIndicator extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // The same filled tint `_iconBadge()` uses, as a backdrop. A bare
+          // `CircularProgressIndicator` only ever paints a thin stroke —
+          // its "background" is just a fainter stroke, not a fill — so
+          // next to a solid tinted disc it read as visibly smaller even at
+          // an identical bounding box (a thin ring vs. a filled circle is a
+          // real perceptual size difference, not just pixels). Sized to
+          // `_ringSize`, not `_size` — see that field's own comment.
+          SizedBox(
+            width: _ringSize,
+            height: _ringSize,
+            child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.15))),
+          ),
           // Re-keyed on the deadline so a re-target (edited wait, skip_wait)
           // starts a fresh animation rather than tweening across a jump.
           // Rebuilding every second (FlowCard's tick) still looks like one
@@ -377,20 +399,39 @@ class _FlowStatusIndicator extends StatelessWidget {
           // curve a true continuous one would already be on — no visible
           // step, and it self-corrects for any drift instead of accumulating
           // it the way a single long-lived animation would.
-          TweenAnimationBuilder<double>(
-            key: ValueKey(deadline),
-            tween: Tween(begin: fraction, end: 0.0),
-            duration: remaining,
-            curve: Curves.linear,
-            builder: (context, value, _) => CircularProgressIndicator(
-              value: value.clamp(0.0, 1.0),
-              strokeWidth: 4,
-              strokeCap: StrokeCap.round,
-              color: color,
-              backgroundColor: color.withValues(alpha: 0.15),
+          // `CircularProgressIndicator` doesn't size itself to fill whatever
+          // bounded space it's given the way a plain decorated `Container`
+          // does (the tinted disc above) — its render object computes a
+          // fixed ~36px preferred size regardless of the `Stack`/`SizedBox`
+          // around it, so without an explicit tight size here it renders at
+          // that default no matter what `_ringSize` is set to.
+          SizedBox(
+            width: _ringSize,
+            height: _ringSize,
+            child: TweenAnimationBuilder<double>(
+              key: ValueKey(deadline),
+              tween: Tween(begin: fraction, end: 0.0),
+              duration: remaining,
+              curve: Curves.linear,
+              builder: (context, value, _) => CircularProgressIndicator(
+                value: value.clamp(0.0, 1.0),
+                strokeWidth: 4,
+                strokeCap: StrokeCap.round,
+                color: color,
+                // The filled disc above is now the "remaining" backdrop —
+                // a second faint track stroke on top of it would just look
+                // muddy.
+                backgroundColor: Colors.transparent,
+              ),
             ),
           ),
-          NumericText(_format(remaining), role: TextRole.micro),
+          // A little breathing room between the ring's stroke and the
+          // countdown text — the tightest case (h:mm:ss, past an hour) was
+          // sitting right up against the ring with no padding at all.
+          // `caption` (12) rather than `micro` (10.5) now that the ring
+          // itself is genuinely 64px (not just its backdrop) — there's
+          // real room for a more readable size.
+          Padding(padding: const EdgeInsets.all(3), child: NumericText(_format(remaining), role: TextRole.caption)),
         ],
       ),
     );

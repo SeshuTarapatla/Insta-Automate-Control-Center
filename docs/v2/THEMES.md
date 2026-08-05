@@ -96,7 +96,7 @@ status.bad            #EF4444   container #3F0D0D   onContainer #FCA5A5
 | `effects` | **`depth: border`** — all three shadow lists empty. Depth is hairlines and surface steps, nothing else. `surfaceBlur` 0, `hoverLift` false, `hoverTintAlpha` 0.06 |
 | `chart.series` | `#38BDF8 · #22C55E · #F59E0B · #A78BFA · #F472B6 · #2DD4BF` |
 | `terminal` | `TerminalPalette.dark` (Tokyo Night) with `background`/`panelBackground` → `#090A0E`, `headerBackground` → `#161923` |
-| **density** | **`compact` by default** — the one theme that ships dense, because that's its whole point |
+| **density** | designed for `compact` — the one theme meant to be dense, because that's its whole point (no longer auto-applied on selection, D106: density is a fully independent, sticky user setting) |
 
 Signature details worth building: uppercase `micro` labels with wide tracking for every
 section header; every numeric in JetBrains Mono with tabular figures; table rows separated

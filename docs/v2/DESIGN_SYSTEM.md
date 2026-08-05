@@ -265,7 +265,7 @@ Plus semantic measures that the audit showed were being reinvented per screen:
 
 | Density | Space × | Type × | For |
 |---|---|---|---|
-| `compact` | 0.75 | 0.95 | dense ops use; Command Deck's own default |
+| `compact` | 0.75 | 0.95 | dense ops use; the tier Command Deck is designed for |
 | `comfortable` | 1.0 | 1.0 | default |
 | `spacious` | 1.15 | 1.05 | more room to breathe than the default |
 

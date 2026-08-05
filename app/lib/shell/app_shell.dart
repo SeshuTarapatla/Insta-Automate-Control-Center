@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../core/nav_state.dart';
 import '../core/onboarding.dart';
 import '../core/shortcuts_reference.dart';
+import '../core/theme/tokens.dart';
 import '../features/flows/flows_page.dart';
 import '../features/insights/insights_page.dart';
 import '../features/library/library_page.dart';
@@ -79,7 +80,15 @@ class _AppShellState extends ConsumerState<AppShell> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
-          backgroundColor: Colors.transparent,
+          // Was hardcoded `Colors.transparent` — correct only for Classic/
+          // Mica (whose `surface.canvas` genuinely is transparent, so the
+          // real Windows desktop shows through); every other theme's canvas
+          // is opaque, and painting it here (instead of always falling
+          // through to whatever's behind the window) is the fix for D106 —
+          // without it, the page background stayed whatever it always was
+          // regardless of theme, while cards correctly went dark, making
+          // every non-Classic/Mica dark theme look mismatched.
+          backgroundColor: Theme.of(context).tokens.surface.canvas,
           body: Column(
             children: [
               const TitleBar(),

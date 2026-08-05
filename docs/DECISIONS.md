@@ -5,6 +5,132 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — post-commit follow-ups: canvas background bug, density independence (D106)
+
+### D106 · `AppShell`'s Scaffold background was hardcoded transparent; Command Deck's density nudge removed
+
+**Two separate fixes, found live after V2.4 (D103–D105) was already committed.**
+
+**The real one — the page background never actually changed theme.** `shell/app_shell.dart`'s
+root `Scaffold` had `backgroundColor: Colors.transparent` hardcoded, predating the entire v2
+token system. For Classic and Mica that's correct by coincidence (both really do want a
+transparent canvas so the native Mica-blurred desktop shows through) — but it meant the other
+four themes' own opaque `surface.canvas` value (Command Deck's `#07080B`, Nocturne's `#13131A`,
+Daylight's `#FBFBF9`, Swiss's `#FFFFFF`) was never painted at all. The visible page background
+stayed whatever was behind the window regardless of theme, while cards correctly went dark
+(post-D104) — the mismatch the user described as "the widgets look way darker... the app looks
+different" when switching to Command Deck: the cards were right, the backdrop around them
+wasn't moving. Fixed by reading `Theme.of(context).tokens.surface.canvas` instead of the
+hardcoded literal — a no-op for Classic/Mica (their token *is* `Colors.transparent`, so the
+pixel output is identical), a real fix for the other four.
+
+**Command Deck's "ships compact by default" density nudge (D103) removed outright, at the
+user's explicit request.** THEMES.md §2 describes Command Deck as *designed for* `compact`, but
+auto-applying that on selection meant density silently moved without the user asking it to —
+exactly the kind of state a user expects to stay put until they change it themselves,
+regardless of which theme they're on. `ThemeController.setTheme()` no longer touches density at
+all; THEMES.md and DESIGN_SYSTEM.md's density table reworded from "ships compact by default" to
+"designed for compact," since the theme's own token values are unchanged — only the automatic
+behavior is gone.
+
+**Verified:** `flutter analyze` clean, `flutter test` 175/175 unchanged (no test asserted the
+old Scaffold background or the density nudge). Rebuilt; two stale instances found running (not
+just the expected one — cleaned up along with the intended restart) and replaced with a single
+fresh one, started for you per rule 5.
+
+**The background fix confirmed live** — a follow-up screenshot of Command Deck shows the page
+background and cards finally reading as one coherent near-black-blue surface, no more mismatch.
+The density-independence half wasn't separately re-verified this round (no theme switch was
+shown after it) — worth an explicit check next session. Same session, one more small thing
+spotted while looking at the fixed Command Deck screenshot: `flow_card.dart`'s cooldown countdown ring
+(`_FlowStatusIndicator`) centered its `NumericText` directly against the ring's stroke with no
+gap, tightest on the `h:mm:ss` case (past an hour). Added `Padding(EdgeInsets.all(3))` around
+just that text — scoped to the countdown branch only, not the shared `_size`/`_iconBadge()` used
+by every other flow state, so this doesn't change the size of any of the non-cooldown icon
+badges. `flutter analyze` clean, `flutter test` 175/175 (`flows_layout_test.dart`'s cooldown
+case unchanged, still green). Rebuilt, restarted for you.
+
+**The padding alone wasn't enough — caught immediately by a real side-by-side screenshot,
+before the session closed.** Two flows cooling down at once: Scrape's `9:33` (4 chars, under an
+hour) had room to spare inside the padded ring; Follow's `14:16` (5 chars, further into the
+wait) still crowded the stroke. The padding treated the symptom per-string; the actual limiter
+is the ring's own diameter against the *widest* case the format string can produce
+(`h:mm:ss`, 7 chars, past an hour) — a 3px pad can't fix a ring that's simply too small for
+that width. Fixed properly this time: `_size` (`_FlowStatusIndicator`'s shared box, also used
+by `_iconBadge()` for every non-cooldown state) raised from 56 to 64. Deliberately kept shared
+rather than special-cased to the cooldown branch alone — a flow's indicator changing size the
+moment it flips in or out of cooldown would be its own small visual glitch. Verified:
+`flutter analyze` clean, `flutter test` 175/175, including `flows_layout_test.dart` and
+`overview_layout_test.dart` (which embeds `FlowCard` per D79) at the 1024px floor — the one
+place a few extra pixels on a shared widget could have shown up as a real overflow. Rebuilt,
+restarted for you.
+
+**Still didn't match — the real gap wasn't the diameter at all, it was that a bare ring has no
+fill.** Your side-by-side screenshot of the 64px version showed the countdown ring still
+reading noticeably smaller than the icon badge next to it, same bounding box or not.
+Root cause: `_iconBadge()` paints a *solid* tinted disc (`Container` with a `BoxShape.circle`
+fill) — full visual weight across the whole `_size` footprint. `CircularProgressIndicator`
+only ever paints a thin stroke; its `backgroundColor` parameter draws a second, fainter stroke
+for the *remaining* track, not a fill — so the cooldown case had nothing but two thin
+concentric rings on an otherwise empty background, which reads as meaningfully smaller than a
+filled disc even at an identical bounding box (real perceptual size, not a pixel-measurement
+bug — matches the user's own framing, "match the ring size with the icon radius," once actually
+compared side by side). Fixed by giving the cooldown `Stack` the exact same tinted-disc
+`Container` `_iconBadge()` uses as its base layer, with the progress ring drawn on top and its
+own `backgroundColor` set to `Colors.transparent` (a second faint track over a solid fill would
+have just looked muddy). `_size` stays 64 — the fill was the actual fix, not a further size
+bump. Verified: `flutter analyze` clean, `flutter test` 175/175 unchanged. Rebuilt, restarted
+for you.
+
+**Still the same ring size, even with the fill — because the fill was never the whole story.**
+Your follow-up screenshot showed exactly what the disc-fill fix predicted it would (a correctly
+64px tinted backdrop), but the *ring itself* — the arc that actually counts down — was
+unchanged from every earlier attempt, small, sitting in the middle of the now-larger disc with
+a visible gap. The real, final root cause, found by actually reasoning through
+`CircularProgressIndicator`'s own layout algorithm rather than assuming it behaves like the
+`Container` next to it: a plain decorated `Container` with no explicit size, given *bounded*
+constraints (which is what a `SizedBox`-constrained `Stack` hands each loose child), tries to
+be **as big as possible** — that's why the backdrop disc has always correctly filled `_size`.
+`CircularProgressIndicator` does not follow that rule. Its render object computes a **fixed**
+~36px preferred diameter regardless of the bounded space available, and merely clamps it if the
+available space is *smaller* — it never grows to fill a *larger* available space the way a
+`Container` does. This is why raising `_size` from 56 to 64 (the second attempt) changed
+nothing about the ring itself: `_size` was only ever reaching the `Stack`'s bounding box and the
+backdrop disc, never the ring, because the ring was never given a tight size of its own — it
+was sitting loose inside `TweenAnimationBuilder` inside the `Stack`, silently rendering at its
+own ~36px default the entire time, through every previous attempt in this session. Fixed for
+real this time: the `CircularProgressIndicator` (via its `TweenAnimationBuilder` wrapper) is
+now wrapped in an explicit `SizedBox(width: _size, height: _size)`, giving it the *tight*
+constraint its layout algorithm actually needs to grow. Verified: `flutter analyze` clean,
+`flutter test` 175/175 unchanged (no existing test measured the ring's actual rendered
+diameter — a real gap in coverage for this specific class of bug, left as-is rather than
+building a new test for one bugfix this late in the session). Rebuilt, restarted for you —
+**not yet seen live**, session closing here; the next session should confirm this — the ring's
+arc itself, not just its backdrop, should now visibly match the icon badges — plus the
+still-open D106 item (density independence across a theme switch) before moving on to V2.5.
+
+**One more, cosmetic, once the 64px ring was actually visible:** the countdown text itself
+(`13:55`) looked small against the now-correctly-sized ring. `NumericText`'s role bumped from
+`micro` (10.5) to `caption` (12) — both use the same muted color already, `caption` just isn't
+bold and drops `micro`'s loose letter-tracking, so this is a straightforward size increase, not
+a style change. `flutter analyze` clean, `flutter test` 175/175 unchanged. Rebuilt, restarted
+for you.
+
+**Final round: the user asked to tune the ring size themselves rather than iterate through
+Claude again, and found `_size` coupled the ring to every icon badge — a real design gap in the
+fix above, not just a missing knob.** `_size` was shared by design (so an indicator's footprint
+never shifts when a flow flips in/out of cooldown), but that meant the *only* way to resize the
+ring was to also resize `_iconBadge()`'s circle for every other flow state — not what "let me
+tune the ring" means. Split into two constants: `_size` (64, unchanged — the outer bounding box
+and every non-cooldown icon badge) and a new `_ringSize` (the backdrop disc + progress arc
+only), centered inside the same `_size` box via the `Stack`'s existing `alignment: center`, so
+nothing about the row layout moves regardless of what `_ringSize` is set to. Pointed the user at
+the exact line rather than continuing to guess-and-check; **the user landed on `_ringSize = 48`**
+themselves. `flutter analyze` clean, `flutter test` 175/175. This is the version committed
+below.
+
+---
+
 ## 2026-08-05 (continued) — a third density tier, requested mid-retest (D105)
 
 ### D105 · `Density` gains `spacious`, above `comfortable`

@@ -80,23 +80,16 @@ class ThemeController extends Notifier<ThemePrefs> {
   }
 
   Future<void> setTheme(ThemeId id) async {
-    final previousId = state.themeId;
-    final previousDensity = state.density;
-    var next = state.copyWith(themeId: id);
-    // THEMES.md §2 — "the one theme that ships dense, because that's its
-    // whole point." Only nudges density on the way *in*, so a manual
-    // comfortable/compact choice made while already on Command Deck isn't
-    // silently clobbered by re-selecting the same theme.
-    if (id == ThemeId.commandDeck && previousId != ThemeId.commandDeck) {
-      next = next.copyWith(density: Density.compact);
-    }
-    state = next;
+    // Theme and density are two fully independent, independently-persisted
+    // settings (D106 — Command Deck previously nudged density to `compact`
+    // on selection, per THEMES.md §2's "ships compact by default"; removed
+    // at the user's explicit request, since a manually-set density should
+    // never move again until the user changes it themselves, regardless of
+    // which theme they switch to).
+    state = state.copyWith(themeId: id);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeKey, id.name);
-    if (next.density != previousDensity) {
-      await prefs.setString(_densityKey, next.density.name);
-    }
     await _applyNativeEffect(id);
   }
 
