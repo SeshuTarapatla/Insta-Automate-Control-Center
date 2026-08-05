@@ -33,9 +33,14 @@
 > proper `SizedBox`) before landing on its current shape: a `_size` (icon badges, 64) and an
 > independent `_ringSize` (the ring alone, 48 — the user's own final call, not guessed) so either
 > can be tuned without touching the other. All of it `flutter analyze`/`flutter test` clean
-> (175/175) and confirmed live by the user. **Next up: V2.5 (Shell)** — see
-> [PLAN_V2.md](PLAN_V2.md)'s own section for scope; V2.5–V2.12 are independent of each other and
-> can be tackled in any order.
+> (175/175) and confirmed live by the user.
+>
+> **V2.5–V2.12 are now sequenced, not free-order** (D107, 2026-08-05): visual checkpoints
+> first (the app should look finished everywhere before gaining new interactions), functional
+> ones after. **Order: V2.6 (Flows pipeline) → V2.7 (Overview bento) → V2.9 (Library browse)
+> → V2.5 (Shell) → V2.8 (Live) → V2.10 (Library review mode) → V2.12 (Command palette) →
+> V2.11 (Services/Insights/Settings) → V2.13 (release).** See PLAN_V2.md's own "Sequencing
+> notes" section for the full reasoning. **Next up: V2.6 (Flows pipeline).**
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

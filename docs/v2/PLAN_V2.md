@@ -13,7 +13,7 @@ Same discipline as PLAN.md's phases, and the same project rules apply unchanged:
   start it, then **stop and hand over** with a specific list of what to check. Never click,
   navigate or screenshot the running app.
 - **Rule 2** — record decisions in `docs/DECISIONS.md` as they're made, continuing the `D`
-  numbering (next is **D94**).
+  numbering (next is **D108** — see the log's own newest entry for the current count).
 - **Rule 7** — no compromise on UI/UX.
 
 ## Scope boundary — read this first
@@ -365,13 +365,25 @@ confirm the app goes still.
 
 - **V2.1 → V2.4 are the foundation and should not be reordered.** Tokens before components
   before migration before themes; each depends on the last, and V2.4 is where the work
-  first pays off visibly.
-- **V2.5 → V2.12 are independent of each other** and can be reordered freely by appetite.
-  If you want to see the biggest change soonest, do **V2.6 (Flows pipeline)** or **V2.10
-  (review mode)** first — they're the two most transformative screens.
-- **V2.10 depends on V2.9.** Everything else is standalone.
+  first pays off visibly. Done — see `docs/DECISIONS.md`'s D99–D106.
+- **V2.5 → V2.12 are independent of each other, but not unordered** — split
+  2026-08-05 (D107) into visual and functional groups, visual first, so the app looks
+  finished throughout the rest of v2 rather than gaining new interactions on top of an
+  unfinished look:
+
+  | Group | Checkpoints | Why this group |
+  |---|---|---|
+  | **Visual** | V2.6, V2.7, V2.9, V2.5, V2.8 (in that order) | Redesigns how something already works looks or is organized — the underlying capability doesn't change. V2.6 (Flows pipeline) and V2.9 (Library's per-folder aspect ratio) lead, per this doc's own "most transformative"/"highest-impact" calls; V2.5 (Shell) and V2.8 (Live) follow as more incremental. |
+  | **Functional** | V2.10, V2.12, V2.11 (in that order) | Adds a genuinely new interaction or capability. V2.10 (Library review mode) leads — it's the headline feature of all of v2, and is unlocked the moment V2.9 lands; V2.12 (Command palette) is next since `Ctrl+K` doesn't exist at all today; V2.11 (Services/Insights/Settings) last, since its real functional additions (terminal search/copy/font-size, resizable panes) are the least load-bearing of the three. |
+
+  **Execution order: V2.6 → V2.7 → V2.9 → V2.5 → V2.8 → V2.10 → V2.12 → V2.11 → V2.13.**
+- **V2.10 depends on V2.9** — satisfied by the order above (V2.9 comes before V2.10 either
+  way). Nothing else in V2.5–V2.12 depends on anything else in that range.
+- **V2.13 is always last**, regardless of how the rest is ordered — it audits whatever
+  V2.5–V2.12 actually produced (motion, accessibility, performance), so there's nothing for
+  it to check until they're done.
 - If the session running this is Sonnet with a limited context budget, **one checkpoint per
-  session** is the right granularity. V2.3 may need two.
+  session** is the right granularity. V2.3 needed two.
 
 ## Standing risks
 

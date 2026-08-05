@@ -5,6 +5,40 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.5–V2.12 split into visual-first, functional-second (D107)
+
+### D107 · Remaining v2 checkpoints grouped and reordered: visual before functional
+
+**Chosen, at the user's request, once V2.4/D106 closed out:** PLAN_V2.md originally left
+V2.5–V2.12 as "independent, reorder freely." Grouped instead:
+
+- **Visual** (redesigns how something already works looks or is organized — no new
+  capability): V2.6 (Flows pipeline), V2.7 (Overview bento), V2.9 (Library browse), V2.5
+  (Shell), V2.8 (Live).
+- **Functional** (adds a genuinely new interaction): V2.10 (Library review mode — the
+  headline feature of all of v2), V2.12 (Command palette — `Ctrl+K` doesn't exist at all
+  today), V2.11 (Services/Insights/Settings — real new capabilities, terminal search/copy/
+  font-size, resizable panes, but the least load-bearing of the three).
+
+**Execution order: V2.6 → V2.7 → V2.9 → V2.5 → V2.8 → V2.10 → V2.12 → V2.11 → V2.13.** Within
+each group, ordered by impact per PLAN_V2's own existing "most transformative"/"highest-
+impact" language rather than re-litigated from scratch. V2.10's existing dependency on V2.9
+falls out of the order for free. V2.13 (motion/accessibility/release) stays last regardless —
+it audits whatever V2.5–V2.12 produce, so there's nothing for it to check before they're done.
+
+**Why:** the user's own framing — get the app looking finished across every screen first,
+*then* layer new interactions on top of a finished look, rather than the reverse (a
+functionally richer but visually half-migrated app partway through).
+
+**Rejected:** leaving the original "reorder freely" note as-is (too vague to actually commit
+to an order) and a strict alternating visual/functional interleave (rejected as arbitrary —
+grouping cleanly is more legible than alternating for its own sake).
+
+PLAN_V2.md's "Sequencing notes" section rewritten to match; nothing about any individual
+checkpoint's own scope (its own `## V2.n` section) changed — only which one comes next.
+
+---
+
 ## 2026-08-05 (continued) — post-commit follow-ups: canvas background bug, density independence (D106)
 
 ### D106 · `AppShell`'s Scaffold background was hardcoded transparent; Command Deck's density nudge removed
