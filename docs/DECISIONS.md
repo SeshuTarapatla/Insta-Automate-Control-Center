@@ -5,6 +5,84 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.6, Flows pipeline, built and live-bug-fixed (D108)
+
+### D108 · Flows rebuilt as a vertical pipeline; a real cross-theme crash and an alignment bug found and fixed live
+
+**Chosen:** `flows_page.dart` is now five `FlowNode` strips connected by four `PipelineEdge`
+connectors (SCREENS.md §2), replacing the old five-card `Wrap`. Edges read live backlog counts
+from `libraryFoldersControllerProvider` (`entities/`, `scanned/`, `gender_valid/`, `scraped/`) —
+no agent work, per the scope boundary. The two ⚑ human-review edges (`gender_valid/` → Scrape,
+`scraped/` → Follow) jump straight into that Library folder on click, reusing
+`selectedFolderProvider`/`selectedNavIndexProvider`. The edge into Follow turns `warn` when
+`scraped + follow_queued` exceeds `FOLLOW × SCRAPE_RESERVE_FACTOR` — the same math
+`reduceReserveFlow` already computes, now visible on the pipeline itself rather than only
+explained after the fact. All six D84 `_StatusKind` states and their derivation are re-derived
+verbatim in a new shared `flow_status.dart` rather than touched in `flow_card.dart` — that file,
+and `overview_page.dart`'s use of it, is deliberately untouched, since V2.7 is what replaces it
+with `FlowCardCompact`, not this checkpoint. The 56px cooldown ring is gone: a compact inline
+`mm:ss` next to the status word plus a thin determinate progress line along the node's bottom
+edge — still the *only* state with a countdown. Blocked flows show their raw gate detail inline
+now (D93 had to hide it behind a hover; the node layout has room), and a new click-to-expand
+accordion (`expandedFlowProvider`, one node open at a time) reveals last-run detail, full
+counters, the raw gate string, View logs and Open in Live — View logs itself moved off the
+collapsed row into a per-node overflow menu to free space. Every button's semantics (D88's
+Trigger now, D86's Reduce reserve, D69's Stop) and confirm dialogs are unchanged.
+
+**Found live, not in review — two real bugs, both fixed the same session.**
+
+**1. A genuine crash, blank on every theme but Classic.** The user's first screenshot showed
+Classic looking cluttered but working; the second, on Command Deck, showed every `FlowNode` as a
+completely empty box — no text, no icons, no switch — while the surrounding `PipelineEdge` rows
+rendered fine. Root cause, confirmed by pumping `FlowNode` against all six themes directly rather
+than guessing: `ui/surfaces.dart`'s `AppPanel` had never had a real `accentEdge` call site before
+this checkpoint (`FlowNode` is the first), and building a rounded `Border` with the accent edge as
+one colored side and the other three sides a different color throws
+`"A borderRadius can only be given on borders with uniform colors"` — but only for a theme whose
+`DepthStrategy` actually paints a border (Command Deck, Mica). Classic's shadow-only strategy
+means its "plain" sides are all `BorderSide.none`, which happens not to trigger the check, so the
+bug shipped invisibly until a theme with `DepthStrategy.border` exercised it. **Fixed in the
+shared component**, not worked around per call site: `accentEdge` is now painted as a separately
+`ClipRRect`-clipped overlay bar on the left, matching the panel's own corner radius, instead of
+being folded into the `Border`. Verified directly: a throwaway test pumping `FlowNode` under all
+six themes' real built `ThemeData` (not the bare-`ThemeData()` fallback path the existing
+`surfaces_test.dart` accentEdge case happened to use, which is exactly why it never caught this)
+confirmed zero exceptions post-fix, then deleted.
+
+**2. Switches and buttons weren't in a straight column.** The state label next to the switch was
+a `Flexible` (sizes to its own text), so the switch's x-position drifted left/right on every row
+depending on that row's label length, and the per-node overflow menu (only present when a
+`lastRun` exists) shifted it further depending on which rows had one. Fixed: the label is now
+`Expanded` (fills the leftover space and right-aligns within it) and the overflow menu slot is
+always reserved at a fixed width, present or not — both together give every row's switch the same
+fixed distance from the right edge. Then the action-button row (Trigger now / Reduce reserve /
+Stop), previously flush-left under the icon gutter, was moved to right-align under that same
+column, matching SCREENS.md §2's own mockup positioning rather than the improvised left-flush
+placement this session's first draft used. A naive `Row(mainAxisAlignment: end, children:
+[ButtonGroup(...)])` regressed the D87 three-button wrap regression test — a bare `Row` gives its
+lone child unbounded width, so the inner `Wrap` never wraps and overflows instead — fixed with a
+bounded `SizedBox(width: double.infinity)` around a raw `Wrap(alignment: end)` (bypassing
+`ButtonGroup`, which has no alignment parameter).
+
+**Rejected:** leaving `accentEdge` un-load-bearing (reverting `FlowNode` to no accent edge) rather
+than fixing `AppPanel` — rejected because `accentEdge` is COMPONENTS.md's documented mechanism for
+exactly this ("how a failed service, a blocked flow or an errored ops job announces itself"), and
+Services (V2.11) is already planned to be its second consumer; leaving the shared component broken
+would just relocate the same crash there later.
+
+**Verified:** `flutter analyze` clean throughout; `flutter test` 179/179 (166 prior + 13 new in
+the rewritten `flows_layout_test.dart`, covering all six `_StatusKind` states, the inline blocked
+gate detail, the cooldown progress line, the entity-follow three-button case at a narrow 360px
+width — D87's own regression scenario, now against the new layout — the expansion accordion, and
+both `PipelineEdge` variants including the ⚑ review-folder jump). `flutter build windows --debug`
+succeeds. Built and restarted for you three times across the session (initial build, the crash
+fix, the alignment fix) per rule 5 — not clicked through by Claude. **You tested live each round**:
+round 1 caught the cross-theme crash from your own Command Deck screenshot; round 2 confirmed the
+crash was gone and flagged the switch/button misalignment from your Classic screenshot; round 3 was the alignment fix above, after which **you said to proceed** — taken as the
+checkpoint test passing. Committed.
+
+---
+
 ## 2026-08-05 (continued) — V2.5–V2.12 split into visual-first, functional-second (D107)
 
 ### D107 · Remaining v2 checkpoints grouped and reordered: visual before functional

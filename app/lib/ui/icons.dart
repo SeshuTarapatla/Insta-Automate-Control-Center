@@ -46,6 +46,11 @@ class AppIcons {
   static PhosphorIconData job(PhosphorIconsStyle w) => PhosphorIcons.gearSix(w);
   static PhosphorIconData pair(PhosphorIconsStyle w) => PhosphorIcons.qrCode(w);
 
+  /// The human-review waypoint marker (Flows' two ⚑ edges, V2.6; Library's
+  /// folder-rail review markers, V2.9) — one glyph for "the pipeline is
+  /// waiting on you here," reused wherever that's true.
+  static PhosphorIconData review(PhosphorIconsStyle w) => PhosphorIcons.flag(w);
+
   // Generic, reused across several screens rather than tied to one domain
   // concept — added during the V2.3 migration as real repeated needs, not
   // guessed up front.

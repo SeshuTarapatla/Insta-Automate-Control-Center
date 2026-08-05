@@ -4,9 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:ia_control_center/core/config_models.dart';
+import 'package:ia_control_center/core/nav_state.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
-import 'package:ia_control_center/features/flows/flow_card.dart';
+import 'package:ia_control_center/features/flows/flow_node.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
+import 'package:ia_control_center/features/flows/pipeline_edge.dart';
+import 'package:ia_control_center/features/library/library_controller.dart';
 import 'package:ia_control_center/features/settings/config_controller.dart';
 import 'package:ia_control_center/ui/icons.dart';
 
@@ -15,26 +18,20 @@ import 'package:ia_control_center/ui/icons.dart';
 // `PhosphorIconsStyle.regular` is the right weight for a bare `ThemeData()`.
 const _iconWeight = PhosphorIconsStyle.regular;
 
-/// FlowCard is a fixed 360 px width regardless of window size (unlike the
-/// Services detail pane, which is why services_layout_test.dart sweeps
-/// several window sizes) — so the overflow risk here is entirely about
-/// unbounded-length strings inside that fixed width, not window resizing.
-/// The exact backpressure detail string from ARCHITECTURE §4.3.
+/// The exact backpressure detail string from ARCHITECTURE §4.3 — now shown
+/// inline on the node when blocked (SCREENS.md §2), not just in a tooltip
+/// (D93's card).
 const _backpressureDetail = 'scraped+follow_queued = 180 ≥ FOLLOW×3 = 180';
 
 class _FakeFlowsController extends FlowsController {
-  _FakeFlowsController(this._snapshot);
-  final SchedulerSnapshot _snapshot;
-
   @override
-  Future<SchedulerSnapshot> build() async => _snapshot;
+  Future<SchedulerSnapshot> build() async => const SchedulerSnapshot(online: true, lastHeartbeatAt: 0, flows: {});
 }
 
-/// FlowCard reads the timing keys (poll/cooldown seconds) for its always-on
-/// mechanism line — this fakes the round trip real config lookups need
-/// (`ConfigController.build()` otherwise hits a real `dio.get`), matching real
-/// `Config._DEFAULTS` (Insta-Automate/models/meta.py) so the rendered text
-/// matches what the pipeline actually uses.
+/// FlowNode reads the timing keys (poll/cooldown seconds) for its mechanism
+/// line — this fakes the round trip real config lookups need
+/// (`ConfigController.build()` otherwise hits a real `dio.get`), matching
+/// real `Config._DEFAULTS` (Insta-Automate/models/meta.py).
 class _FakeConfigController extends ConfigController {
   @override
   Future<ConfigResponse> build() async => const ConfigResponse(
@@ -51,6 +48,8 @@ class _FakeConfigController extends ConfigController {
         'SCRAPE_BUFFER': 10,
         'FOLLOW_WAIT': 1200,
         'FOLLOW_BUFFER': 10,
+        'FOLLOW': 60,
+        'SCRAPE_RESERVE_FACTOR': 3,
       },
     ),
     schema: [],
@@ -83,8 +82,13 @@ class _AlreadyPendingNotifier extends PendingCommandNotifier {
   };
 }
 
-Future<void> _render(WidgetTester tester, FlowState state, {bool pending = false}) async {
-  tester.view.physicalSize = const Size(420, 520);
+Future<void> _renderNode(
+  WidgetTester tester,
+  FlowState state, {
+  bool pending = false,
+  double width = 1024,
+}) async {
+  tester.view.physicalSize = const Size(1024, 700);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -92,16 +96,19 @@ Future<void> _render(WidgetTester tester, FlowState state, {bool pending = false
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        flowsControllerProvider.overrideWith(
-          () => _FakeFlowsController(SchedulerSnapshot(online: true, lastHeartbeatAt: 0, flows: {})),
-        ),
+        flowsControllerProvider.overrideWith(_FakeFlowsController.new),
         flowsTickProvider.overrideWith((ref) => const Stream<int>.empty()),
-        configControllerProvider.overrideWith(() => _FakeConfigController()),
-        if (pending) pendingCommandProvider.overrideWith(() => _AlreadyPendingNotifier()),
+        configControllerProvider.overrideWith(_FakeConfigController.new),
+        if (pending) pendingCommandProvider.overrideWith(_AlreadyPendingNotifier.new),
       ],
       child: MaterialApp(
         theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
-        home: Scaffold(body: Padding(padding: const EdgeInsets.all(24), child: FlowCard(state: state))),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Align(alignment: Alignment.topLeft, child: SizedBox(width: width, child: FlowNode(state: state))),
+          ),
+        ),
       ),
     ),
   );
@@ -109,8 +116,8 @@ Future<void> _render(WidgetTester tester, FlowState state, {bool pending = false
 }
 
 void main() {
-  testWidgets('FlowCard lays out without overflow: scrape blocked by backpressure', (tester) async {
-    await _render(
+  testWidgets('FlowNode lays out without overflow: scrape blocked by backpressure', (tester) async {
+    await _renderNode(
       tester,
       _state(
         flow: 'entity-scrape',
@@ -119,14 +126,19 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    // Blocked on a false condition is not a countdown to anything — no ring,
-    // just the reason, so it can't be misread as "about to trigger."
+    // Blocked on a false condition is not a countdown to anything — no
+    // progress line, just the reason, so it can't be misread as "about to
+    // trigger."
     expect(find.text('Waiting on condition'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    // The raw gate detail is now shown inline (SCREENS.md §2), not just in
+    // the tooltip — "why isn't this running" is too important to be
+    // hover-only in the roomier node layout.
+    expect(find.text(_backpressureDetail), findsOneWidget);
   });
 
-  testWidgets('FlowCard lays out without overflow: scrape cooling down after a real run', (tester) async {
-    await _render(
+  testWidgets('FlowNode lays out without overflow: scrape cooling down after a real run', (tester) async {
+    await _renderNode(
       tester,
       _state(
         flow: 'entity-scrape',
@@ -137,40 +149,44 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    // The one wait that's a real, deterministic "eligible again at X" — this
-    // is the only state that gets the countdown ring back.
-    expect(find.text('Cooling down'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The one wait that's a real, deterministic "eligible again at X" — the
+    // compact inline countdown plus the bottom progress line (D84's ring,
+    // relocated per SCREENS.md §2).
+    expect(find.textContaining('Cooling down'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 
-  testWidgets('FlowCard exposes its trigger mechanism via the info tooltip, not inline text', (
+  testWidgets('FlowNode exposes its trigger mechanism via the info tooltip when nothing is blocking it', (
     tester,
   ) async {
-    // The mechanism sentence used to always render inline, cluttering every
-    // card; it now lives behind the small info icon's tooltip instead, kept
-    // out of the way until asked for.
-    await _render(tester, _state(flow: 'entity-follow'));
+    // `AppTooltip(rich: true)` renders through `richMessage`, not `message`
+    // — `find.byTooltip` can't see rich content, so a long-press + reading
+    // the revealed text is the same technique `ui/overlays_test.dart` uses
+    // for `AppTooltip` itself.
+    await _renderNode(tester, _state(flow: 'entity-follow'));
     expect(tester.takeException(), isNull);
-    expect(
-      find.byTooltip('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
-      findsOneWidget,
-    );
     expect(find.byIcon(AppIcons.info(_iconWeight)), findsOneWidget);
-  });
-
-  testWidgets('FlowCard tooltip names the instant path for ingest, not just its poll fallback', (
-    tester,
-  ) async {
-    await _render(tester, _state(flow: 'entity-ingest'));
-    expect(tester.takeException(), isNull);
+    await tester.longPress(find.byIcon(AppIcons.info(_iconWeight)));
+    await tester.pump(const Duration(seconds: 1));
+    // Also present in the always-visible detail line below the title row
+    // (nothing better to show there for a flow with no today counters and
+    // nothing blocking it) — the tooltip repeating it is fine, not a bug.
     expect(
-      find.byTooltip('Instant on a new channel message · 10m poll as fallback'),
-      findsOneWidget,
+      find.text('Runs when follow_queued has files · checked every 10s · min 20m between runs'),
+      findsWidgets,
     );
   });
 
-  testWidgets('FlowCard lays out without overflow: scan with all three counters', (tester) async {
-    await _render(
+  testWidgets('FlowNode tooltip names the instant path for ingest, not just its poll fallback', (tester) async {
+    await _renderNode(tester, _state(flow: 'entity-ingest'));
+    expect(tester.takeException(), isNull);
+    await tester.longPress(find.byIcon(AppIcons.info(_iconWeight)));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Instant on a new channel message · 10m poll as fallback'), findsWidgets);
+  });
+
+  testWidgets('FlowNode lays out without overflow: scan with all three counters shown inline', (tester) async {
+    await _renderNode(
       tester,
       _state(
         flow: 'entity-scan',
@@ -187,17 +203,16 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+    expect(find.text('profiles 10/10 · reels 30/30 · posts 30/30'), findsOneWidget);
   });
 
-  testWidgets('FlowCard lays out without overflow: switch off', (tester) async {
-    await _render(tester, _state(flow: 'entity-follow', switchOn: false));
+  testWidgets('FlowNode lays out without overflow: switch off', (tester) async {
+    await _renderNode(tester, _state(flow: 'entity-follow', switchOn: false));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('FlowCard lays out without overflow: forced trigger with a long-run last state', (
-    tester,
-  ) async {
-    await _render(
+  testWidgets('FlowNode lays out without overflow: forced trigger with a long-run last state', (tester) async {
+    await _renderNode(
       tester,
       _state(
         flow: 'entity-ingest',
@@ -210,18 +225,15 @@ void main() {
   });
 
   testWidgets(
-    'FlowCard lays out without overflow: entity-follow with all three buttons at once',
+    'FlowNode lays out without overflow: entity-follow with all three buttons at once, even at a narrow width',
     (tester) async {
-      // Regression for a real bug caught live: the button row sat in a fixed
-      // 36px SizedBox, sized for one row. Multiple buttons at once (Trigger
-      // now, Reduce reserve, Stop) can wrap to a second row — `Wrap` given a
-      // *tight* height constraint doesn't throw (unlike Row/Column
-      // overflow), it just paints the second row outside its box, so
-      // `tester.takeException()` alone would not have caught this. Asserting
-      // real rendered positions is what would have. ("Run now"/"Skip wait"
-      // removed — a manual trigger only ever means "run it regardless of its
-      // condition," so Trigger now is now the only one.)
-      await _render(
+      // Regression for the real D87 bug — a fixed-height row clipped a
+      // second button row instead of growing for it. The new node never
+      // wraps its button row in a fixed-height box, but this keeps a real
+      // geometry assertion (not just `tester.takeException()`) as the
+      // regression net, at the old FlowCard's 360px width so the three
+      // buttons are genuinely forced to wrap.
+      await _renderNode(
         tester,
         _state(
           flow: 'entity-follow',
@@ -229,6 +241,7 @@ void main() {
           gate: const FlowGate(ok: true, reason: 'reduce_reserve', detail: 'triggered via Reduce reserve'),
           lastRun: const FlowLastRun(id: 'run-1', state: 'RUNNING', durationS: null),
         ),
+        width: 360,
       );
       expect(tester.takeException(), isNull);
       expect(find.text('Running · reducing to reserve'), findsOneWidget);
@@ -236,27 +249,101 @@ void main() {
       expect(find.text('Reduce reserve'), findsOneWidget);
       expect(find.text('Stop'), findsOneWidget);
 
-      // The button row must have grown to fit however many rows it needs
-      // rather than clip any of them — the "Last run" line below has to
-      // actually sit below the last button, not overlap it.
-      final reduceReserveBottom = tester.getBottomLeft(find.text('Reduce reserve')).dy;
-      final lastRunTop = tester.getTopLeft(find.textContaining('Last run:')).dy;
-      expect(lastRunTop, greaterThanOrEqualTo(reduceReserveBottom));
+      // The button row sits below the mechanism/detail line, never
+      // overlapping it, regardless of how many rows it wraps to.
+      final detailBottom = tester.getBottomLeft(find.textContaining('Runs when follow_queued')).dy;
+      final buttonsTop = tester.getTopLeft(find.text('Trigger now')).dy;
+      expect(buttonsTop, greaterThanOrEqualTo(detailBottom));
     },
   );
 
-  testWidgets('FlowCard lays out without overflow: command pending', (tester) async {
-    await _render(
+  testWidgets('FlowNode lays out without overflow: command pending', (tester) async {
+    await _renderNode(
       tester,
-      _state(
-        flow: 'entity-scrape',
-        phase: 'waiting',
-        nextTriggerAt: DateTime.now().add(const Duration(seconds: 10)),
-      ),
+      _state(flow: 'entity-scrape', phase: 'waiting', nextTriggerAt: DateTime.now().add(const Duration(seconds: 10))),
       pending: true,
     );
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Command sent'), findsOneWidget);
     expect(find.text('Trigger now'), findsNothing);
+  });
+
+  testWidgets('FlowNode expansion accordion reveals last-run/gate detail on tap, one at a time', (tester) async {
+    await _renderNode(
+      tester,
+      _state(
+        flow: 'entity-scrape',
+        gate: const FlowGate(ok: false, reason: 'backpressure', detail: _backpressureDetail),
+        lastRun: const FlowLastRun(id: 'run-abc', state: 'COMPLETED', durationS: 91),
+      ),
+    );
+    expect(find.text('Open in Live'), findsNothing);
+    await tester.tap(find.byType(FlowNode));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Open in Live'), findsOneWidget);
+    expect(find.textContaining('COMPLETED'), findsWidgets);
+  });
+
+  testWidgets('PipelineEdge lays out without overflow and shows the live backlog count', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+        home: const Scaffold(
+          body: Padding(padding: EdgeInsets.all(24), child: PipelineEdge(label: 'entities/ queued', count: 2)),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('entities/ queued'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.textContaining('YOU REVIEW'), findsNothing);
+  });
+
+  testWidgets('PipelineEdge ⚑ review edge jumps to the right Library folder on tap', (tester) async {
+    late ProviderContainer container;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: Consumer(
+          builder: (context, ref, _) {
+            container = ProviderScope.containerOf(context);
+            return MaterialApp(
+              theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+              home: const Scaffold(
+                body: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: PipelineEdge(label: 'gender_valid/', count: 1204, reviewFolder: 'gender_valid'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('YOU REVIEW'), findsOneWidget);
+
+    await tester.tap(find.byType(PipelineEdge));
+    await tester.pump();
+
+    expect(container.read(selectedFolderProvider), 'gender_valid');
+    expect(container.read(selectedNavIndexProvider), libraryIndex);
+  });
+
+  testWidgets('PipelineEdge turns warn when the backlog exceeds the reserve target', (tester) async {
+    final tokens = ThemeData(useMaterial3: true, brightness: Brightness.dark);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: tokens,
+        home: const Scaffold(
+          body: Padding(
+            padding: EdgeInsets.all(24),
+            child: PipelineEdge(label: 'scraped/', count: 191, reviewFolder: 'scraped', warn: true),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('191'), findsOneWidget);
   });
 }

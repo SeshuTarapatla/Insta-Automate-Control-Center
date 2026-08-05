@@ -323,7 +323,7 @@ class _FlowStatusIndicator extends StatelessWidget {
   // state) so the indicator's footprint, and everything laid out next to it
   // in `FlowCard`'s row, never shifts when a flow flips in or out of
   // cooldown. Tune icon-badge size here.
-  static const _size = 64.0;
+  static const _size = 54.0;
 
   // The cooldown ring's own drawn size (backdrop disc + progress arc),
   // independent of `_size` — centered inside the same `_size` box via the

@@ -40,7 +40,21 @@
 > ones after. **Order: V2.6 (Flows pipeline) → V2.7 (Overview bento) → V2.9 (Library browse)
 > → V2.5 (Shell) → V2.8 (Live) → V2.10 (Library review mode) → V2.12 (Command palette) →
 > V2.11 (Services/Insights/Settings) → V2.13 (release).** See PLAN_V2.md's own "Sequencing
-> notes" section for the full reasoning. **Next up: V2.6 (Flows pipeline).**
+> notes" section for the full reasoning.
+>
+> **V2.6 (Flows pipeline) done and accepted, D108.** Five disconnected cards became a real
+> vertical pipeline — `FlowNode` strips joined by `PipelineEdge` connectors carrying live
+> backlog counts from the Library folders, with the two ⚑ human-review edges (`gender_valid/`,
+> `scraped/`) clickable straight into Library review mode, and the edge into Follow turning
+> `warn` once the reserve gate (D86) is actually exceeded. All six D84 `_StatusKind` states and
+> the cooldown-only countdown rule survived, just relocated (a compact inline `mm:ss` + a thin
+> bottom progress line instead of the old 56px ring), and a new click-to-expand accordion holds
+> the detail D93 had to hide. **Two real bugs found live, both fixed same-session**: a genuine
+> cross-theme crash (`ui/surfaces.dart`'s `AppPanel.accentEdge` threw under any theme with a
+> real border depth strategy — Command Deck, Mica — the instant it got its first real call
+> site; Classic dodged it by luck), and a switch/button column that drifted per row until the
+> label became `Expanded` and the overflow-menu slot got a fixed reserved width. Full account
+> in DECISIONS.md's D108. `flutter test` 179/179. **Next up: V2.7 (Overview bento).**
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

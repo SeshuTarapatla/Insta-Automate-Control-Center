@@ -90,25 +90,43 @@ class _AppPanelState extends State<AppPanel> {
 
     final ringColor = widget.selected ? tokens.accent.primary : tokens.surface.border;
     final ringWidth = widget.selected ? tokens.geometry.borderWidthStrong : tokens.geometry.borderWidth;
-    final edgeSide = widget.accentEdge == null ? null : BorderSide(color: widget.accentEdge!.fg(tokens), width: 2.5);
-    final plainSide = hasBorder ? BorderSide(color: ringColor, width: ringWidth) : BorderSide.none;
-
-    Border? border;
-    if (edgeSide != null) {
-      border = Border(top: plainSide, right: plainSide, bottom: plainSide, left: edgeSide);
-    } else if (hasBorder) {
-      border = Border.fromBorderSide(plainSide);
-    }
+    // Deliberately always uniform (never a mixed-color `Border` with
+    // `accentEdge` folded into one side): a `Border` whose sides differ in
+    // color *and* have non-zero width throws under `BorderRadius` for any
+    // theme whose depth strategy actually paints a border (Command Deck,
+    // Mica) — Classic's shadow-only strategy happened to dodge it by luck
+    // (its "plain" sides are all `BorderSide.none`), which is exactly why
+    // this went unnoticed until `accentEdge` got its first real call site
+    // (`FlowNode`, V2.6) crashed every non-Classic theme. `accentEdge` is
+    // painted as a separate clipped overlay bar below instead.
+    final border = hasBorder ? Border.fromBorderSide(BorderSide(color: ringColor, width: ringWidth)) : null;
 
     final shadow = hasShadow && !widget.selected ? (_hovered && active && tokens.effects.hoverLift ? tokens.effects.shadowMd : tokens.effects.shadowSm) : const <BoxShadow>[];
 
-    final panel = AnimatedContainer(
+    Widget panel = AnimatedContainer(
       duration: tokens.motion.instant,
       padding: widget.padding ?? EdgeInsets.all(tokens.space.cardPadding),
       decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(radius), border: border, boxShadow: shadow),
       clipBehavior: Clip.antiAlias,
       child: widget.child,
     );
+
+    if (widget.accentEdge != null) {
+      panel = Stack(
+        children: [
+          panel,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(radius), bottomLeft: Radius.circular(radius)),
+              child: Container(width: 2.5, color: widget.accentEdge!.fg(tokens)),
+            ),
+          ),
+        ],
+      );
+    }
 
     if (!_clickable && !widget.interactive) return panel;
 
