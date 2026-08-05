@@ -143,15 +143,28 @@ class _SparklinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (values.isEmpty) return;
 
-    final maxValue = [...values, ?cap].reduce((a, b) => a > b ? a : b).toDouble();
-    final minValue = values.reduce((a, b) => a < b ? a : b).toDouble();
+    // Normalized to a genuine `List<double>` up front, not operated on as
+    // `List<num>` — `values`'s *declared* type is `List<num>`, but every
+    // real caller actually passes a `List<int>` (Dart generics are reified
+    // per-object), and calling `.reduce()` directly on that object resolves
+    // its generic signature against the object's real `int` type parameter,
+    // not the `num`-typed field it's stored in. A `(num, num) => num`
+    // closure then fails Dart's runtime subtype check against the required
+    // `(int, int) => int`. No prior `Sparkline` call site existed to catch
+    // this before Overview's caps tile (V2.7) became the first real
+    // consumer. Converting to `double` — a leaf type, not further
+    // subtyped — up front sidesteps the whole class of mismatch.
+    final doubles = values.map<double>((v) => v.toDouble()).toList();
+    final capValue = cap?.toDouble();
+    final maxValue = <double>[...doubles, ?capValue].reduce((a, b) => a > b ? a : b);
+    final minValue = doubles.reduce((a, b) => a < b ? a : b);
     final range = (maxValue - minValue).abs() < 1e-9 ? 1.0 : maxValue - minValue;
 
-    double xAt(int i) => values.length <= 1 ? size.width / 2 : size.width * i / (values.length - 1);
-    double yAt(num v) => size.height - ((v - minValue) / range) * size.height;
+    double xAt(int i) => doubles.length <= 1 ? size.width / 2 : size.width * i / (doubles.length - 1);
+    double yAt(double v) => size.height - ((v - minValue) / range) * size.height;
 
-    if (cap != null) {
-      final y = yAt(cap!);
+    if (capValue != null) {
+      final y = yAt(capValue);
       final capPaint = Paint()
         ..color = capColor
         ..strokeWidth = 1;
@@ -162,9 +175,9 @@ class _SparklinePainter extends CustomPainter {
       }
     }
 
-    final path = Path()..moveTo(xAt(0), yAt(values.first));
-    for (var i = 1; i < values.length; i++) {
-      path.lineTo(xAt(i), yAt(values[i]));
+    final path = Path()..moveTo(xAt(0), yAt(doubles.first));
+    for (var i = 1; i < doubles.length; i++) {
+      path.lineTo(xAt(i), yAt(doubles[i]));
     }
     canvas.drawPath(
       path,

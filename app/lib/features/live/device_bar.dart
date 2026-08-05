@@ -85,13 +85,21 @@ class DeviceBar extends ConsumerWidget {
           children: [
             AppIcon(AppIcons.device, size: IconSize.sm, color: tokens.content.secondary),
             SizedBox(width: tokens.space.xs),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(
-                status.model ?? status.serial!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
+            // `Flexible` around the existing 140px cap, not the cap alone —
+            // the Live header always has ≥140px of slack so this is a no-op
+            // there (D46's tuning is untouched), but Overview's Device tile
+            // (V2.7) can be narrower than 140+icon+gap+button, and a hard
+            // `ConstrainedBox` alone doesn't shrink below its own max when
+            // the *row* itself is what's actually too narrow.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: Text(
+                  status.model ?? status.serial!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
               ),
             ),
             SizedBox(width: tokens.space.sm),

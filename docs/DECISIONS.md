@@ -5,6 +5,60 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.7, Overview bento, built and live-bug-fixed (D109)
+
+### D109 · Overview rebuilt as a bento grid; two more latent shared-component bugs found
+
+**Chosen:** `overview_page.dart` replaces the old vertical stack of five full `FlowCard`s, two
+cards, five 340px `fl_chart` burn-down cards and two more cards (AUDIT §12) with a `HeroTile`
+(one computed status sentence, `StatusKind`-driven accent, up to two actions) above a real bento
+grid (SCREENS.md §1): `PipelineStrip` (five new `FlowCardCompact` tiles — status dot, name,
+one-line state, no controls — connected by the same live backlog counts V2.6's `PipelineEdge`
+reads), a new `CurationTile` (the two human-review backlogs, clickable into Library), a new
+`CapsTile` (progress bars + `Sparkline`s replacing the five big charts — full history stays on
+Insights), and the existing Services/Dependencies/Device/Recent widgets reused, tightened for
+tile width. Three real breakpoints (`_bentoFor`, DESIGN_SYSTEM §7's `compact <1100` /
+`medium 1100–1500` / `wide ≥1500`) rearrange the same eight tiles rather than one fixed layout
+overflowing at the 1024px floor. `HeroTile`'s priority, worst first: agent disconnected → bad;
+any service failed → bad; any flow blocked, any dependency down, any cap hit → warn; otherwise →
+good ("All five flows running normally") — all read from the exact providers their own screens
+already use, no new agent endpoints.
+
+**Two more real bugs found live, same pattern as V2.6's `AppPanel.accentEdge` crash — a shared
+V2.2 component getting its first real call site.** `Sparkline` (`ui/data.dart`) threw
+`type '(num, num) => num' is not a subtype of type '(int, int) => int' of 'combine'` on every
+render: `values`/`cap` are declared `List<num>`/`num?`, but every real caller passes concrete
+`List<int>`/`int?` (Dart generics are reified per-object), and calling `.reduce()` directly on
+the field resolves the method's generic signature against the *object's* real `int` type
+parameter, not the `num`-typed field it's stored in — a `(num, num) => num` closure then fails
+the runtime subtype check. No prior `Sparkline` call site existed to catch this; `data_test.dart`
+only ever covered `AppTable`. Fixed by normalizing to a genuine `List<double>` up front in
+`_SparklinePainter.paint()` (a leaf type, not further subtyped) rather than operating on the
+declared-but-misleading `List<num>`. Separately, `DependencyStrip` and `DeviceBar` — both
+previously only ever embedded in roomy half-width sections — overflowed once placed in
+Overview's narrower tiles: `_DependencyChip`'s label had `maxLines: 1` + ellipsis but no actual
+width bound to ellipsize against (a `Wrap` never constrains a single child narrower than its own
+natural size), fixed with a `ConstrainedBox(maxWidth: 130)`; `DeviceBar`'s device-name
+`ConstrainedBox(maxWidth: 140)` alone doesn't shrink below its cap when the *row* itself is too
+narrow, fixed by wrapping it in `Flexible` (a no-op in the roomier Live header, where D46's
+tuning is untouched).
+
+**Live-tested, one round.** You confirmed the hero tile, pipeline, caps, curation counts and
+dependencies/services/device tiles all correct, with one minor note: the page needed "a little
+scroll" at your real window size rather than sitting fully above the fold. Tightened in response
+— the hero→grid gap (`Gap.xl` → `Gap.lg`) and `RecentNotificationsCard`'s Overview instance
+(`maxShown` 3 → 2) — not separately re-verified live, a small enough change to ship with the
+rest rather than hold up the commit for a second screenshot round.
+
+**Verified:** `flutter analyze` clean throughout; `flutter test` 186/186 (179 prior + 9 new
+`overview_layout_test.dart` cases: the full-data layout at all three breakpoints — 1024/1300/1700px
+— the empty state, and all four `HeroTile` `StatusKind`s including the disconnected-beats-
+everything-else priority and the curation-waiting action appearing independent of hero kind).
+`flutter build windows --debug` succeeds. Built and restarted for you twice (initial build, the
+scroll tightening) per rule 5.
+
+---
+
 ## 2026-08-05 (continued) — V2.6, Flows pipeline, built and live-bug-fixed (D108)
 
 ### D108 · Flows rebuilt as a vertical pipeline; a real cross-theme crash and an alignment bug found and fixed live

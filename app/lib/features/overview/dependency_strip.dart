@@ -61,7 +61,15 @@ class _DependencyChip extends StatelessWidget {
           children: [
             AppIcon(dependency.level.glyph, size: IconSize.sm, color: color),
             SizedBox(width: tokens.space.xs),
-            Text(dependency.label, style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // A `Wrap` (this chip's parent) never constrains a single
+            // child narrower than its own natural size — `maxLines: 1` +
+            // `TextOverflow.ellipsis` alone never engages without a real
+            // width bound. Found by Overview's Dependencies tile (V2.7),
+            // narrower than this strip had ever been embedded in before.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Text(dependency.label, style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
           ],
         ),
       ),

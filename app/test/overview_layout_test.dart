@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ia_control_center/core/config_models.dart';
+import 'package:ia_control_center/core/connection_state.dart';
 import 'package:ia_control_center/core/dependency_models.dart';
 import 'package:ia_control_center/core/device_models.dart';
 import 'package:ia_control_center/core/insights_models.dart';
+import 'package:ia_control_center/core/library_models.dart';
 import 'package:ia_control_center/core/notification_models.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/core/service_models.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
 import 'package:ia_control_center/features/insights/insights_controller.dart';
+import 'package:ia_control_center/features/library/library_controller.dart';
 import 'package:ia_control_center/features/live/device_bar.dart';
 import 'package:ia_control_center/features/notifications/notification_controller.dart';
 import 'package:ia_control_center/features/overview/overview_page.dart';
@@ -19,12 +22,12 @@ import 'package:ia_control_center/features/services/services_controller.dart';
 import 'package:ia_control_center/features/settings/config_controller.dart';
 
 /// Overflow is a paint-time error `flutter analyze` is blind to (D19's
-/// precedent, every UI checkpoint since has added one of these). Overview
-/// pulls together six providers this app already has separate layout-test
-/// coverage for individually — the real risk here is specific to composing
-/// them onto one scrollable page at the app's 1024x700 floor: the two-column
-/// rows, the `Wrap`ped dependency strip, and long strings inside cards that
-/// are narrower here than on their own dedicated screens.
+/// precedent, every UI checkpoint since has added one of these). V2.7
+/// rebuilt Overview as a bento grid (SCREENS.md §1) — the real risk here is
+/// specific to the three named breakpoints (DESIGN_SYSTEM §7: compact <1100,
+/// medium 1100–1500, wide ≥1500) each arranging the same eight tiles
+/// differently, plus the hero tile's four `StatusKind`s driving different
+/// content/action combinations.
 class _FakeFlowsController extends FlowsController {
   _FakeFlowsController(this._snapshot);
   final SchedulerSnapshot _snapshot;
@@ -60,9 +63,27 @@ class _FakeNotificationController extends NotificationController {
   Future<List<AppNotification>> build() async => _notifications;
 }
 
-/// The embedded FlowCards read timing config for their mechanism line —
-/// fakes that round trip the same way flows_layout_test.dart does, so this
-/// page's own ConfigController.build() never issues a real dio.get.
+class _FakeFoldersController extends LibraryFoldersController {
+  _FakeFoldersController(this._folders);
+  final List<LibraryFolderInfo> _folders;
+  @override
+  Future<List<LibraryFolderInfo>> build() async => _folders;
+}
+
+/// Replaces the real `Timer.periodic` + `dio.get('/api/health')` round trip
+/// (`ConnectionNotifier.build()`) with a fixed value — the same reasoning
+/// every other fake controller here has, plus avoiding a real periodic timer
+/// ticking during the test.
+class _FakeConnectionNotifier extends ConnectionNotifier {
+  _FakeConnectionNotifier(this._value);
+  final AgentConnection _value;
+  @override
+  AgentConnection build() => _value;
+}
+
+/// The embedded flow/pipeline widgets read timing config for their
+/// mechanism line — fakes the round trip real config lookups need
+/// (`ConfigController.build()` otherwise hits a real `dio.get`).
 class _FakeConfigController extends ConfigController {
   @override
   Future<ConfigResponse> build() async => const ConfigResponse(
@@ -86,15 +107,16 @@ class _FakeConfigController extends ConfigController {
   );
 }
 
-FlowState _flow(String flow, {String phase = 'waiting', Map<String, dynamic>? today}) => FlowState(
-  flow: flow,
-  switchOn: true,
-  phase: phase,
-  nextTriggerAt: DateTime.now().add(const Duration(minutes: 5)),
-  gate: const FlowGate(ok: true),
-  today: today,
-  lastRun: null,
-);
+FlowState _flow(String flow, {String phase = 'waiting', FlowGate gate = const FlowGate(ok: true), Map<String, dynamic>? today}) =>
+    FlowState(
+      flow: flow,
+      switchOn: true,
+      phase: phase,
+      nextTriggerAt: DateTime.now().add(const Duration(minutes: 5)),
+      gate: gate,
+      today: today,
+      lastRun: null,
+    );
 
 ServiceStatus _service(String name, {ServiceState state = ServiceState.running}) => ServiceStatus(
   name: name,
@@ -145,16 +167,29 @@ AppNotification _notification(String id, int seq) => AppNotification(
   read: false,
 );
 
+LibraryFolderInfo _folder(String name, {int total = 0, int entities = 0}) =>
+    LibraryFolderInfo(name: name, flat: name == 'entities', total: total, entities: entities);
+
+const _defaultLimits = {'profiles': 10, 'reels': 30, 'posts': 30, 'scrape': 300, 'follow': 60};
+
+Burndown _burndown({Map<String, int?> limits = _defaultLimits}) {
+  final days = [for (var i = 1; i <= 30; i++) BurndownDay(date: '2026-08-${i.toString().padLeft(2, '0')}', values: const {'profiles': 4, 'reels': 12, 'posts': 8, 'scraped': 180, 'followed': 42})];
+  return Burndown(days: 30, limits: limits, scan: days, scrape: days, follow: days);
+}
+
 Future<void> _pump(
   WidgetTester tester, {
-  required SchedulerSnapshot flows,
-  required List<ServiceStatus> services,
-  required DependencySnapshot dependencies,
-  required Burndown burndown,
-  required DeviceStatus device,
-  required List<AppNotification> notifications,
+  double width = 1300,
+  AgentConnection connection = AgentConnection.connected,
+  SchedulerSnapshot? flows,
+  List<ServiceStatus>? services,
+  DependencySnapshot? dependencies,
+  Burndown? burndown,
+  DeviceStatus? device,
+  List<AppNotification>? notifications,
+  List<LibraryFolderInfo>? folders,
 }) async {
-  tester.view.physicalSize = const Size(1024, 700);
+  tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -162,13 +197,25 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        flowsControllerProvider.overrideWith(() => _FakeFlowsController(flows)),
+        connectionProvider.overrideWith(() => _FakeConnectionNotifier(connection)),
+        flowsControllerProvider.overrideWith(
+          () => _FakeFlowsController(flows ?? SchedulerSnapshot(online: true, lastHeartbeatAt: 0, flows: {for (final f in flowOrder) f: _flow(f)})),
+        ),
         flowsTickProvider.overrideWith((ref) => const Stream<int>.empty()),
-        servicesControllerProvider.overrideWith(() => _FakeServicesController(services)),
-        dependenciesControllerProvider.overrideWith(() => _FakeDependenciesController(dependencies)),
-        burndownProvider.overrideWith((ref) async => burndown),
-        deviceControllerProvider.overrideWith(() => _FakeDeviceController(device)),
-        notificationControllerProvider.overrideWith(() => _FakeNotificationController(notifications)),
+        servicesControllerProvider.overrideWith(() => _FakeServicesController(services ?? [_service('adb')])),
+        dependenciesControllerProvider.overrideWith(
+          () => _FakeDependenciesController(
+            dependencies ?? DependencySnapshot(items: [_dependency('k3s')], ok: 1, warn: 0, fail: 0, checkedAt: DateTime.now()),
+          ),
+        ),
+        burndownProvider.overrideWith((ref) async => burndown ?? _burndown()),
+        deviceControllerProvider.overrideWith(
+          () => _FakeDeviceController(device ?? const DeviceStatus(serial: '123', model: 'I2201', bridgeReachable: true, mirroring: false)),
+        ),
+        notificationControllerProvider.overrideWith(() => _FakeNotificationController(notifications ?? [_notification('n0', 0)])),
+        libraryFoldersControllerProvider.overrideWith(
+          () => _FakeFoldersController(folders ?? [_folder('gender_valid', total: 1204), _folder('scraped', total: 191)]),
+        ),
         configControllerProvider.overrideWith(() => _FakeConfigController()),
       ],
       child: MaterialApp(
@@ -181,83 +228,115 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('OverviewPage lays out without overflow: every section full of real-shaped data', (tester) async {
-    final flows = SchedulerSnapshot(
-      online: true,
-      lastHeartbeatAt: 0,
-      flows: {
-        for (final flow in flowOrder)
-          flow: _flow(flow, today: {'scraped': 180, 'limit': 300, 'profiles': 10, 'profiles_limit': 10}),
-      },
-    );
-    final services = [
-      _service('adb'),
-      _service('vl-server', state: ServiceState.unhealthy),
-      _service('wsl-bridge', state: ServiceState.backoff),
-    ];
-    final dependencies = DependencySnapshot(
-      items: [
-        for (final level in DependencyLevel.values)
-          for (var i = 0; i < 3; i++) _dependency('${level.name}-check-with-a-longer-name-$i', level: level),
-      ],
-      ok: 3,
-      warn: 3,
-      fail: 3,
-      checkedAt: DateTime.now(),
-    );
-    final days = [for (var i = 0; i < 30; i++) BurndownDay(date: '2026-08-$i', values: const {'scraped': 12345})];
-    final burndown = Burndown(
-      days: 30,
-      limits: const {'profiles': 10, 'reels': 30, 'posts': 30, 'scrape': 300, 'follow': 60},
-      scan: days,
-      scrape: days,
-      follow: days,
-    );
-    const device = DeviceStatus(
-      serial: '159555486700071',
-      model: 'A Rather Long Phone Model Name Pro Max',
-      bridgeReachable: true,
-      mirroring: true,
-    );
-    final notifications = [for (var i = 0; i < 8; i++) _notification('n$i', i)];
-
-    await _pump(
+  for (final width in [1024.0, 1300.0, 1700.0]) {
+    testWidgets('OverviewPage lays out without overflow at ${width.round()}px: every section full of real-shaped data', (
       tester,
-      flows: flows,
-      services: services,
-      dependencies: dependencies,
-      burndown: burndown,
-      device: device,
-      notifications: notifications,
-    );
+    ) async {
+      final flows = SchedulerSnapshot(
+        online: true,
+        lastHeartbeatAt: 0,
+        flows: {
+          for (final flow in flowOrder)
+            flow: _flow(flow, today: {'scraped': 180, 'limit': 300, 'profiles': 10, 'profiles_limit': 10}),
+        },
+      );
+      final services = [
+        _service('adb'),
+        _service('vl-server', state: ServiceState.unhealthy),
+        _service('wsl-bridge', state: ServiceState.backoff),
+      ];
+      final dependencies = DependencySnapshot(
+        items: [
+          for (final level in DependencyLevel.values)
+            for (var i = 0; i < 3; i++) _dependency('${level.name}-check-with-a-longer-name-$i', level: level),
+        ],
+        ok: 3,
+        warn: 3,
+        fail: 3,
+        checkedAt: DateTime.now(),
+      );
+      const device = DeviceStatus(serial: '159555486700071', model: 'A Rather Long Phone Model Name Pro Max', bridgeReachable: true, mirroring: true);
+      final notifications = [for (var i = 0; i < 8; i++) _notification('n$i', i)];
+      final folders = [_folder('entities', total: 445), _folder('scanned', total: 1882), _folder('gender_valid', total: 1204), _folder('scraped', total: 191)];
 
-    expect(tester.takeException(), isNull);
-  });
+      await _pump(
+        tester,
+        width: width,
+        flows: flows,
+        services: services,
+        dependencies: dependencies,
+        device: device,
+        notifications: notifications,
+        folders: folders,
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('OverviewPage lays out without overflow: nothing has reported in yet', (tester) async {
     await _pump(
       tester,
+      connection: AgentConnection.disconnected,
       flows: const SchedulerSnapshot(online: false, lastHeartbeatAt: 0, flows: {}),
       services: const [],
       dependencies: DependencySnapshot(items: const [], ok: 0, warn: 0, fail: 0, checkedAt: DateTime.now()),
       burndown: const Burndown(days: 30, limits: {}, scan: [], scrape: [], follow: []),
       device: const DeviceStatus(serial: null, model: null, bridgeReachable: false, mirroring: false),
       notifications: const [],
+      folders: const [],
     );
 
     expect(tester.takeException(), isNull);
 
-    // The notifications/device row is below the fold at this window size —
-    // scroll it into the cache extent before asserting it actually rendered,
-    // rather than dropping the assertion (the empty state is exactly the
-    // shape most likely to look "obviously nothing there" if it silently
-    // failed to build).
-    await tester.dragUntilVisible(
-      find.text('No notifications yet.'),
-      find.byType(Scrollable),
-      const Offset(0, -300),
-    );
+    await tester.dragUntilVisible(find.text('No notifications yet.'), find.byType(Scrollable), const Offset(0, -300));
     expect(find.text('No notifications yet.'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('Hero tile', () {
+    testWidgets('good: nothing wrong', (tester) async {
+      await _pump(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('All five flows running normally'), findsOneWidget);
+    });
+
+    testWidgets('bad: agent disconnected takes priority over everything else', (tester) async {
+      await _pump(tester, connection: AgentConnection.disconnected);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Agent disconnected'), findsOneWidget);
+    });
+
+    testWidgets('bad: a failed service', (tester) async {
+      await _pump(tester, services: [_service('vl-server', state: ServiceState.failed)]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('vl-server has failed'), findsOneWidget);
+    });
+
+    testWidgets('warn: a blocked flow, with a Go to Flows action', (tester) async {
+      await _pump(
+        tester,
+        flows: SchedulerSnapshot(
+          online: true,
+          lastHeartbeatAt: 0,
+          flows: {
+            for (final f in flowOrder)
+              f: f == 'entity-scan'
+                  ? _flow(f, gate: const FlowGate(ok: false, reason: 'backpressure', detail: 'x >= y'))
+                  : _flow(f),
+          },
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('flow blocked'), findsOneWidget);
+      expect(find.text('Go to Flows'), findsWidgets);
+    });
+
+    testWidgets('good, but a curation backlog waiting still surfaces a Review action', (tester) async {
+      await _pump(tester, folders: [_folder('gender_valid', total: 1204)]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('All five flows running normally'), findsOneWidget);
+      expect(find.textContaining('Review 1204 waiting'), findsWidgets);
+    });
   });
 }

@@ -54,7 +54,25 @@
 > real border depth strategy — Command Deck, Mica — the instant it got its first real call
 > site; Classic dodged it by luck), and a switch/button column that drifted per row until the
 > label became `Expanded` and the overflow-menu slot got a fixed reserved width. Full account
-> in DECISIONS.md's D108. `flutter test` 179/179. **Next up: V2.7 (Overview bento).**
+> in DECISIONS.md's D108. `flutter test` 179/179.
+>
+> **V2.7 (Overview bento) done and accepted, D109.** The old vertical stack of five full flow
+> cards + two cards + five 340px burn-down charts + two more cards became a `HeroTile` (one
+> computed status sentence — bad if disconnected or a service failed, warn if a flow's
+> blocked/a dependency's down/a cap's hit, else "All five flows running normally" — plus up to
+> two actions) over a real bento grid at three named breakpoints: a compact `PipelineStrip`
+> (new `FlowCardCompact` tiles, same live backlog counts as V2.6's edges), a new `CurationTile`
+> (the two human-review backlogs, clickable into Library), a new `CapsTile` (bars +
+> `Sparkline`s replacing the big charts), and the existing Services/Dependencies/Device/Recent
+> widgets reused. **Two more real bugs found live, same shared-component-getting-its-first-
+> real-call-site pattern as V2.6's crash**: `Sparkline` threw on every render (a Dart
+> generics-reification quirk between its declared `List<num>` and the `List<int>` every real
+> caller actually passes), and `DependencyStrip`/`DeviceBar` both overflowed once placed in
+> tiles narrower than either had ever been embedded in before — all three fixed at the shared
+> component, not worked around locally. Full account in DECISIONS.md's D109. `flutter test`
+> 186/186. **Next up: V2.9 (Library browse)** — V2.5 (Shell) and V2.8 (Live) come after it in
+> the visual group's order, but V2.9's per-folder aspect ratio fix is the visual group's other
+> "most transformative" call alongside V2.6, per this doc's own sequencing language.
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

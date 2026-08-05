@@ -5,14 +5,14 @@ import '../../ui/feedback.dart';
 import '../notifications/notification_center.dart';
 import '../notifications/notification_controller.dart';
 
-const _maxShown = 5;
-
 /// The last few notifications, at a glance — same `NotificationTile` the
 /// bell panel uses (made public for this, D77's precedent for reusing a
 /// once-private widget rather than duplicating it), just without the mute/
 /// filter controls, which stay the bell panel's job.
 class RecentNotificationsCard extends ConsumerWidget {
-  const RecentNotificationsCard({super.key});
+  const RecentNotificationsCard({super.key, this.maxShown = 5});
+
+  final int maxShown;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,7 +28,7 @@ class RecentNotificationsCard extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final notification in recent.take(_maxShown)) NotificationTile(notification: notification),
+            for (final notification in recent.take(maxShown)) NotificationTile(notification: notification),
           ],
         );
       },
