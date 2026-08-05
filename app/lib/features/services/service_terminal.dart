@@ -361,7 +361,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
             child: TextField(
               controller: _searchField,
               focusNode: _searchFocus,
-              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: tokens.type.mono),
+              style: theme.textTheme.bodyMedium?.copyWith(fontFamily: tokens.typography.mono),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -455,7 +455,7 @@ class _ServiceTerminalState extends ConsumerState<ServiceTerminal> {
         controller: _controller,
         scrollController: _scroll,
         theme: _terminalTheme(theme),
-        textStyle: TerminalStyle(fontSize: 13, fontFamily: theme.tokens.type.mono),
+        textStyle: TerminalStyle(fontSize: 13, fontFamily: theme.tokens.typography.mono),
         padding: EdgeInsets.symmetric(horizontal: theme.tokens.space.md, vertical: theme.tokens.space.sm),
         // Nothing here is interactive: these panes replace terminal tabs the
         // user only ever read, and the agent exposes no write path to the pty.

@@ -55,7 +55,7 @@ class ConfigFileBar extends StatelessWidget {
                   path,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.type.mono, color: tokens.content.secondary),
+                  style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.typography.mono, color: tokens.content.secondary),
                 ),
               ],
             ),

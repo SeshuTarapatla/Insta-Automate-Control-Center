@@ -47,7 +47,7 @@ AppTokens buildClassicTokens() {
     ),
     accent: AccentTokens(primary: scheme.primary, onPrimary: scheme.onPrimary, muted: scheme.primary.withValues(alpha: 0.14), secondary: scheme.secondary),
     status: StatusTokens(good: tinted(good), info: tinted(info), warn: tinted(warn), bad: StatusColor(fg: scheme.error, container: scheme.errorContainer, onContainer: scheme.onErrorContainer)),
-    type: const TypographyTokens(
+    typography: const TypographyTokens(
       display: 'Roboto',
       body: 'Roboto',
       // The one deliberate upgrade this theme makes over today's app — it

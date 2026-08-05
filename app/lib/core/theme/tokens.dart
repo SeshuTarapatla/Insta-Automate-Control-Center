@@ -3,15 +3,16 @@
 // these into a `ThemeData`. Feature code reads tokens, never literals — DESIGN_SYSTEM
 // §0's rule: "you almost never write `Color(0x...)`, a radius, a font size, or a
 // padding value inside a feature file again."
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:xterm/xterm.dart';
 
 import 'themes/classic.dart';
 
-/// One entry per shipping theme (THEMES.md §1). Only `classic` exists as a real
-/// theme through V2.1 — the other five land in V2.4.
-enum ThemeId { classic }
+/// One entry per shipping theme (THEMES.md §1), in picker order.
+enum ThemeId { classic, commandDeck, nocturne, mica, daylight, swiss }
 
 /// DESIGN_SYSTEM §1.1 — the layer stack. Always in this order, so a theme decides
 /// *once* how depth reads. Colors here may carry alpha: that's how Mica's acrylic
@@ -57,6 +58,18 @@ class SurfaceTokens {
 
   /// Modal backdrop.
   final Color scrim;
+
+  static SurfaceTokens lerp(SurfaceTokens a, SurfaceTokens b, double t) => SurfaceTokens(
+    canvas: Color.lerp(a.canvas, b.canvas, t)!,
+    base: Color.lerp(a.base, b.base, t)!,
+    raised: Color.lerp(a.raised, b.raised, t)!,
+    sunken: Color.lerp(a.sunken, b.sunken, t)!,
+    overlay: Color.lerp(a.overlay, b.overlay, t)!,
+    border: Color.lerp(a.border, b.border, t)!,
+    borderStrong: Color.lerp(a.borderStrong, b.borderStrong, t)!,
+    borderSubtle: Color.lerp(a.borderSubtle, b.borderSubtle, t)!,
+    scrim: Color.lerp(a.scrim, b.scrim, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.2 — text and icons. Three levels, no more.
@@ -84,6 +97,14 @@ class ContentTokens {
 
   /// Text on an inverted surface (snackbar).
   final Color inverse;
+
+  static ContentTokens lerp(ContentTokens a, ContentTokens b, double t) => ContentTokens(
+    primary: Color.lerp(a.primary, b.primary, t)!,
+    secondary: Color.lerp(a.secondary, b.secondary, t)!,
+    tertiary: Color.lerp(a.tertiary, b.tertiary, t)!,
+    onAccent: Color.lerp(a.onAccent, b.onAccent, t)!,
+    inverse: Color.lerp(a.inverse, b.inverse, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.3. Rule: accent never encodes state — that's `StatusTokens`,
@@ -102,6 +123,13 @@ class AccentTokens {
 
   /// An optional second hue; a theme may set it equal to `primary`.
   final Color secondary;
+
+  static AccentTokens lerp(AccentTokens a, AccentTokens b, double t) => AccentTokens(
+    primary: Color.lerp(a.primary, b.primary, t)!,
+    onPrimary: Color.lerp(a.onPrimary, b.onPrimary, t)!,
+    muted: Color.lerp(a.muted, b.muted, t)!,
+    secondary: Color.lerp(a.secondary, b.secondary, t)!,
+  );
 }
 
 /// One state's three colors — DESIGN_SYSTEM §1.4.
@@ -112,6 +140,12 @@ class StatusColor {
   final Color fg;
   final Color container;
   final Color onContainer;
+
+  static StatusColor lerp(StatusColor a, StatusColor b, double t) => StatusColor(
+    fg: Color.lerp(a.fg, b.fg, t)!,
+    container: Color.lerp(a.container, b.container, t)!,
+    onContainer: Color.lerp(a.onContainer, b.onContainer, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.4 — the meaning layer. Four states; status is never carried
@@ -132,11 +166,18 @@ class StatusTokens {
 
   /// Failed, disconnected, error, cancelled.
   final StatusColor bad;
+
+  static StatusTokens lerp(StatusTokens a, StatusTokens b, double t) => StatusTokens(
+    good: StatusColor.lerp(a.good, b.good, t),
+    info: StatusColor.lerp(a.info, b.info, t),
+    warn: StatusColor.lerp(a.warn, b.warn, t),
+    bad: StatusColor.lerp(a.bad, b.bad, t),
+  );
 }
 
 /// DESIGN_SYSTEM §1.5. `mono` is the single source for every monospace face —
 /// the three spellings AUDIT §7 found (`'Consolas'`, `'monospace'`,
-/// `TerminalStyle`'s own literal) all become `tokens.type.mono`.
+/// `TerminalStyle`'s own literal) all become `tokens.typography.mono`.
 @immutable
 class TypographyTokens {
   const TypographyTokens({
@@ -179,6 +220,23 @@ class TypographyTokens {
   /// A theme token (DESIGN_SYSTEM §3) — Phosphor ships six weights, so icon
   /// weight itself becomes a per-theme vibe lever for one dependency.
   final PhosphorIconsStyle iconWeight;
+
+  /// DESIGN_SYSTEM §8 — sizes and weights sweep; face names and the
+  /// uppercase/icon-weight choices can't interpolate, so they snap at the
+  /// midpoint the same way `DepthStrategy` does (`EffectTokens.lerp`).
+  static TypographyTokens lerp(TypographyTokens a, TypographyTokens b, double t) => TypographyTokens(
+    display: t < 0.5 ? a.display : b.display,
+    body: t < 0.5 ? a.body : b.body,
+    mono: t < 0.5 ? a.mono : b.mono,
+    scale: lerpDouble(a.scale, b.scale, t)!,
+    bodyHeight: lerpDouble(a.bodyHeight, b.bodyHeight, t)!,
+    tightTracking: lerpDouble(a.tightTracking, b.tightTracking, t)!,
+    looseTracking: lerpDouble(a.looseTracking, b.looseTracking, t)!,
+    bodyWeight: FontWeight.lerp(a.bodyWeight, b.bodyWeight, t)!,
+    headingWeight: FontWeight.lerp(a.headingWeight, b.headingWeight, t)!,
+    uppercaseLabels: t < 0.5 ? a.uppercaseLabels : b.uppercaseLabels,
+    iconWeight: t < 0.5 ? a.iconWeight : b.iconWeight,
+  );
 }
 
 /// DESIGN_SYSTEM §1.6. Radius is one of the strongest vibe levers available:
@@ -215,6 +273,17 @@ class GeometryTokens {
 
   /// Dividers — may be < 1 on high-DPI.
   final double hairline;
+
+  static GeometryTokens lerp(GeometryTokens a, GeometryTokens b, double t) => GeometryTokens(
+    radiusSm: lerpDouble(a.radiusSm, b.radiusSm, t)!,
+    radiusMd: lerpDouble(a.radiusMd, b.radiusMd, t)!,
+    radiusLg: lerpDouble(a.radiusLg, b.radiusLg, t)!,
+    radiusFull: lerpDouble(a.radiusFull, b.radiusFull, t)!,
+    borderWidth: lerpDouble(a.borderWidth, b.borderWidth, t)!,
+    borderWidthStrong: lerpDouble(a.borderWidthStrong, b.borderWidthStrong, t)!,
+    focusRingWidth: lerpDouble(a.focusRingWidth, b.focusRingWidth, t)!,
+    hairline: lerpDouble(a.hairline, b.hairline, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.7 — the token that most decides whether a theme reads as
@@ -246,6 +315,21 @@ class EffectTokens {
   /// Does hover raise, or only tint?
   final bool hoverLift;
   final double hoverTintAlpha;
+
+  /// DESIGN_SYSTEM §8 — `depth` and the shadow lists that express it can't
+  /// interpolate (a border-depth theme has no shadow to grow, a glow's
+  /// shadow list has a different shape than a plain drop shadow's), so both
+  /// snap at the midpoint alongside `TypographyTokens`' face names; blur
+  /// strength and hover behaviour still sweep.
+  static EffectTokens lerp(EffectTokens a, EffectTokens b, double t) => EffectTokens(
+    depth: t < 0.5 ? a.depth : b.depth,
+    shadowSm: t < 0.5 ? a.shadowSm : b.shadowSm,
+    shadowMd: t < 0.5 ? a.shadowMd : b.shadowMd,
+    shadowLg: t < 0.5 ? a.shadowLg : b.shadowLg,
+    surfaceBlur: lerpDouble(a.surfaceBlur, b.surfaceBlur, t)!,
+    hoverLift: t < 0.5 ? a.hoverLift : b.hoverLift,
+    hoverTintAlpha: lerpDouble(a.hoverTintAlpha, b.hoverTintAlpha, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.8 — a 4px base scale, plus the semantic measures the audit
@@ -308,6 +392,24 @@ class SpacingTokens {
     iconMd: iconMd * factor,
     iconLg: iconLg * factor,
   );
+
+  static SpacingTokens lerp(SpacingTokens a, SpacingTokens b, double t) => SpacingTokens(
+    xs: lerpDouble(a.xs, b.xs, t)!,
+    sm: lerpDouble(a.sm, b.sm, t)!,
+    md: lerpDouble(a.md, b.md, t)!,
+    lg: lerpDouble(a.lg, b.lg, t)!,
+    xl: lerpDouble(a.xl, b.xl, t)!,
+    xxl: lerpDouble(a.xxl, b.xxl, t)!,
+    xxxl: lerpDouble(a.xxxl, b.xxxl, t)!,
+    pagePadding: lerpDouble(a.pagePadding, b.pagePadding, t)!,
+    cardPadding: lerpDouble(a.cardPadding, b.cardPadding, t)!,
+    sectionGap: lerpDouble(a.sectionGap, b.sectionGap, t)!,
+    controlHeight: lerpDouble(a.controlHeight, b.controlHeight, t)!,
+    rowHeight: lerpDouble(a.rowHeight, b.rowHeight, t)!,
+    iconSm: lerpDouble(a.iconSm, b.iconSm, t)!,
+    iconMd: lerpDouble(a.iconMd, b.iconMd, t)!,
+    iconLg: lerpDouble(a.iconLg, b.iconLg, t)!,
+  );
 }
 
 /// DESIGN_SYSTEM §1.9. `reduced` collapses every duration to zero at build time
@@ -345,6 +447,37 @@ class MotionTokens {
   final Curve emphasis;
 
   final bool reduced;
+
+  /// Settings' "Reduce motion" override (THEMES.md §9) and the OS "Show
+  /// animations" signal both apply here, at theme-build time — the same
+  /// point density does — rather than at any individual call site.
+  MotionTokens withReduced(bool value) => MotionTokens(
+    instant: instant,
+    quick: quick,
+    standard: standard,
+    slow: slow,
+    enter: enter,
+    exit: exit,
+    emphasis: emphasis,
+    reduced: value,
+  );
+
+  static Duration _lerpDuration(Duration a, Duration b, double t) =>
+      Duration(microseconds: lerpDouble(a.inMicroseconds.toDouble(), b.inMicroseconds.toDouble(), t)!.round());
+
+  /// DESIGN_SYSTEM §8 — durations sweep; `Curve`s can't meaningfully
+  /// interpolate (there's no halfway point between `easeOutCubic` and
+  /// `easeOutBack`), so they snap alongside `reduced`.
+  static MotionTokens lerp(MotionTokens a, MotionTokens b, double t) => MotionTokens(
+    instant: _lerpDuration(a.instant, b.instant, t),
+    quick: _lerpDuration(a.quick, b.quick, t),
+    standard: _lerpDuration(a.standard, b.standard, t),
+    slow: _lerpDuration(a.slow, b.slow, t),
+    enter: t < 0.5 ? a.enter : b.enter,
+    exit: t < 0.5 ? a.exit : b.exit,
+    emphasis: t < 0.5 ? a.emphasis : b.emphasis,
+    reduced: t < 0.5 ? a.reduced : b.reduced,
+  );
 }
 
 /// DESIGN_SYSTEM §1.10. `fl_chart` gets real tokens instead of reaching into
@@ -375,6 +508,21 @@ class ChartTokens {
 
   /// The one literal `Color(0x...)` the token-coverage grep excepts (V2.3).
   final Color qrQuietZone;
+
+  /// Every shipping theme's `series` is the same length (six) — an
+  /// index-aligned crossfade rather than a snap, so a running burn-down
+  /// chart doesn't jump mid-animation.
+  static ChartTokens lerp(ChartTokens a, ChartTokens b, double t) => ChartTokens(
+    series: [
+      for (var i = 0; i < a.series.length && i < b.series.length; i++) Color.lerp(a.series[i], b.series[i], t)!,
+    ],
+    grid: Color.lerp(a.grid, b.grid, t)!,
+    axis: Color.lerp(a.axis, b.axis, t)!,
+    axisLabel: Color.lerp(a.axisLabel, b.axisLabel, t)!,
+    capLine: Color.lerp(a.capLine, b.capLine, t)!,
+    positiveFill: Color.lerp(a.positiveFill, b.positiveFill, t)!,
+    qrQuietZone: Color.lerp(a.qrQuietZone, b.qrQuietZone, t)!,
+  );
 }
 
 /// `service_terminal.dart`'s previously-inline `TerminalTheme` — same colors,
@@ -465,6 +613,116 @@ class TerminalPalette {
     headerBackground: Color(0xFF1A1A24),
   );
 
+  /// THEMES.md §8 — needed by Daylight/Swiss, none existed before V2.4.
+  /// Based on GitHub Light: syntax color on white, at contrast. Cleared live
+  /// against a real streaming `adb` service (OBSERVED §6) before this was
+  /// even built, so this is a genuine second home, not an untested guess.
+  static const light = TerminalPalette(
+    foreground: Color(0xFF24292F),
+    background: Color(0xFFFFFFFF),
+    black: Color(0xFF24292F),
+    red: Color(0xFFCF222E),
+    green: Color(0xFF116329),
+    yellow: Color(0xFF4D2D00),
+    blue: Color(0xFF0969DA),
+    magenta: Color(0xFF8250DF),
+    cyan: Color(0xFF1B7C83),
+    white: Color(0xFF6E7781),
+    brightBlack: Color(0xFF57606A),
+    brightRed: Color(0xFFA40E26),
+    brightGreen: Color(0xFF1A7F37),
+    brightYellow: Color(0xFF633C01),
+    brightBlue: Color(0xFF218BFF),
+    brightMagenta: Color(0xFFA475F9),
+    brightCyan: Color(0xFF3192AA),
+    brightWhite: Color(0xFF8C959F),
+    searchHitBackground: Color(0xFFFFF8C5),
+    searchHitBackgroundCurrent: Color(0xFFFFD8B5),
+    searchHitForeground: Color(0xFF24292F),
+    panelBackground: Color(0xFFFFFFFF),
+    headerBackground: Color(0xFFF6F8FA),
+  );
+
+  /// Lets a theme reuse `.dark`/`.light` wholesale and only recolor the two
+  /// or three fields THEMES.md calls out (Command Deck's background steps,
+  /// Mica's translucent well, Swiss's pure-black foreground) instead of
+  /// respelling all 23 fields.
+  TerminalPalette copyWith({
+    Color? foreground,
+    Color? background,
+    Color? black,
+    Color? red,
+    Color? green,
+    Color? yellow,
+    Color? blue,
+    Color? magenta,
+    Color? cyan,
+    Color? white,
+    Color? brightBlack,
+    Color? brightRed,
+    Color? brightGreen,
+    Color? brightYellow,
+    Color? brightBlue,
+    Color? brightMagenta,
+    Color? brightCyan,
+    Color? brightWhite,
+    Color? searchHitBackground,
+    Color? searchHitBackgroundCurrent,
+    Color? searchHitForeground,
+    Color? panelBackground,
+    Color? headerBackground,
+  }) => TerminalPalette(
+    foreground: foreground ?? this.foreground,
+    background: background ?? this.background,
+    black: black ?? this.black,
+    red: red ?? this.red,
+    green: green ?? this.green,
+    yellow: yellow ?? this.yellow,
+    blue: blue ?? this.blue,
+    magenta: magenta ?? this.magenta,
+    cyan: cyan ?? this.cyan,
+    white: white ?? this.white,
+    brightBlack: brightBlack ?? this.brightBlack,
+    brightRed: brightRed ?? this.brightRed,
+    brightGreen: brightGreen ?? this.brightGreen,
+    brightYellow: brightYellow ?? this.brightYellow,
+    brightBlue: brightBlue ?? this.brightBlue,
+    brightMagenta: brightMagenta ?? this.brightMagenta,
+    brightCyan: brightCyan ?? this.brightCyan,
+    brightWhite: brightWhite ?? this.brightWhite,
+    searchHitBackground: searchHitBackground ?? this.searchHitBackground,
+    searchHitBackgroundCurrent: searchHitBackgroundCurrent ?? this.searchHitBackgroundCurrent,
+    searchHitForeground: searchHitForeground ?? this.searchHitForeground,
+    panelBackground: panelBackground ?? this.panelBackground,
+    headerBackground: headerBackground ?? this.headerBackground,
+  );
+
+  static TerminalPalette lerp(TerminalPalette a, TerminalPalette b, double t) => TerminalPalette(
+    foreground: Color.lerp(a.foreground, b.foreground, t)!,
+    background: Color.lerp(a.background, b.background, t)!,
+    black: Color.lerp(a.black, b.black, t)!,
+    red: Color.lerp(a.red, b.red, t)!,
+    green: Color.lerp(a.green, b.green, t)!,
+    yellow: Color.lerp(a.yellow, b.yellow, t)!,
+    blue: Color.lerp(a.blue, b.blue, t)!,
+    magenta: Color.lerp(a.magenta, b.magenta, t)!,
+    cyan: Color.lerp(a.cyan, b.cyan, t)!,
+    white: Color.lerp(a.white, b.white, t)!,
+    brightBlack: Color.lerp(a.brightBlack, b.brightBlack, t)!,
+    brightRed: Color.lerp(a.brightRed, b.brightRed, t)!,
+    brightGreen: Color.lerp(a.brightGreen, b.brightGreen, t)!,
+    brightYellow: Color.lerp(a.brightYellow, b.brightYellow, t)!,
+    brightBlue: Color.lerp(a.brightBlue, b.brightBlue, t)!,
+    brightMagenta: Color.lerp(a.brightMagenta, b.brightMagenta, t)!,
+    brightCyan: Color.lerp(a.brightCyan, b.brightCyan, t)!,
+    brightWhite: Color.lerp(a.brightWhite, b.brightWhite, t)!,
+    searchHitBackground: Color.lerp(a.searchHitBackground, b.searchHitBackground, t)!,
+    searchHitBackgroundCurrent: Color.lerp(a.searchHitBackgroundCurrent, b.searchHitBackgroundCurrent, t)!,
+    searchHitForeground: Color.lerp(a.searchHitForeground, b.searchHitForeground, t)!,
+    panelBackground: Color.lerp(a.panelBackground, b.panelBackground, t)!,
+    headerBackground: Color.lerp(a.headerBackground, b.headerBackground, t)!,
+  );
+
   /// Adapts to `xterm`'s own theme type at the one call site that needs it,
   /// so nothing outside `service_terminal.dart` needs to import `xterm`.
   TerminalTheme toXterm({required Color cursor, required Color selection}) => TerminalTheme(
@@ -510,7 +768,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.content,
     required this.accent,
     required this.status,
-    required this.type,
+    required this.typography,
     required this.geometry,
     required this.effects,
     required this.space,
@@ -533,10 +791,18 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final AccentTokens accent;
   final StatusTokens status;
 
-  // Shadows `ThemeExtension<T>.type` (`Object get type => T`) — a same-named
-  // field is a valid narrowing override in Dart, just needs the annotation.
-  @override
-  final TypographyTokens type;
+  // Deliberately not named `type` — `ThemeExtension<T>`'s own `type` getter
+  // (`Object get type => T`) isn't decorative: Flutter uses it as the map
+  // key when building `ThemeData.extensions` from the constructor's list.
+  // A same-named field silently shadows it, so `ThemeData(extensions: [
+  // tokens])` keys itself by a `TypographyTokens` *instance* instead of the
+  // `AppTokens` type — every `Theme.of(context).extension<AppTokens>()`
+  // call then misses and `AppTokensX.tokens` falls back to
+  // `buildClassicTokens()` unconditionally, regardless of the real active
+  // theme (found live, D104 — invisible through V2.1–V2.3 since Classic
+  // was the only theme that existed, so the fallback and the real value
+  // were identical).
+  final TypographyTokens typography;
   final GeometryTokens geometry;
   final EffectTokens effects;
   final SpacingTokens space;
@@ -554,7 +820,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     ContentTokens? content,
     AccentTokens? accent,
     StatusTokens? status,
-    TypographyTokens? type,
+    TypographyTokens? typography,
     GeometryTokens? geometry,
     EffectTokens? effects,
     SpacingTokens? space,
@@ -570,7 +836,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     content: content ?? this.content,
     accent: accent ?? this.accent,
     status: status ?? this.status,
-    type: type ?? this.type,
+    typography: typography ?? this.typography,
     geometry: geometry ?? this.geometry,
     effects: effects ?? this.effects,
     space: space ?? this.space,
@@ -579,15 +845,38 @@ class AppTokens extends ThemeExtension<AppTokens> {
     terminal: terminal ?? this.terminal,
   );
 
-  /// Only one theme exists through V2.1, so there is nothing to interpolate
-  /// between yet — this snaps at the midpoint the same way the `AppPalette`
-  /// it replaces did. `AppTokens.lerp` gains **real** per-field interpolation
-  /// in V2.4 (DESIGN_SYSTEM §8), once switching between six themes is a real
-  /// user action worth animating.
+  /// DESIGN_SYSTEM §8 — real per-field interpolation, not the midpoint snap
+  /// `AppPalette.lerp` (the token it replaces) used. Every color and every
+  /// measure sweeps continuously; whatever can't mean anything at a halfway
+  /// point — face names, `DepthStrategy`, shadow shapes, curves — snaps,
+  /// each documented on its own sub-token's `lerp` above. `id`/`name`/
+  /// `tagline` snap the same way: there's no such thing as 60% of the way
+  /// from "Classic" to "Swiss" as a string. Mica's native `Window.setEffect`
+  /// hard-cut (THEMES.md §4) is a separate, OS-level concern —
+  /// `theme_controller.dart` triggers that call directly; nothing here needs
+  /// to special-case it, since the colors and geometry keep sweeping
+  /// smoothly underneath regardless of what the compositor is doing.
   @override
   AppTokens lerp(ThemeExtension<AppTokens>? other, double t) {
     if (other is! AppTokens) return this;
-    return t < 0.5 ? this : other;
+    if (identical(this, other)) return this;
+    return AppTokens(
+      id: t < 0.5 ? id : other.id,
+      name: t < 0.5 ? name : other.name,
+      tagline: t < 0.5 ? tagline : other.tagline,
+      brightness: t < 0.5 ? brightness : other.brightness,
+      surface: SurfaceTokens.lerp(surface, other.surface, t),
+      content: ContentTokens.lerp(content, other.content, t),
+      accent: AccentTokens.lerp(accent, other.accent, t),
+      status: StatusTokens.lerp(status, other.status, t),
+      typography: TypographyTokens.lerp(typography, other.typography, t),
+      geometry: GeometryTokens.lerp(geometry, other.geometry, t),
+      effects: EffectTokens.lerp(effects, other.effects, t),
+      space: SpacingTokens.lerp(space, other.space, t),
+      motion: MotionTokens.lerp(motion, other.motion, t),
+      chart: ChartTokens.lerp(chart, other.chart, t),
+      terminal: TerminalPalette.lerp(terminal, other.terminal, t),
+    );
   }
 }
 

@@ -28,7 +28,7 @@ class FunnelStage extends StatelessWidget {
     // inverting the `core/` → `ui/` layering (D100's precedent) — tabular
     // figures on this count are a small enough loss to accept rather than
     // move this widget out of `core/`.
-    final countStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFamily: tokens.type.mono);
+    final countStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFamily: tokens.typography.mono);
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: tokens.space.xs),

@@ -125,6 +125,6 @@ class AppIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = Theme.of(context).tokens;
-    return Icon(glyph(tokens.type.iconWeight), size: size.resolve(tokens), color: color);
+    return Icon(glyph(tokens.typography.iconWeight), size: size.resolve(tokens), color: color);
   }
 }

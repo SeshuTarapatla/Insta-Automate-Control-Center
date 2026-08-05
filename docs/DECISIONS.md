@@ -5,6 +5,173 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — a third density tier, requested mid-retest (D105)
+
+### D105 · `Density` gains `spacious`, above `comfortable`
+
+**Chosen:** a third tier above the default — `compact` (0.75×/0.95×) < `comfortable`
+(1.0×/1.0×) < `spacious` (1.15×/1.05×), the user's own framing ("low/medium/high, where
+compact is low and comfortable is medium"). Kept the existing `compact`/`comfortable` names
+rather than renaming everything to `low`/`medium`/`high` — both are already load-bearing
+vocabulary across THEMES.md, DESIGN_SYSTEM.md, PLAN_V2.md's V2.4 checkpoint text, and
+`theme_controller.dart`'s Command Deck density nudge; a rename would be pure churn for a
+request that's really just "add a third option, roomier than today's default."
+`build_theme.dart`'s `_applyDensity` early-return switched from `density ==
+Density.comfortable` to checking both scale factors equal `1.0`, so it stays correct
+regardless of which named tier happens to be the identity one. Settings → Appearance's
+segmented control now shows all three, ordered low→high. `flutter analyze` clean, `flutter
+test` 175/175 unchanged (no test asserted a two-tier `Density`). DESIGN_SYSTEM.md §1.8 and
+THEMES.md §9 updated to match. Rebuilt, stale instance killed, fresh one started for you per
+rule 5 — not clicked through by Claude.
+
+---
+
+## 2026-08-05 (continued) — a real V2.1-era bug found live retesting D103 (D104)
+
+### D104 · `AppTokens.type` collided with `ThemeExtension.type`, silently pinning every screen to Classic since V2.1
+
+**Found by you, immediately, the first time a second theme actually existed to diverge from
+the fallback.** Your screenshot of Overview under Swiss showed the split precisely: switches,
+the selected nav label, "View logs" — all correctly red (Swiss's `accent.primary`). Every card
+background — Flows, Services, Dependencies — still Classic's dark near-black. Not a partial
+render, not a Swiss-specific bug: every theme, everywhere `Theme.of(context).tokens` is read
+directly.
+
+**Root cause:** `AppTokens` (`tokens.dart`, written in V2.1) declared `required this.type` as
+its `TypographyTokens` field, with `@override` on top of `ThemeExtension<T>`'s own `Object get
+type => T` getter — reasoned at the time as "a valid narrowing override, just needs the
+annotation" (true, syntactically). What that comment missed: `type` isn't decorative on
+`ThemeExtension`. Flutter's `ThemeData` constructor uses it as the map key when converting the
+`extensions: [...]` list into `Map<Object, ThemeExtension>` — so `ThemeData(extensions:
+[tokens])` was keying itself by a `TypographyTokens` *instance* instead of the `AppTokens` Type
+object. `Theme.of(context).extension<AppTokens>()` — which looks up by the real `AppTokens`
+type — missed on every single call, and `AppTokensX.tokens`'s `?? buildClassicTokens()`
+fallback fired unconditionally, for every theme, every time.
+
+**Invisible through V2.1, V2.2 and V2.3's own checkpoint tests — not because they were
+insufficiently thorough, but because the bug was structurally unobservable until a second
+theme existed.** Classic was the only theme through all three checkpoints; the fallback
+(`buildClassicTokens()`) and the real intended value were identical, so nothing anywhere could
+tell them apart. Confirmed directly: an isolated widget-test probe (`MaterialApp(theme:
+buildTheme(buildSwissTokens())), home: AppCard(...)`) rendered the card at Classic's dark
+`surfaceContainer`, not Swiss's white `surface.base` — reproduced with zero Riverpod, zero
+`app.dart`, zero animation involved, before touching any fix.
+
+**Fixed:** the field renamed `AppTokens.typography` (not `type`), the incorrect `@override`
+removed — `ThemeExtension`'s own default `type` implementation (returning the real `AppTokens`
+type object) is what should have been there all along. Every `tokens.type.*` read across the
+codebase (11 files: `build_theme.dart`, `ui/text.dart`, `ui/status.dart`, `ui/icons.dart`,
+`ui/overlays.dart`, `service_terminal.dart`, `burndown_chart.dart`, `funnel_stage.dart`,
+`shortcuts_reference.dart`, `config_file_bar.dart`, plus every `themes/*.dart` constructor call)
+renamed to `tokens.typography.*`. DESIGN_SYSTEM.md's own `AppTokens` code snippet — which
+specified the colliding field name in the first place — corrected, with a new paragraph
+explaining why `type` can never be reused as a field name on a `ThemeExtension` subclass.
+
+**New permanent regression test, `test/theme_extension_lookup_test.dart`** — the one check the
+entire rest of the suite structurally could not perform. It renders a real widget under each of
+the six themes and asserts `Theme.of(context).tokens.id` actually matches, catching exactly
+this class of "the fallback silently substituted itself" bug for any future field that
+accidentally shadows something `ThemeExtension`/`ThemeData` relies on internally.
+
+**Verified:** the isolated probe test that reproduced the bug was rerun unchanged after the fix
+— `AppCard` under Swiss now renders `#FFFFFF`, both statically and after a real `AnimatedTheme`
+swap-and-settle. `flutter analyze` clean, `flutter test` 175/175 (169 prior + 6 new in
+`theme_extension_lookup_test.dart`, one per theme). Rebuilt, stale instance killed, fresh one
+started for you per rule 5 — not clicked through by Claude. **Still awaiting your six-part
+checkpoint test** — this fix is what that test exists to have caught, and it's the reason the
+first attempt is being retested rather than committed as-is.
+
+---
+
+## 2026-08-05 (continued) — V2.4 Theme catalog built (D103), awaiting checkpoint test
+
+### D103 · Five new themes, real `AppTokens.lerp`, the Appearance tab, native Mica handling, two contrast fixes
+
+**Built, not yet committed** — rule 4: the checkpoint test (six parts, PLAN_V2.md's V2.4 section)
+runs before the commit, same as every other v2 checkpoint. `flutter analyze` clean, `flutter test`
+169/169 (was 167 pre-V2.4; `test/theme_contrast_test.dart` adds 48 checks — 6 themes × 8 columns
+from THEMES.md §7's table — the other 121 unchanged), `flutter build windows --debug` succeeds.
+
+**`themes/{command_deck,nocturne,mica,daylight,swiss}.dart`** transcribe THEMES.md §2–6's values
+directly, deriving only what the doc left unspecified (chart.grid/axis/axisLabel/capLine —
+Classic's own precedent for the same gap; Nocturne/Mica's shadowSm/shadowLg, scaled from the one
+size THEMES.md did give). `registry.dart` grew to all six.
+
+**Two of THEMES.md §7's own "computed, not measured" values failed the real contrast test and
+were adjusted, exactly as the doc asks:** Nocturne's `content.tertiary` (`#565F89`, 2.76:1 against
+`surface.base` — under the 3:1 UI-boundary floor) lightened to `#6A7399` (3.68:1), same muted
+blue-grey family. Swiss's `status.warn` (`#C25E00`, 4.29:1 against white — under the 4.5:1 body
+floor) darkened to `#B05300` (5.14:1), same hue. Both found by `test/theme_contrast_test.dart`,
+parameterized over all six themes × `StatusTokens`' four states × `ContentTokens`' three levels,
+plus `accent.primary` (THEMES.md §7's table has its own column for it, used for focus rings/
+selection — a UI boundary, floor 3:1 not 4.5:1). Translucent tokens (Mica's whole surface stack;
+`content.tertiary` in every dark theme, deliberately per THEMES.md §7's closing note) are
+flattened against black/white by the theme's own brightness before measuring — a raw translucent
+color's own luminance doesn't describe what's actually on screen once it's painted over a panel.
+
+**`AppTokens.lerp` does real per-field interpolation**, replacing the `t < 0.5` snap V2.1 shipped
+as a documented placeholder. Every `Color` and every `double` sweeps (new `.lerp` statics on each
+sub-token class); what can't mean anything at a halfway point — face names, `DepthStrategy` and
+its shadow lists, `Curve`s, `id`/`name`/`tagline` — snaps at the midpoint instead, each documented
+at its own call site. `chart.series` lerps index-aligned rather than snapping: every shipping
+theme's list is the same length (six), so a running burn-down chart doesn't jump mid-animation.
+`MaterialApp` already wraps its child in `AnimatedTheme` and calls `ThemeData.lerp` (which finds
+and lerps matching `ThemeExtension`s automatically) on every `theme:` change — `app.dart` only
+needed to set `themeAnimationDuration`/`Curve` from the *incoming* theme's own `motion.slow`/
+`enter` tokens (zero under reduced motion) for the crossfade DESIGN_SYSTEM §8 describes to exist
+at all.
+
+**Mica's native `Window.setEffect` hard-cut (DESIGN_SYSTEM §8) is handled by always keeping the
+compositor on `WindowEffect.mica`, only ever changing the `dark` flag.** Every other theme's
+`surface.canvas` is fully opaque (alpha 1.0), so which native material is running underneath is
+visually moot for them regardless — Flutter's own opaque paint covers it either way, matching
+what `main.dart` has done unconditionally since CP 0.2. This avoids a `solid`-vs-`mica` branch
+that would have needed extra care to not regress Classic's already-accepted (V2.1 checkpoint,
+pixel-identical) transparent-canvas-over-Mica look. `theme_controller.dart` calls it once on load
+and once per `setTheme()`; redundant calls between two non-Mica themes are harmless (same `dark`
+target, rare user action, not a hot path).
+
+**Command Deck nudges density to `compact` on selection** (THEMES.md §2: "the one theme that
+ships compact by default"), but only on the way *in* — reselecting it while already active, or
+manually flipping back to `comfortable` while on it, isn't overridden. Theme and density stay two
+independent, independently-persisted settings; this is a one-time default nudge, not a link
+between them.
+
+**Mica's system fonts (Segoe UI Variable, Cascadia Mono) ship with no `fontFamilyFallback`
+wiring**, despite THEMES.md §4 describing one — a real scope cut. Threading fallback lists through
+would touch `TypographyTokens`' schema (all six themes), `build_theme.dart`'s `_textTheme`, *and*
+`ui/text.dart`'s `MonoText`/`NumericText` (which set `fontFamily` directly, bypassing
+`ThemeData.textTheme` entirely) for a font pairing guaranteed present on the one OS this app runs
+on. Revisit if this app is ever expected to run somewhere Segoe UI Variable/Cascadia Mono aren't
+guaranteed.
+
+**Terminal palette override (`ThemeController.setTerminalOverride`)** is implemented as a token
+substitution in `app.dart` — `rawTokens.copyWith(terminal: TerminalPalette.dark)` before
+`buildTheme()` — rather than touching `service_terminal.dart` at all, since every terminal call
+site already reads `theme.tokens.terminal` and nothing else. `TerminalPalette` gained `.light`
+(GitHub Light, per THEMES.md §8 — already cleared live against a real streaming service in
+OBSERVED §6, so this is a genuine second home rather than an untested guess) and a `copyWith` so
+Command Deck/Mica/Swiss can recolor two or three fields instead of respelling all 23.
+
+**Settings gained a sixth "Appearance" tab** (before Ops, per THEMES.md §9) — a theme grid whose
+cards each wrap a real miniature app-chrome subtree in `Theme(data: buildTheme(tokens))` (title
+bar strip, three nav icons at the theme's own icon weight, a real `StatusDot`/`NumericText` card)
+rather than a color swatch, plus `Density`/`ReduceMotionSetting`/`TerminalOverride` segmented
+controls. `theme_controller.dart` mirrors `MutedTagsController`'s exact `shared_preferences`
+pattern (`features/notifications/notification_controller.dart`) — a synchronous `ThemePrefs.
+initial` (Classic/comfortable/auto/followTheme, matching THEMES.md §1's confirmed default) so the
+first frame never flashes an arbitrary theme, corrected a moment later once the real persisted
+value loads.
+
+**Not yet exercised live** — same standing precedent as every other checkpoint's hand-off: built,
+analyzed, tested, started, and handed over per rule 5, not clicked through by Claude. The six-part
+checkpoint test (switch through all six themes; walk every screen in Daylight; confirm Mica shows
+the desktop through the chrome; check the Services terminal in Daylight/Swiss for ANSI legibility;
+toggle compact density; confirm theme+density persist across a restart) is what's outstanding
+before this commits.
+
+---
+
 ## 2026-08-05 (continued) — V2.3 migration finished (D102 · part 2 of 2)
 
 ### D102 · All 90 files under `features/`, `shell/`, `core/` migrated; the three acceptance greps enforced; token_coverage_test.dart written

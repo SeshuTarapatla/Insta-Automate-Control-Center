@@ -5,6 +5,7 @@ import '../../core/app_snack_bar.dart';
 import '../../ui/feedback.dart';
 import '../../core/file_opener.dart';
 import '../../ui/page.dart';
+import 'appearance_tab.dart';
 import 'config_controller.dart';
 import 'config_file_bar.dart';
 import 'devices_tab.dart';
@@ -37,7 +38,7 @@ class SettingsPage extends ConsumerWidget {
         child: Focus(
           autofocus: true,
           child: DefaultTabController(
-            length: 5,
+            length: 6,
             child: AppPage(
               title: 'Settings',
               leading: ConfigFileBar(path: config.path),
@@ -46,6 +47,7 @@ class SettingsPage extends ConsumerWidget {
                 AppTab(label: 'Limits'),
                 AppTab(label: 'Queue'),
                 AppTab(label: 'Devices'),
+                AppTab(label: 'Appearance'),
                 AppTab(label: 'Ops'),
               ],
               body: TabBarView(
@@ -54,6 +56,7 @@ class SettingsPage extends ConsumerWidget {
                   LimitsTab(config: config),
                   const QueueTab(),
                   const DevicesTab(),
+                  const AppearanceTab(),
                   const OpsTab(),
                 ],
               ),

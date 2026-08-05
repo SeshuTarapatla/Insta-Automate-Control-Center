@@ -64,6 +64,11 @@ Future<void> showWelcomeDialog(BuildContext context) {
               ),
               SizedBox(height: tokens.space.md),
               Text(
+                'Six themes live in Settings → Appearance, if the look here isn\'t your thing.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              SizedBox(height: tokens.space.md),
+              Text(
                 'Press "?" any time to see every keyboard shortcut.',
                 style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
               ),

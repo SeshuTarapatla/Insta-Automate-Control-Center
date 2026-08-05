@@ -1,19 +1,23 @@
 // DESIGN_SYSTEM.md §1.8 — density is a multiplier applied to `SpacingTokens`
-// and `type.scale` at theme-build time, not a concept any feature file knows
-// about. The picker that lets a user choose `compact` lands in V2.4; V2.1
-// only wires the enum and the scale it applies so `build_theme.dart` has a
-// stable shape to build against.
+// and `typography.scale` at theme-build time, not a concept any feature file
+// knows about. Three tiers, low to high: `compact` (0.75×/0.95×) < `comfortable`
+// (1.0×/1.0×, the default) < `spacious` (1.15×/1.05×) — added 2026-08-05 per
+// the user's own request, once `compact` existed and made "one more tier,
+// roomier than the default" an obvious next ask.
 enum Density {
+  compact,
   comfortable,
-  compact;
+  spacious;
 
   double get spaceScale => switch (this) {
-    Density.comfortable => 1.0,
     Density.compact => 0.75,
+    Density.comfortable => 1.0,
+    Density.spacious => 1.15,
   };
 
   double get typeScale => switch (this) {
-    Density.comfortable => 1.0,
     Density.compact => 0.95,
+    Density.comfortable => 1.0,
+    Density.spacious => 1.05,
   };
 }

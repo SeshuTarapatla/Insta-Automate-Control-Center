@@ -64,7 +64,7 @@ class AppText extends StatelessWidget {
 }
 
 /// [AppText] rendered in the theme's monospace face — IDs, paths, log lines,
-/// terminal-adjacent labels. `tokens.type.mono` is the *only* place a
+/// terminal-adjacent labels. `tokens.typography.mono` is the *only* place a
 /// monospace family name is spelled (DESIGN_SYSTEM §1.5).
 class MonoText extends StatelessWidget {
   const MonoText(
@@ -87,7 +87,7 @@ class MonoText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = role.resolve(theme.textTheme)?.copyWith(color: color, fontFamily: theme.tokens.type.mono);
+    final style = role.resolve(theme.textTheme)?.copyWith(color: color, fontFamily: theme.tokens.typography.mono);
     return Text(
       text,
       style: style,
@@ -117,7 +117,7 @@ class NumericText extends StatelessWidget {
     final theme = Theme.of(context);
     final style = role
         .resolve(theme.textTheme)
-        ?.copyWith(color: color, fontFamily: theme.tokens.type.mono, fontFeatures: const [FontFeature.tabularFigures()]);
+        ?.copyWith(color: color, fontFamily: theme.tokens.typography.mono, fontFeatures: const [FontFeature.tabularFigures()]);
     return Text('$value', style: style, textAlign: textAlign, maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 }

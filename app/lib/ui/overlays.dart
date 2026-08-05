@@ -54,7 +54,7 @@ class AppTooltip extends StatelessWidget {
 
     final theme = Theme.of(context);
     final tokens = theme.tokens;
-    final bodyStyle = (monoBody ? theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.type.mono) : theme.textTheme.bodySmall)
+    final bodyStyle = (monoBody ? theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.typography.mono) : theme.textTheme.bodySmall)
         ?.copyWith(color: tokens.content.secondary);
 
     return Tooltip(

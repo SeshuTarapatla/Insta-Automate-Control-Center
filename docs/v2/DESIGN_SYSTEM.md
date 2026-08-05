@@ -77,7 +77,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.content,
     required this.accent,
     required this.status,
-    required this.type,
+    required this.typography,
     required this.geometry,
     required this.effects,
     required this.space,
@@ -88,6 +88,14 @@ class AppTokens extends ThemeExtension<AppTokens> {
   // ...
 }
 ```
+
+**Never name a field `type`.** `ThemeExtension<T>`'s own `type` getter (`Object get type => T`)
+isn't decorative — Flutter uses it as the map key when it builds `ThemeData.extensions` from
+the constructor's `extensions: [...]` list. A same-named field silently shadows it, so
+`Theme.of(context).extension<AppTokens>()` misses on every lookup and the `AppTokensX.tokens`
+fallback fires unconditionally — invisible for as long as only one theme exists (the fallback
+and the real value are identical), and a real, live bug the moment a second one does. Found
+live in V2.4 (D104) after shipping this way since V2.1; the field is `typography`, not `type`.
 
 `ThemeData.palette` (the existing extension getter in `app_theme.dart:177`) is **kept and
 widened** to `ThemeData.tokens`, with `palette` retained as a deprecated alias for one
@@ -185,7 +193,7 @@ class TypographyTokens {
 Two hard rules, both fixing audit findings:
 
 1. **`mono` is the single source for every monospace face.** The three spellings in AUDIT
-   §7 all become `tokens.type.mono`. This includes `TerminalStyle`'s `fontFamily` in
+   §7 all become `tokens.typography.mono`. This includes `TerminalStyle`'s `fontFamily` in
    `service_terminal.dart:465`.
 2. **Every number renders with `FontFeature.tabularFigures()`.** A `MonoText` /
    `NumericText` component (see [COMPONENTS.md](COMPONENTS.md)) enforces it so it can't be
@@ -252,12 +260,14 @@ Plus semantic measures that the audit showed were being reinvented per screen:
 | `iconSm / iconMd / iconLg` | the `size: 14` / `15` / `16` / `18` / `20` / `24` / `28` / `32` spread |
 
 **Density** (`density.dart`) is a multiplier applied to `SpacingTokens`, `rowHeight`,
-`controlHeight` and `type.scale` when the theme is built:
+`controlHeight` and `typography.scale` when the theme is built. Three tiers, added
+2026-08-05 once `compact` existed and a roomier third tier was an obvious next ask:
 
 | Density | Space × | Type × | For |
 |---|---|---|---|
-| `comfortable` | 1.0 | 1.0 | default |
 | `compact` | 0.75 | 0.95 | dense ops use; Command Deck's own default |
+| `comfortable` | 1.0 | 1.0 | default |
+| `spacious` | 1.15 | 1.05 | more room to breathe than the default |
 
 Density is a real user setting persisted alongside the theme choice, per the session's
 answers. Because it is applied at `ThemeData` build time, **nothing in any feature file
@@ -347,14 +357,14 @@ keep working during the migration:
 | `label` | `labelMedium` | 12 | 600 | normal |
 | `micro` | `labelSmall` | 10.5 | 700 | loose (uppercase where the theme opts in) |
 
-All sizes multiply by `type.scale × density.typeScale`.
+All sizes multiply by `typography.scale × density.typeScale`.
 
 ---
 
 ## 3. Iconography
 
 Phosphor replaces Material Icons app-wide. The weight is a theme token
-(`type` carries it as `iconWeight`), which is a large and cheap differentiator:
+(`typography` carries it as `iconWeight`), which is a large and cheap differentiator:
 
 | Theme | Phosphor weight |
 |---|---|

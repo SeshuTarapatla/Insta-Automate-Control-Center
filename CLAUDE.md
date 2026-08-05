@@ -13,15 +13,28 @@
 > visual inputs needed from the user. Start at
 > [docs/v2/PLAN_V2.md](docs/v2/PLAN_V2.md) and take one checkpoint at a time.
 >
-> **Progress: V2.1 and V2.2 done and accepted; V2.3 half done.** V2.1 (Token foundation, D99)
-> and V2.2 (Component library, D100) are both committed and user-checkpoint-tested. V2.3
-> (Migration) is the plan's largest checkpoint and was split into two halves per its own
-> sanctioned risk mitigation — **part 1 (D101) is committed**: the `AppPalette` shim deleted,
-> every hardcoded color AUDIT §2 found now reads a token, `OutcomeBadge` retargeted onto
-> `ui/status.dart`. **Part 2 is not started**: wrapping all seven screens in `AppPage`, the
-> `EdgeInsets`/`NumericText`/`AppIcon`/`Gap` sweep across ~90 files, the eleven remaining
-> `.when()` sites, and `test/token_coverage_test.dart`. Start the next session there —
-> V2.4–V2.13 all depend on V2.3 being finished first (PLAN_V2's own sequencing note).
+> **Progress: V2.1–V2.3 done and accepted; V2.4 built, awaiting your checkpoint test.** V2.1
+> (Token foundation, D99), V2.2 (Component library, D100) and V2.3 (Migration, split into D101 +
+> D102 per its own sanctioned risk mitigation — the `AppPalette` shim deleted, all 90 files under
+> `features/`/`shell/`/`core/` migrated, all seven screens wrapped in `AppPage`,
+> `test/token_coverage_test.dart` enforcing the three acceptance greps) are all committed and
+> user-checkpoint-tested. **V2.4 (Theme catalog, D103/D104) is built and committed-pending** —
+> five more themes (Command Deck, Nocturne, Mica, Daylight, Swiss), `TerminalPalette.light`, a
+> real `AppTokens.lerp`, `theme_controller.dart` + `shared_preferences` persistence, a Settings
+> Appearance tab with live-miniature theme cards, and `test/theme_contrast_test.dart` (which
+> caught and fixed two of THEMES.md's own "computed, not measured" values landing under floor —
+> D103). **Your own retest of the first build immediately caught a real, pre-existing bug**
+> (D104): `AppTokens`'s `TypographyTokens` field was named `type`, colliding with
+> `ThemeExtension.type` — the getter Flutter uses internally as the extensions-map key — so
+> `Theme.of(context).tokens` had silently fallen back to Classic everywhere since V2.1, invisible
+> until a second theme existed to diverge from it. Fixed (renamed to `typography`, 11 call sites
+> plus all six theme files and DESIGN_SYSTEM.md's own snippet), with a new permanent regression
+> test (`theme_extension_lookup_test.dart`) that renders a widget under each theme and checks the
+> extension actually resolved — the one thing the rest of the suite structurally couldn't catch.
+> `flutter analyze`/`flutter test` (175/175) clean, rebuilt, stale instance killed, fresh one
+> started for you per rule 5 — **still awaiting your six-part checkpoint test**, now against the
+> fixed build. Start the next session by running that test (PLAN_V2.md's V2.4 section) and, once
+> it passes, committing before moving on to V2.5.
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

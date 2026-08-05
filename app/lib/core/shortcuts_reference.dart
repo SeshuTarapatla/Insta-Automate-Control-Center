@@ -78,7 +78,7 @@ Future<void> showShortcutsReference(BuildContext context) {
                               ),
                               child: Text(
                                 entry.keys,
-                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.type.mono),
+                                style: theme.textTheme.bodySmall?.copyWith(fontFamily: tokens.typography.mono),
                               ),
                             ),
                           ),

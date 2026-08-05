@@ -76,7 +76,7 @@ class BurndownCard extends StatelessWidget {
                               value.round().toString(),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: tokens.chart.axisLabel,
-                                fontFamily: tokens.type.mono,
+                                fontFamily: tokens.typography.mono,
                                 fontFeatures: const [FontFeature.tabularFigures()],
                               ),
                             ),
@@ -115,7 +115,7 @@ class BurndownCard extends StatelessWidget {
                             children: [
                               TextSpan(
                                 text: rod.toY.round().toString(),
-                                style: TextStyle(color: scheme.onInverseSurface, fontWeight: FontWeight.w400, fontFamily: tokens.type.mono),
+                                style: TextStyle(color: scheme.onInverseSurface, fontWeight: FontWeight.w400, fontFamily: tokens.typography.mono),
                               ),
                             ],
                           ),

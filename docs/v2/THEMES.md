@@ -375,8 +375,8 @@ Settings gains an **Appearance** tab (a sixth tab, before Ops). It holds:
   the point of these themes is geometry, type and depth as much as color, and a swatch row
   shows none of that. Built by wrapping the miniature in a `Theme(data: buildTheme(...))`,
   which costs nothing and is guaranteed accurate.
-- **Density** — `comfortable` / `compact` segmented control, with a one-line explanation of
-  what it changes.
+- **Density** — `compact` / `comfortable` / `spacious` segmented control, with a one-line
+  explanation of what it changes.
 - **Reduce motion** — `auto (follow Windows)` / `always` / `never`.
 - **Terminal palette override** — for the light-theme terminal question in §8: `follow
   theme` / `always dark`.

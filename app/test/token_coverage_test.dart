@@ -80,6 +80,6 @@ void main() {
 
   test('no fontFamily string literals outside core/theme/', () {
     final hits = _violations(libDir, pattern: _fontFamilyPattern, skipTheme: true);
-    expect(hits, isEmpty, reason: 'Hardcoded fontFamily literals found — route through tokens.type.mono instead:\n${hits.join('\n')}');
+    expect(hits, isEmpty, reason: 'Hardcoded fontFamily literals found — route through tokens.typography.mono instead:\n${hits.join('\n')}');
   });
 }

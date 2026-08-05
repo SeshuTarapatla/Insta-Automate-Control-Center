@@ -48,7 +48,7 @@ ThemeData buildTheme(AppTokens rawTokens, {Density density = Density.comfortable
     hoverColor: tokens.accent.primary.withValues(alpha: tokens.effects.hoverTintAlpha),
     focusColor: tokens.accent.primary.withValues(alpha: tokens.effects.hoverTintAlpha * 1.5),
     splashFactory: tokens.motion.reduced ? NoSplash.splashFactory : InkSparkle.splashFactory,
-    fontFamily: tokens.type.body,
+    fontFamily: tokens.typography.body,
     textTheme: textTheme,
     primaryTextTheme: textTheme,
     iconTheme: IconThemeData(color: tokens.content.secondary, size: tokens.space.iconMd),
@@ -418,21 +418,21 @@ ColorScheme _colorScheme(AppTokens t) => ColorScheme(
 );
 
 TextTheme _textTheme(AppTokens t) {
-  final scale = t.type.scale;
-  final tight = t.type.tightTracking;
-  final loose = t.type.looseTracking;
-  final lineHeight = t.type.bodyHeight;
+  final scale = t.typography.scale;
+  final tight = t.typography.tightTracking;
+  final loose = t.typography.looseTracking;
+  final lineHeight = t.typography.bodyHeight;
   final headingColor = t.content.primary;
   final bodyColor = t.content.primary;
   final mutedColor = t.content.secondary;
 
   TextStyle heading(double size) =>
-      TextStyle(fontFamily: t.type.display, fontSize: size * scale, fontWeight: t.type.headingWeight, letterSpacing: tight, height: lineHeight, color: headingColor);
+      TextStyle(fontFamily: t.typography.display, fontSize: size * scale, fontWeight: t.typography.headingWeight, letterSpacing: tight, height: lineHeight, color: headingColor);
 
   TextStyle body(double size, {FontWeight? weight, Color? color, double? height, double tracking = 0}) => TextStyle(
-    fontFamily: t.type.body,
+    fontFamily: t.typography.body,
     fontSize: size * scale,
-    fontWeight: weight ?? t.type.bodyWeight,
+    fontWeight: weight ?? t.typography.bodyWeight,
     letterSpacing: tracking,
     height: height ?? lineHeight,
     color: color ?? bodyColor,
@@ -467,23 +467,23 @@ TextTheme _textTheme(AppTokens t) {
 }
 
 /// DESIGN_SYSTEM §1.8 — density is applied once, here, to `space` and
-/// `type.scale`. Nothing outside `core/theme/` knows density exists.
+/// `typography.scale`. Nothing outside `core/theme/` knows density exists.
 AppTokens _applyDensity(AppTokens tokens, Density density) {
-  if (density == Density.comfortable) return tokens;
+  if (density.spaceScale == 1.0 && density.typeScale == 1.0) return tokens;
   return tokens.copyWith(
     space: tokens.space.scaled(density.spaceScale),
-    type: TypographyTokens(
-      display: tokens.type.display,
-      body: tokens.type.body,
-      mono: tokens.type.mono,
-      scale: tokens.type.scale * density.typeScale,
-      bodyHeight: tokens.type.bodyHeight,
-      tightTracking: tokens.type.tightTracking,
-      looseTracking: tokens.type.looseTracking,
-      bodyWeight: tokens.type.bodyWeight,
-      headingWeight: tokens.type.headingWeight,
-      uppercaseLabels: tokens.type.uppercaseLabels,
-      iconWeight: tokens.type.iconWeight,
+    typography: TypographyTokens(
+      display: tokens.typography.display,
+      body: tokens.typography.body,
+      mono: tokens.typography.mono,
+      scale: tokens.typography.scale * density.typeScale,
+      bodyHeight: tokens.typography.bodyHeight,
+      tightTracking: tokens.typography.tightTracking,
+      looseTracking: tokens.typography.looseTracking,
+      bodyWeight: tokens.typography.bodyWeight,
+      headingWeight: tokens.typography.headingWeight,
+      uppercaseLabels: tokens.typography.uppercaseLabels,
+      iconWeight: tokens.typography.iconWeight,
     ),
   );
 }

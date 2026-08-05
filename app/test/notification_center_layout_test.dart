@@ -12,7 +12,7 @@ import 'package:ia_control_center/ui/icons.dart';
 // finder below needs the exact glyph+weight `AppIcon` renders. The bare
 // `ThemeData(...)` these tests build has no `AppTokens` registered, so
 // `AppTokensX.tokens` falls back to `buildClassicTokens()` (D99), whose
-// `type.iconWeight` is `PhosphorIconsStyle.regular` — matched explicitly
+// `typography.iconWeight` is `PhosphorIconsStyle.regular` — matched explicitly
 // here rather than assumed.
 const _iconWeight = PhosphorIconsStyle.regular;
 

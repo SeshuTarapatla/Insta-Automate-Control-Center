@@ -180,7 +180,7 @@ class CountBadge extends StatelessWidget {
       child: Text(
         count > 99 ? '99+' : '$count',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg, fontFamily: tokens.type.mono),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg, fontFamily: tokens.typography.mono),
       ),
     );
   }
