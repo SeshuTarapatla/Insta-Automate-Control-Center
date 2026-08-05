@@ -5,6 +5,42 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.5 follow-up: cap-hit false urgency and cramped nav icons (D112)
+
+### D112 · The Overview hero stops warning on today's cap; nav rail icons enlarged
+
+**Chosen:** Two more real issues, flagged from the same screenshots that closed out D111's
+checkpoint. First, `hero_tile.dart`'s `_compute()` still put a flow sitting at today's cap into
+the same "N things need attention" bucket a failed service or a down dependency uses — the
+identical false-urgency shape D111 had just fixed for a standing-by flow, just a different
+trigger (`atCap`/`checkCap`, reading `Burndown`, not a flow's own gate at all). The cap exists
+specifically so the pipeline stops there on its own; reaching it is the cap working, not a
+problem — deleted from the hero's warning computation entirely, along with the now-unused
+`Burndown` parameter/`burndownProvider` watch that only ever fed it (today's caps already have
+their own dedicated read in `CapsTile`). Caught in the same pass, not separately reported: the
+headline's pluralization was wrong — `'${reasons.length} thing${plural ? 's' : ''} need
+attention'` always said "need," so a single reason read "1 thing need attention" — fixed to
+conjugate both nouns ("1 thing needs attention" / "2 things need attention").
+
+Second, `nav_rail.dart`'s `_NavTile` icons — `IconSize.sm` (14px) with 1px of vertical margin
+between tiles — read tiny and cramped against a 72px-wide collapsed rail with plenty of unused
+space, smaller than the pre-V2.5 flat `NavigationRail`'s own default (18px) ever was. Bumped to
+`IconSize.lg` (24px) with real padding (`tokens.space.sm`, both axes) and margin
+(`tokens.space.xs` horizontal, half that vertical) around each tile, in both the expanded and
+collapsed states — the `_CollapseToggle` button's own deliberately-small utility icon (16px, a
+window-button-style affordance, not a nav destination) was left untouched.
+
+**Verified:** `flutter analyze` clean; `flutter test` 197/197 (195 prior + 2 new — a
+cap-hit-stays-good case and a real-dependency-down pluralization case in
+`overview_layout_test.dart`, both scenarios with zero prior coverage) + a regression guard in
+`shell_layout_test.dart` asserting every real nav destination icon renders at `IconSize.lg`
+specifically, not just "no overflow," so this exact regression can't silently return.
+`flutter build windows --debug` succeeds. Built and started for you.
+
+**You confirmed both live and asked to close the session here.** Committed.
+
+---
+
 ## 2026-08-05 (continued) — V2.5, Shell, plus a same-session terminology/semantics fix (D111)
 
 ### D111 · Status cluster + grouped nav rail landed; "blocked" renamed to "standing by" and stopped reading as a warning

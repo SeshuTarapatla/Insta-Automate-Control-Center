@@ -103,13 +103,21 @@
 > from the nav rail's Flows badge outright rather than just recolored — a resting-flow count
 > isn't the actionable signal `CountBadge` exists to carry. `flow_card.dart`, the pre-V2.6
 > private duplicate of this exact enum and dead code since V2.7, was deleted rather than kept in
-> sync by hand. Full account in DECISIONS.md's D111. `flutter test` 195/195. **You flagged two
-> more real issues from the same screenshots, scoped as the immediate next work, not blocking
-> this commit:** the hero tile still treats hitting today's cap as "needs attention" — the same
-> false-urgency shape as `standingBy`, just a different trigger; and the nav rail's icons read
-> too small/cramped for the space available. **Next up: those two fixes, then V2.8 (Live)** —
-> see PLAN_V2.md's `## V2.8 — Live` section once they're done; new session recommended (PLAN_V2's
-> own "one checkpoint per session" guidance for Sonnet).
+> sync by hand. Full account in DECISIONS.md's D111. `flutter test` 195/195.
+>
+> **Same-session follow-up, D112 — the two items D111 flagged, both fixed and confirmed.** The
+> Overview hero tile stopped treating a flow at today's cap as "needs attention" — the identical
+> false-urgency shape as `standingBy`, just a different trigger (`atCap`, not a flow's gate);
+> the cap exists so the pipeline stops there on purpose, so it's dropped from the hero's warning
+> computation entirely (the now-unused `Burndown` parameter/watch went with it). A grammar bug
+> caught in the same pass: "1 thing need attention" → "1 thing needs attention." The nav rail's
+> icons were bumped from `IconSize.sm` (14px, smaller than the pre-V2.5 rail's own 18px default)
+> to `IconSize.lg` (24px) with real padding/margin around them, in both collapsed and expanded
+> states. `flutter test` 197/197 (2 new cases plus a regression guard asserting the real icon
+> size, not just "no overflow"). Full account in DECISIONS.md's D112. **You confirmed both live
+> and closed the session here.** **Next up: V2.8 (Live)** — see PLAN_V2.md's `## V2.8 — Live`
+> section; new session recommended (PLAN_V2's own "one checkpoint per session" guidance for
+> Sonnet).
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

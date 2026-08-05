@@ -189,7 +189,7 @@ class _NavTile extends StatelessWidget {
       mainAxisSize: collapsed ? MainAxisSize.min : MainAxisSize.max,
       children: [
         if (indent && !collapsed) SizedBox(width: tokens.space.lg),
-        AppIcon(icon, size: IconSize.sm, color: fg),
+        AppIcon(icon, size: IconSize.md, color: fg),
         if (!collapsed) ...[
           SizedBox(width: tokens.space.sm),
           Expanded(
@@ -201,9 +201,14 @@ class _NavTile extends StatelessWidget {
       ],
     );
 
+    // A rail this roomy (V2.5's own `_expandedWidth`/`_collapsedWidth`) had
+    // no business rendering `IconSize.sm` icons pinned 1px apart — bumped to
+    // `lg` with real padding/margin around them, from your own live read of
+    // the collapsed rail looking tiny and cramped against how much width was
+    // actually sitting unused.
     final decorated = Container(
-      margin: EdgeInsets.symmetric(horizontal: tokens.space.xs, vertical: 1),
-      padding: EdgeInsets.symmetric(horizontal: collapsed ? tokens.space.xs : tokens.space.sm, vertical: tokens.space.xs),
+      margin: EdgeInsets.symmetric(horizontal: tokens.space.xs, vertical: tokens.space.xs / 2),
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.sm, vertical: tokens.space.sm),
       alignment: collapsed ? Alignment.center : null,
       decoration: BoxDecoration(
         color: selected ? theme.colorScheme.secondaryContainer.withValues(alpha: 0.5) : null,

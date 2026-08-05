@@ -2,16 +2,17 @@
 // sentence plus, at most, two actions, with its `StatusKind` driving the
 // whole tile's `accentEdge` so overall health is legible from peripheral
 // vision. Priority, worst first: agent disconnected → bad; any service
-// failed → bad; any dependency down, any cap hit → warn; otherwise → good.
-// A standing-by flow (its condition hasn't arrived yet — nothing queued,
-// today's cap already hit, the reserve not cleared) deliberately does
-// *not* factor in here — it's normal operation, not something to flag.
+// failed → bad; any dependency down → warn; otherwise → good. Two things
+// deliberately do *not* factor in here, both normal operation rather than
+// something to flag: a standing-by flow (its condition hasn't arrived yet)
+// and a flow sitting at today's cap — the cap exists precisely so the
+// pipeline stops there; reaching it isn't a problem, it's the cap doing its
+// job. Today's caps get their own dedicated read in `CapsTile`.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/connection_state.dart';
 import '../../core/dependency_models.dart';
-import '../../core/insights_models.dart';
 import '../../core/library_models.dart';
 import '../../core/nav_state.dart';
 import '../../core/service_models.dart';
@@ -19,7 +20,6 @@ import '../../core/theme/tokens.dart';
 import '../../ui/buttons.dart';
 import '../../ui/status.dart';
 import '../../ui/surfaces.dart';
-import '../insights/insights_controller.dart';
 import '../library/library_controller.dart';
 import '../services/dependencies_controller.dart';
 import '../services/services_controller.dart';
@@ -36,7 +36,6 @@ _Hero _compute({
   required AgentConnection connection,
   required List<ServiceStatus> services,
   required DependencySnapshot dependencies,
-  required Burndown burndown,
 }) {
   if (connection != AgentConnection.connected) {
     return const _Hero(kind: StatusKind.bad, headline: 'Agent disconnected', detail: 'Nothing is being monitored right now.');
@@ -49,28 +48,14 @@ _Hero _compute({
   }
 
   final down = dependencies.items.where((d) => d.level != DependencyLevel.ok).toList();
-  final atCap = <String>[];
-  void checkCap(String label, List<BurndownDay> days, String field, int? limit) {
-    if (limit == null || limit <= 0 || days.isEmpty) return;
-    if ((days.last.values[field] ?? 0) >= limit) atCap.add(label);
-  }
-
-  checkCap('scan profiles', burndown.scan, 'profiles', burndown.limits['profiles']);
-  checkCap('scan reels', burndown.scan, 'reels', burndown.limits['reels']);
-  checkCap('scan posts', burndown.scan, 'posts', burndown.limits['posts']);
-  checkCap('scrape', burndown.scrape, 'scraped', burndown.limits['scrape']);
-  checkCap('follow', burndown.follow, 'followed', burndown.limits['follow']);
-
-  final reasons = [
-    for (final dep in down) '${dep.label} is ${dep.level.name}',
-    for (final cap in atCap) '$cap is at today\'s cap',
-  ];
+  final reasons = [for (final dep in down) '${dep.label} is ${dep.level.name}'];
 
   if (reasons.isEmpty) {
     return const _Hero(kind: StatusKind.good, headline: 'All five flows running normally');
   }
 
-  final headline = '${reasons.length} thing${reasons.length == 1 ? '' : 's'} need attention';
+  final plural = reasons.length != 1;
+  final headline = '${reasons.length} thing${plural ? 's' : ''} need${plural ? '' : 's'} attention';
   return _Hero(kind: StatusKind.warn, headline: headline, detail: reasons.take(3).join(' · '));
 }
 
@@ -85,16 +70,15 @@ class HeroTile extends ConsumerWidget {
     final connection = ref.watch(connectionProvider);
     final services = ref.watch(servicesControllerProvider).value ?? const [];
     final dependencies = ref.watch(dependenciesControllerProvider).value;
-    final burndown = ref.watch(burndownProvider).value;
     final folders = ref.watch(libraryFoldersControllerProvider).value ?? const <LibraryFolderInfo>[];
 
-    if (dependencies == null || burndown == null) {
+    if (dependencies == null) {
       // Nothing to compute a real headline from yet — a plain loading tile
       // rather than a false "all normal" while data is still arriving.
       return const AppCard(child: SizedBox(height: 56, child: Center(child: CircularProgressIndicator(strokeWidth: 2))));
     }
 
-    final hero = _compute(connection: connection, services: services, dependencies: dependencies, burndown: burndown);
+    final hero = _compute(connection: connection, services: services, dependencies: dependencies);
     final waiting = curationFolders.fold<int>(
       0,
       (sum, folder) => sum + (folders.where((f) => f.name == folder).map((f) => f.total).firstOrNull ?? 0),

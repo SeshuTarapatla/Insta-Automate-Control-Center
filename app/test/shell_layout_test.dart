@@ -25,6 +25,7 @@ import 'package:ia_control_center/features/services/services_controller.dart';
 import 'package:ia_control_center/features/settings/config_controller.dart';
 import 'package:ia_control_center/shell/app_shell.dart';
 import 'package:ia_control_center/shell/nav_rail.dart';
+import 'package:ia_control_center/ui/icons.dart';
 import 'package:ia_control_center/ui/status.dart';
 
 /// Overflow is a paint-time error `flutter analyze` is blind to (D19's
@@ -245,6 +246,13 @@ void main() {
     expect(inRail('Flows'), findsOneWidget);
     expect(inRail('Review'), findsOneWidget);
     expect(inRail('Settings'), findsOneWidget);
+
+    // Regression guard for the icons-read-tiny-and-cramped fix: every real
+    // nav destination icon (8 — the 7 destinations plus Review) renders at
+    // `IconSize.lg`, not the `_CollapseToggle`'s own deliberately-small
+    // utility icon.
+    final icons = tester.widgetList<AppIcon>(find.descendant(of: rail, matching: find.byType(AppIcon)));
+    expect(icons.where((icon) => icon.size == IconSize.lg).length, greaterThanOrEqualTo(8));
   });
 
   testWidgets('AppShell lays out without overflow at the 1024px floor: rail collapsed', (tester) async {

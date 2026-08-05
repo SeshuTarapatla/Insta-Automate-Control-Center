@@ -338,6 +338,32 @@ void main() {
       expect(find.text('Go to Flows'), findsWidgets);
     });
 
+    testWidgets('good: hitting today\'s cap is the cap doing its job, not a warning', (tester) async {
+      // The cap exists so the pipeline stops there on purpose — reaching it
+      // is success, not a problem. `_burndown`'s fixture already has
+      // `followed: 42`; capping `follow` at exactly that makes today's real
+      // count land right on the limit.
+      await _pump(tester, burndown: _burndown(limits: {..._defaultLimits, 'follow': 42}));
+      expect(tester.takeException(), isNull);
+      expect(find.text('All five flows running normally'), findsOneWidget);
+    });
+
+    testWidgets('warn: a real dependency down still reads "needs attention", correctly pluralized', (tester) async {
+      await _pump(
+        tester,
+        dependencies: DependencySnapshot(
+          items: [_dependency('postgres', level: DependencyLevel.fail)],
+          ok: 0,
+          warn: 0,
+          fail: 1,
+          checkedAt: DateTime.now(),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      // Singular subject takes "needs" — plural "need" is the other branch.
+      expect(find.text('1 thing needs attention'), findsOneWidget);
+    });
+
     testWidgets('good, but a curation backlog waiting still surfaces a Review action', (tester) async {
       await _pump(tester, folders: [_folder('gender_valid', total: 1204)]);
       expect(tester.takeException(), isNull);
