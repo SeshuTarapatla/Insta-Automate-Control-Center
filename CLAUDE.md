@@ -70,9 +70,23 @@
 > caller actually passes), and `DependencyStrip`/`DeviceBar` both overflowed once placed in
 > tiles narrower than either had ever been embedded in before — all three fixed at the shared
 > component, not worked around locally. Full account in DECISIONS.md's D109. `flutter test`
-> 186/186. **Next up: V2.9 (Library browse)** — V2.5 (Shell) and V2.8 (Live) come after it in
-> the visual group's order, but V2.9's per-folder aspect ratio fix is the visual group's other
-> "most transformative" call alongside V2.6, per this doc's own sequencing language.
+> 186/186.
+>
+> **V2.9 (Library browse) done and accepted, D110.** SCREENS §5a-0's highest-impact single
+> Library fix: a per-folder `childAspectRatio` (`libraryFolderAspectRatio`) replaces a
+> hardcoded `1`, so row-crop folders (`scanned`/`gender_valid`/`gender_invalid`/
+> `scrape_queued`) render as a real 5.45:1 strip and full-page folders
+> (`entities`/`scraped`/`follow_queued`) as a real 1:2.08 portrait instead of both wasting
+> 40–82% of every near-square cell — the scroll/arrow-key row-height math was updated
+> alongside since it had assumed square cells. `FolderRail` is now stage-grouped (INTAKE /
+> SCANNING / ⚑ YOUR REVIEW / QUEUED); both rails are persisted `ResizableSplit`s instead of
+> fixed 220px columns; `LibraryToolbar`'s Apply/Delete are always visible, disabled rather than
+> absent with nothing selected; counts go through a new shared `plural()` helper; the grid gets
+> a real skeleton loading state. **D48's selection mechanics were not touched.** Full account
+> in DECISIONS.md's D110. `flutter test` 191/191. **Next up: V2.5 (Shell)** — title bar status
+> cluster, nav rail groups/badges/`Ctrl+1..7`, page transitions. See PLAN_V2.md's `## V2.5 —
+> Shell` section before starting; new session recommended (PLAN_V2's own "one checkpoint per
+> session" guidance for Sonnet).
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

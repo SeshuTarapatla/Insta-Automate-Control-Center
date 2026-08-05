@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:ia_control_center/core/library_image.dart';
 import 'package:ia_control_center/core/library_models.dart';
@@ -10,7 +11,11 @@ import 'package:ia_control_center/features/library/library_controller.dart';
 import 'package:ia_control_center/features/library/library_grid.dart';
 import 'package:ia_control_center/features/library/library_page.dart';
 import 'package:ia_control_center/features/library/library_rail.dart';
+import 'package:ia_control_center/features/library/library_tile.dart';
 import 'package:ia_control_center/features/library/library_toolbar.dart';
+import 'package:ia_control_center/ui/icons.dart';
+
+const _iconWeight = PhosphorIconsStyle.regular;
 
 /// Overflow is a paint-time error `flutter analyze` and every agent-side test
 /// are blind to (D19's precedent, most recently exercised by
@@ -249,5 +254,86 @@ void main() {
       selectedFolder: 'entities',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('FolderRail groups the seven folders by pipeline stage, marking the two review folders', (
+    tester,
+  ) async {
+    await _render(
+      tester,
+      const SizedBox(width: 220, height: 900, child: FolderRail()),
+      const Size(220, 900),
+      folders: folders,
+      images: LibraryImagesState.empty,
+      selectedFolder: 'scrape_queued',
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('INTAKE'), findsOneWidget);
+    expect(find.text('SCANNING'), findsOneWidget);
+    expect(find.text('YOUR REVIEW'), findsOneWidget);
+    expect(find.text('QUEUED'), findsOneWidget);
+    // One ⚑ marks the review group's header, not each of its folders.
+    expect(find.byIcon(AppIcons.review(_iconWeight)), findsOneWidget);
+  });
+
+  testWidgets('LibraryToolbar keeps Apply/Delete visible but disabled with nothing selected', (tester) async {
+    await _render(
+      tester,
+      SizedBox(width: 700, child: LibraryToolbar(folder: 'scrape_queued', entity: null)),
+      const Size(700, 200),
+      folders: folders,
+      images: const LibraryImagesState(images: [], total: 0, hasMore: false, loadingMore: false),
+      selectedFolder: 'scrape_queued',
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Apply'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Apply')).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete')).onPressed, isNull);
+  });
+
+  testWidgets('LibraryToolbar enables Apply/Delete once something is selected', (tester) async {
+    final selectedImages = [_image('a.jpg'), _image('b.jpg')];
+    await _render(
+      tester,
+      SizedBox(width: 700, child: LibraryToolbar(folder: 'scrape_queued', entity: null)),
+      const Size(700, 200),
+      folders: folders,
+      images: LibraryImagesState(images: selectedImages, total: 2, hasMore: false, loadingMore: false),
+      selectedFolder: 'scrape_queued',
+      selection: const LibrarySelectionState(selected: {'a.jpg', 'b.jpg'}),
+    );
+    expect(tester.takeException(), isNull);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Apply')).onPressed, isNotNull);
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete')).onPressed, isNotNull);
+  });
+
+  testWidgets('LibraryGrid cells match a row-crop folder\'s real shape: wide, short cells', (tester) async {
+    await _render(
+      tester,
+      SizedBox(width: 1024, height: 700, child: LibraryGrid(entityLabel: 'someone', onDeleteRequested: () {})),
+      const Size(1024, 700),
+      folders: folders,
+      images: LibraryImagesState(images: [_image('a.jpg')], total: 1, hasMore: false, loadingMore: false),
+      selectedFolder: 'scrape_queued',
+      selectedEntity: 'someone',
+    );
+    expect(tester.takeException(), isNull);
+    final stripSize = tester.getSize(find.byType(LibraryTile).first);
+    expect(stripSize.width, greaterThan(stripSize.height), reason: 'scrape_queued is a 5.45:1 row-crop shape');
+  });
+
+  testWidgets('LibraryGrid cells match a full-page folder\'s real shape: narrow, tall cells', (tester) async {
+    await _render(
+      tester,
+      SizedBox(width: 1024, height: 700, child: LibraryGrid(entityLabel: null, onDeleteRequested: () {})),
+      const Size(1024, 700),
+      folders: folders,
+      images: LibraryImagesState(images: [_image('b.jpg', folder: 'entities', entity: '')], total: 1, hasMore: false, loadingMore: false),
+      selectedFolder: 'entities',
+    );
+    expect(tester.takeException(), isNull);
+    final portraitSize = tester.getSize(find.byType(LibraryTile).first);
+    expect(portraitSize.height, greaterThan(portraitSize.width), reason: 'entities is a 1:2.08 portrait shape');
   });
 }

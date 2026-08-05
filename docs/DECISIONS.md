@@ -5,6 +5,60 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.9, Library browse (D110)
+
+### D110 · Per-folder grid aspect ratio, stage-grouped rail, ResizableSplit rails, always-visible toolbar
+
+**Chosen:** SCREENS.md §5a-0's highest-impact single Library fix landed first, in
+`library_grid.dart`: a `folder → aspectRatio` map (`libraryFolderAspectRatio`,
+`core/library_models.dart`) drives `SliverGridDelegateWithFixedCrossAxisCount
+.childAspectRatio` instead of a hardcoded `1` — row-crop folders (`scanned`, `gender_valid`,
+`gender_invalid`, `scrape_queued`) now lay out as a real 5.45:1 strip and full-page folders
+(`entities`, `scraped`, `follow_queued`) as a real 1:2.08 portrait, instead of both wasting
+40–82% of every near-square cell. The keyboard/scroll-into-view row-height math
+(`_scrollToIndex`'s `rowStep`) was updated alongside — it had assumed square cells (`width ==
+height`) throughout, which the aspect-ratio fix would otherwise have silently broken.
+`BoxFit.contain` (D41) untouched. `FolderRail` is now stage-grouped (`libraryStageGroups`:
+INTAKE / SCANNING / ⚑ YOUR REVIEW / QUEUED) instead of seven undifferentiated rows, marking
+`gender_valid`/`scraped` as the two folders that are actually the user's job. Both rails
+(`library_page.dart`) are nested `ResizableSplit`s now, replacing fixed 220px `SizedBox`
+columns — `persistKey`s `library.rail.folders`/`library.rail.entities`, the hardcoded 220
+becoming just the first-run default. `LibraryToolbar`'s Apply/Delete are always rendered,
+disabled (not absent) with an empty selection — "never hide a screen's primary action."
+Counts go through a new shared `plural()` helper (`core/plural.dart`) instead of each
+call site's own string surgery, rendered via `NumericText`. The grid gets a real skeleton
+loading state (`_GridSkeleton`) shaped to the folder's own aspect ratio and approximate
+column count, rather than a bare spinner. **D48's selection mechanics (plain click/Space
+toggles, arrows move focus only, Shift ranges) were not touched** — the only change inside
+`library_grid.dart`'s keyboard handling is the row-height arithmetic feeding the existing,
+unchanged `moveFocus`/`selectRange`/`toggle` calls.
+
+**A real test-authoring pitfall caught while extending `library_layout_test.dart`, not a
+production bug**: two new tests originally called `_render` (which calls `tester.pumpWidget`)
+twice within one `testWidgets` block, expecting the second call to fully replace the first —
+but `MaterialApp`/`Scaffold`/`ProviderScope` all being the same types at the same tree
+position means Flutter/Riverpod reuse the existing `Element`/`ProviderContainer` across the
+second `pumpWidget` rather than tearing down and rebuilding from scratch, so the second
+render's overrides never actually took effect and both tests silently asserted against the
+*first* render's state. Both failures were exactly that shape (a "selected" toolbar case still
+showing the disabled buttons from the empty-selection render; a portrait-folder assertion
+still measuring the previous strip-folder's tile size) — fixed by splitting each into two
+independent `testWidgets` blocks, matching this file's own existing one-render-per-test
+convention throughout.
+
+**Verified:** `flutter analyze` clean; `flutter test` 191/191 (186 prior + 5 new in
+`library_layout_test.dart`: stage-grouped rail with the ⚑ marker, Apply/Delete
+disabled-then-enabled across a selection change, and real measured tile dimensions for both a
+row-crop and a full-page folder). `flutter build windows --debug` succeeds. Built and started
+for you per rule 5; `ResizableSplit`'s own drag/persist behavior already has generic coverage
+in `ui/layout_test.dart` (D100), not re-tested here.
+
+**You tested live and confirmed it — rails drag and persist, Apply/Delete visible-but-disabled
+with nothing selected, selection unchanged, counts match, and the row-crop folders visibly fit
+far more images per screen.** Committed.
+
+---
+
 ## 2026-08-05 (continued) — V2.7, Overview bento, built and live-bug-fixed (D109)
 
 ### D109 · Overview rebuilt as a bento grid; two more latent shared-component bugs found

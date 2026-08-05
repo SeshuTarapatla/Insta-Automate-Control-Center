@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../ui/feedback.dart';
 import '../../core/library_models.dart';
-import '../../core/theme/tokens.dart';
+import '../../ui/feedback.dart';
+import '../../ui/layout.dart';
 import '../../ui/page.dart';
 import '../../ui/surfaces.dart';
 import 'library_controller.dart';
@@ -39,46 +39,57 @@ class LibraryPage extends ConsumerWidget {
 
     final flat = foldersAsync.value?.where((f) => f.name == selectedFolder).firstOrNull?.flat ?? true;
     final showGrid = selectedFolder != null && (flat || selectedEntity != null);
-    final tokens = Theme.of(context).tokens;
+
+    final gridArea = AppPanel(
+      padding: EdgeInsets.zero,
+      child: selectedFolder == null
+          ? const EmptyView(icon: Icons.folder_off_outlined, title: 'No folders yet.')
+          : !showGrid
+          ? const EmptyView(icon: Icons.touch_app_outlined, title: 'Pick an entity to browse its images.')
+          : Column(
+              children: [
+                LibraryToolbar(folder: selectedFolder, entity: flat ? null : selectedEntity),
+                const Divider(height: 1),
+                Expanded(
+                  child: LibraryGrid(
+                    entityLabel: flat ? null : selectedEntity,
+                    onDeleteRequested: () {
+                      final selection = ref.read(librarySelectionProvider).selected;
+                      final images = ref.read(libraryImagesControllerProvider).value?.images ?? const <LibraryImageEntry>[];
+                      final selectedEntries = images.where((e) => selection.contains(e.name)).toList();
+                      deleteLibrarySelection(context, ref, selectedEntries);
+                    },
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    // Nested `ResizableSplit`s (SCREENS.md §5a), not fixed `SizedBox` rails —
+    // each panel remembers its own dragged width (`persistKey`), and the
+    // hardcoded 220s become just the first-run default. The entity rail
+    // only exists for a non-flat folder, so it isn't always a three-pane
+    // split.
+    final rightOfFolders = flat
+        ? gridArea
+        : ResizableSplit(
+            first: AppPanel(padding: EdgeInsets.zero, child: const EntityList()),
+            second: gridArea,
+            initialFirstSize: 220,
+            minFirst: 160,
+            minSecond: 400,
+            persistKey: 'library.rail.entities',
+          );
 
     return AppPage(
       title: 'Library',
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(width: 220, child: AppPanel(padding: EdgeInsets.zero, child: const FolderRail())),
-          if (!flat) ...[
-            SizedBox(width: tokens.space.md),
-            SizedBox(width: 220, child: AppPanel(padding: EdgeInsets.zero, child: const EntityList())),
-          ],
-          SizedBox(width: tokens.space.md),
-          Expanded(
-            child: AppPanel(
-              padding: EdgeInsets.zero,
-              child: selectedFolder == null
-                  ? const EmptyView(icon: Icons.folder_off_outlined, title: 'No folders yet.')
-                  : !showGrid
-                  ? const EmptyView(icon: Icons.touch_app_outlined, title: 'Pick an entity to browse its images.')
-                  : Column(
-                      children: [
-                        LibraryToolbar(folder: selectedFolder, entity: flat ? null : selectedEntity),
-                        const Divider(height: 1),
-                        Expanded(
-                          child: LibraryGrid(
-                            entityLabel: flat ? null : selectedEntity,
-                            onDeleteRequested: () {
-                              final selection = ref.read(librarySelectionProvider).selected;
-                              final images = ref.read(libraryImagesControllerProvider).value?.images ?? const <LibraryImageEntry>[];
-                              final selectedEntries = images.where((e) => selection.contains(e.name)).toList();
-                              deleteLibrarySelection(context, ref, selectedEntries);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
-        ],
+      body: ResizableSplit(
+        first: AppPanel(padding: EdgeInsets.zero, child: const FolderRail()),
+        second: rightOfFolders,
+        initialFirstSize: 220,
+        minFirst: 160,
+        minSecond: 400,
+        persistKey: 'library.rail.folders',
       ),
     );
   }

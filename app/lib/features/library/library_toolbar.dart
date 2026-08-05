@@ -143,6 +143,10 @@ class LibraryToolbar extends ConsumerWidget {
             ],
           ),
           SizedBox(height: tokens.space.xs),
+          // Always rendered, Apply/Delete disabled rather than absent when
+          // nothing's selected (SCREENS.md §5a) — never hide a screen's
+          // primary action; a disabled button still answers "what does this
+          // screen let me do."
           Wrap(
             spacing: tokens.space.xs,
             runSpacing: tokens.space.xs,
@@ -152,20 +156,24 @@ class LibraryToolbar extends ConsumerWidget {
                 onPressed: images == null || images.total == 0 ? null : () => _selectAll(ref),
                 child: const Text('Select all'),
               ),
-              if (selection.selected.isNotEmpty) ...[
-                Text('${selection.selected.length} selected', style: theme.textTheme.bodyMedium),
-                _MoveTargetPicker(folder: folder, target: target),
-                FilledButton.tonalIcon(
-                  onPressed: () => _apply(context, ref, selection.selected, target),
-                  icon: AppIcon(AppIcons.apply, size: IconSize.sm),
-                  label: const Text('Apply'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => deleteLibrarySelection(context, ref, selectedEntries),
-                  icon: AppIcon(AppIcons.discard, size: IconSize.sm),
-                  label: const Text('Delete'),
-                ),
-              ],
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  NumericText(selection.selected.length, role: TextRole.body, color: theme.textTheme.bodyMedium?.color),
+                  const Text(' selected'),
+                ],
+              ),
+              _MoveTargetPicker(folder: folder, target: target),
+              FilledButton.tonalIcon(
+                onPressed: selection.selected.isEmpty ? null : () => _apply(context, ref, selection.selected, target),
+                icon: AppIcon(AppIcons.apply, size: IconSize.sm),
+                label: const Text('Apply'),
+              ),
+              OutlinedButton.icon(
+                onPressed: selection.selected.isEmpty ? null : () => deleteLibrarySelection(context, ref, selectedEntries),
+                icon: AppIcon(AppIcons.discard, size: IconSize.sm),
+                label: const Text('Delete'),
+              ),
               const _ZoomControl(),
             ],
           ),
