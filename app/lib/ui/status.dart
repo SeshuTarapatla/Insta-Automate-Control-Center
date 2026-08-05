@@ -123,21 +123,45 @@ class _StatusDotState extends State<StatusDot> with SingleTickerProviderStateMix
 /// (DESIGN_SYSTEM §1.4/§6). Replaces the Material `Chip` uses AUDIT §5 found
 /// at 7 call sites and `service_tile.dart`'s private `_Pill`.
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.kind, required this.label, this.icon, this.dense = false});
+  const StatusChip({
+    super.key,
+    required this.kind,
+    required this.label,
+    this.icon,
+    this.dense = false,
+    this.selected = false,
+    this.onTap,
+  });
 
   final StatusKind kind;
   final String label;
   final IconData? icon;
   final bool dense;
 
+  /// Draws an accent ring around the chip — used by the Live screen's
+  /// counter chips (`run_summary.dart`) to show which verdicts are active in
+  /// the result-card filter. Meaningless without [onTap] but harmless either
+  /// way.
+  final bool selected;
+
+  /// When set, the chip becomes a real tap target (a click-to-filter
+  /// counter, e.g.) with its own ripple — every existing call site leaves
+  /// this null and gets the exact same static chip as before.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final tokens = Theme.of(context).tokens;
     final fg = kind.onContainer(tokens);
+    final radius = BorderRadius.circular(tokens.geometry.radiusSm);
 
-    return Container(
+    final chip = Container(
       padding: EdgeInsets.symmetric(horizontal: dense ? tokens.space.xs : tokens.space.sm, vertical: dense ? 1 : 3),
-      decoration: BoxDecoration(color: kind.container(tokens), borderRadius: BorderRadius.circular(tokens.geometry.radiusSm)),
+      decoration: BoxDecoration(
+        color: kind.container(tokens),
+        borderRadius: radius,
+        border: selected ? Border.all(color: tokens.accent.primary, width: 1.5) : null,
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -148,6 +172,13 @@ class StatusChip extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
         ],
       ),
+    );
+
+    if (onTap == null) return chip;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: radius,
+      child: InkWell(onTap: onTap, borderRadius: radius, child: chip),
     );
   }
 }

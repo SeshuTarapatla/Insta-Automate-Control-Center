@@ -10,9 +10,15 @@ import 'surface_common.dart';
 /// entity-follow: the profile report card with its outcome — FOLLOWED,
 /// REQUESTED, FOLLOWING, FOLLOWED_BY, WANTS_TO_FOLLOW or FAILED.
 class FollowSurface extends StatelessWidget {
-  const FollowSurface({super.key, required this.events});
+  const FollowSurface({super.key, required this.events, this.selectedVerdicts = const {}});
 
   final List<FlowEvent> events;
+
+  /// The active `run_summary.dart` counter-chip filter — empty shows every
+  /// subject, otherwise only subjects whose resolved verdict is in the set.
+  /// A subject still `attempting…` (no `follow.result` yet) has no resolved
+  /// verdict to match, so it's hidden while a filter is active.
+  final Set<String> selectedVerdicts;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +32,14 @@ class FollowSurface extends StatelessWidget {
     for (final event in items) {
       bySubject.putIfAbsent(event.subject ?? event.id, () => []).add(event);
     }
-    final subjects = bySubject.keys.toList();
+    final subjects = bySubject.keys.where((subject) {
+      if (selectedVerdicts.isEmpty) return true;
+      final results = bySubject[subject]!.where((e) => e.kind == 'follow.result');
+      return results.isNotEmpty && selectedVerdicts.contains(results.first.verdict);
+    }).toList();
+    if (subjects.isEmpty) {
+      return const SurfaceEmpty(message: 'No follow activity matches the selected filter.');
+    }
 
     // Wrapped left-to-right at a capped width per card rather than one
     // full-bleed row each — same reasoning as `scrape_surface.dart`'s

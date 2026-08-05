@@ -24,6 +24,7 @@ WATCHDOG_TICK = 3.0
 
 KNOWN_COMMANDS = {
     "run_now", "force_run", "skip_wait", "pause", "resume", "reload_config", "reduce_reserve",
+    "reduce_reserve_unblock_scrape",
 }
 
 

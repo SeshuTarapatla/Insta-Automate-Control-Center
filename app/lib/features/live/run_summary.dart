@@ -9,6 +9,7 @@ import '../../ui/status.dart';
 import '../../ui/text.dart';
 import '../flows/flows_controller.dart';
 import 'live_controller.dart';
+import 'surfaces/surface_common.dart';
 
 String? _todayLine(FlowState state) {
   final today = state.today;
@@ -106,8 +107,14 @@ Map<String, int> _liveCounters(String? flow, List<FlowEvent> events) {
       return counts;
     case 'entity-scrape':
       final done = events.where((e) => e.kind == 'scrape.done').length;
+      // Every skip reason (PUBLIC, NO_POSTS, FMIN/FMAX, not-found, ...)
+      // folded into one "failed" bucket — your own call: a per-reason
+      // breakdown would be a lot more chips for a distinction the filter
+      // doesn't need.
       final skipped = events.where((e) => e.kind == 'scrape.skipped').length;
-      return done + skipped == 0 ? const {} : {'processed': done + skipped, 'scraped': done};
+      return done + skipped == 0
+          ? const {}
+          : {'processed': done + skipped, 'scraped': done, 'failed': skipped};
     case 'entity-follow':
       final counts = <String, int>{};
       for (final event in events) {
@@ -124,6 +131,30 @@ Map<String, int> _liveCounters(String? flow, List<FlowEvent> events) {
   }
 }
 
+/// Flows whose counters double as a click-to-filter control on the adjacent
+/// result-card list (Classify/Follow/Scrape — every one whose result cards
+/// carry a matching per-item key). Scan/Ingest counters are running tallies
+/// with no per-card field to filter by, so they stay plain display-only
+/// chips.
+const _filterableCounterFlows = {'entity-classify', 'entity-follow', 'entity-scrape'};
+
+/// Scrape's "processed" is a superset (every attempted subject, success or
+/// not) rather than its own category — nothing in the card list matches
+/// "processed" specifically, so it's excluded from filtering even on a
+/// flow that otherwise supports it.
+const _nonFilterableCounterKeys = {'processed'};
+
+StatusKind _counterTone(String? flow, String key) {
+  if (flow == 'entity-scrape') {
+    return switch (key) {
+      'scraped' => StatusKind.good,
+      'failed' => StatusKind.bad,
+      _ => StatusKind.neutral,
+    };
+  }
+  return toneFor(key);
+}
+
 class _EventCounters extends ConsumerWidget {
   const _EventCounters({required this.flow});
 
@@ -133,7 +164,9 @@ class _EventCounters extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final tokens = theme.tokens;
-    final events = ref.watch(liveControllerProvider).value?.events ?? const [];
+    final live = ref.watch(liveControllerProvider).value;
+    final events = live?.events ?? const [];
+    final selectedVerdicts = live?.selectedVerdicts ?? const {};
     final counters = _liveCounters(flow, events);
     if (counters.isEmpty) {
       return Text(
@@ -141,12 +174,22 @@ class _EventCounters extends ConsumerWidget {
         style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
       );
     }
+    final canFilter = _filterableCounterFlows.contains(flow);
     return Wrap(
       spacing: tokens.space.xs,
       runSpacing: tokens.space.xs,
       children: [
         for (final entry in counters.entries)
-          StatusChip(kind: StatusKind.neutral, label: '${entry.key}: ${entry.value}', dense: true),
+          if (canFilter && !_nonFilterableCounterKeys.contains(entry.key))
+            StatusChip(
+              kind: _counterTone(flow, entry.key),
+              label: '${entry.key}: ${entry.value}',
+              dense: true,
+              selected: selectedVerdicts.contains(entry.key),
+              onTap: () => ref.read(liveControllerProvider.notifier).toggleVerdict(entry.key),
+            )
+          else
+            StatusChip(kind: StatusKind.neutral, label: '${entry.key}: ${entry.value}', dense: true),
       ],
     );
   }

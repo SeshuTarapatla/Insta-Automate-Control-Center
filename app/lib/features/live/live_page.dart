@@ -199,9 +199,9 @@ class _VisualizationSurface extends ConsumerWidget {
     return async.stateView(
       data: (state) => switch (state.flow) {
         'entity-scan' => ScanSurface(events: state.events),
-        'entity-classify' => ClassifySurface(events: state.events),
-        'entity-scrape' => ScrapeSurface(events: state.events),
-        'entity-follow' => FollowSurface(events: state.events),
+        'entity-classify' => ClassifySurface(events: state.events, selectedVerdicts: state.selectedVerdicts),
+        'entity-scrape' => ScrapeSurface(events: state.events, selectedVerdicts: state.selectedVerdicts),
+        'entity-follow' => FollowSurface(events: state.events, selectedVerdicts: state.selectedVerdicts),
         'entity-ingest' => IngestSurface(events: state.events),
         _ => EmptyView(icon: Icons.visibility_off_outlined, title: 'No visualization for ${state.flow}'),
       },

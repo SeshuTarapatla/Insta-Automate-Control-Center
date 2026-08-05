@@ -119,6 +119,11 @@
 > section; new session recommended (PLAN_V2's own "one checkpoint per session" guidance for
 > Sonnet).
 >
+> **2026-08-05, same branch, a deliberate one-session deviation from the v2 sequence — two
+> feature requests, cross-repo and cross-client, landed and accepted before V2.8 resumes (D113).**
+> Not v2 work and doesn't change the line above: V2.8 (Live) is still next whenever this branch
+> picks the checklist back up. Full account in DECISIONS.md's D113.
+>
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is
 > already served by an existing endpoint. If a checkpoint seems to need an agent change, it

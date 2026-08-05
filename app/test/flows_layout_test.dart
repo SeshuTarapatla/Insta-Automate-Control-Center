@@ -268,6 +268,24 @@ void main() {
     expect(find.text('Trigger now'), findsNothing);
   });
 
+  testWidgets('Reduce reserve opens a two-option dialog with the real computed targets', (tester) async {
+    // FOLLOW=60 × SCRAPE_RESERVE_FACTOR=3 (the fake config above) → 180 /
+    // 179, the exact/unblock-Scrape targets — asserts the real numbers, not
+    // just that a dialog opened.
+    await _renderNode(tester, _state(flow: 'entity-follow'));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Reduce reserve'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reduce to 180'), findsOneWidget);
+    expect(find.text('Reduce to 179 — unblocks Scrape'), findsOneWidget);
+    // Dismiss without sending — `sendCommand` hits a real `dio.post`, out of
+    // scope for this layout-only check (same precedent as the other
+    // `FlowNode` tests in this file, none of which complete a real send).
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reduce to 180'), findsNothing);
+  });
+
   testWidgets('FlowNode expansion accordion reveals last-run/gate detail on tap, one at a time', (tester) async {
     await _renderNode(
       tester,

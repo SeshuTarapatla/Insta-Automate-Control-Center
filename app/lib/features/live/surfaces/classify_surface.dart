@@ -11,9 +11,13 @@ import 'surface_common.dart';
 /// with a running img/s rate — the row-crop aspect ratio matches
 /// ARCHITECTURE §5.1's `scanned/<root>/<user>.jpg` shape.
 class ClassifySurface extends StatefulWidget {
-  const ClassifySurface({super.key, required this.events});
+  const ClassifySurface({super.key, required this.events, this.selectedVerdicts = const {}});
 
   final List<FlowEvent> events;
+
+  /// The active `run_summary.dart` counter-chip filter — empty shows every
+  /// verdict, otherwise only cards whose verdict is in the set.
+  final Set<String> selectedVerdicts;
 
   @override
   State<ClassifySurface> createState() => _ClassifySurfaceState();
@@ -32,9 +36,15 @@ class _ClassifySurfaceState extends State<ClassifySurface> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final verdicts = widget.events.where((e) => e.kind == 'classify.access' || e.kind == 'classify.gender').toList();
+    final selected = widget.selectedVerdicts;
+    final verdicts = widget.events
+        .where((e) => e.kind == 'classify.access' || e.kind == 'classify.gender')
+        .where((e) => selected.isEmpty || selected.contains(e.verdict))
+        .toList();
     if (verdicts.isEmpty) {
-      return const SurfaceEmpty(message: 'No verdicts yet for this run.');
+      return SurfaceEmpty(
+        message: selected.isEmpty ? 'No verdicts yet for this run.' : 'No verdicts match the selected filter.',
+      );
     }
 
     final rate = _rate(verdicts);

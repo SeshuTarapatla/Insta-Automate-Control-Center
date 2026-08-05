@@ -5,6 +5,83 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — Reduce reserve variants + counter click-to-filter, cross-repo (D113)
+
+### D113 · Two feature requests, planned first and confirmed before implementation, landed on both clients
+
+**Chosen:** a deliberate one-session deviation from the v2 UI sequence (mid-checkpoint at V2.8)
+for two features judged high-value enough to land immediately rather than wait: (1) "Reduce
+reserve" gained a second variant, and (2) the Live screen's per-flow counters became click-to-
+filter controls over their adjacent result-card list. Planned via `EnterPlanMode` and confirmed
+with the user (filter scope, selection mode, mobile numeric display) before any code was written.
+
+**Reduce reserve, two variants.** The existing drain-to-target behavior stops
+`entity_follow`'s pool count at exactly the reserve target
+(`FOLLOW × SCRAPE_RESERVE_FACTOR`), but `entity_scrape`'s own backpressure gate needs that count
+*strictly below* the target (`count < backpressure`) to unblock — landing exactly at 180 leaves
+Scrape still blocked; only 179 unblocks it on the same tick. `Insta-Automate/flows/
+entity_follow.py` gained a second bool parameter, `unblock_scrape`, computing
+`target = reserve_target - 1 if (reduce_reserve and unblock_scrape) else reserve_target` and
+using `target` (not `reserve_target`) in the loop's stop condition and log lines.
+`controllers/prefect.py`'s `entity_follow_trigger` consumes a second bare command,
+`reduce_reserve_unblock_scrape`, folding it into `reduce_reserve`/`force` the same way the
+original command already does — chosen over adding a payload/parameter to the agent's command
+schema (`CommandRequest`, `_commands` storage, `_consume`/`_pending`) for one integer, since a
+second distinct command name is a one-line addition to `ia-agent`'s `KNOWN_COMMANDS` set instead
+of threading a new field through three layers. Gate reason stays `"reduce_reserve"` for both
+variants — no client-side status-kind logic needed to change.
+
+**Desktop** (`core/force_run.dart::reduceReserveFlow`) shows one dialog with two `FilledButton`s
+computed from live config ("Reduce to 180" / "Reduce to 179 — unblocks Scrape") instead of a
+single Confirm — the button itself keeps its label and existing call sites untouched. **Mobile**
+(`flow_actions.dart::reduceReserve`) stays worded-only per the user's own choice (no live
+config-fetch plumbing added there) — but the first version's three-action `AlertDialog` (Cancel
+plus two long-label buttons) forced Material's default `OverflowBar` into a vertical stack of
+stretched, inconsistently-shaped pills on a phone-width screen, one wrapping onto two lines. Your
+own screenshot caught it; fixed by moving the two choices out of `actions` into the dialog's
+`content` as tappable title+subtitle option cards (`_ReduceReserveOption`), leaving only a single
+"Cancel" text action — a much better fit for long labels than fighting the action-row layout.
+
+**Counters as multi-select filters.** Classify, Follow, and Scrape's live counter chips
+(`run_summary.dart`'s `_EventCounters`, ported to mobile as `flow_run_summary.dart`) are now
+tappable — multi-select, not isolate-one, per your explicit choice — filtering the adjacent
+result-card list to cards matching any selected key. Scan and Ingest stay non-interactive: their
+cards carry no per-item verdict field to filter by. Scrape gained a new **Failed** counter
+(every `scrape.skipped` reason folded into one bucket, your own call over a per-reason
+breakdown) alongside the existing **Scraped**; its **Processed** stays plain since it's a
+superset, not its own category. Filter state (`LiveState.selectedVerdicts` /
+`FlowRunController.selectedVerdicts`) is scoped to the currently displayed run — reset wherever
+`events` itself already resets on a new `run_id`, not on every WS reconnect/manual refresh. The
+still-in-progress "large card" pattern (Scrape's front-and-center latest item) is deliberately
+unaffected by an active filter, since an unresolved subject has no bucket to match yet.
+`ui/status.dart`'s `StatusChip` gained optional `selected`/`onTap` params, additive only — every
+existing static call site is unchanged; `onTap` wraps the chip in `Material`/`InkWell` only when
+set. Mobile's equivalent uses the stock `FilterChip` instead of a custom component, since Flutter
+already ships exactly that selection semantic.
+
+**Verified:** a throwaway script (`check_reduce_reserve.py`, not committed) calling the real
+`entity_follow.fn(...)` directly (Prefect's own engine-bypass escape hatch, D86's precedent) with
+every heavy dependency (DB session, device, Instagram call, Telegram, agent HTTP) monkeypatched
+against a scratch temp dir — 6/6, including the exact-stop-at-180 and exact-stop-at-179
+invariants and a normal-mode-ignores-unblock_scrape case. `agent/tests/test_scheduler.py` 26/26
+(25 prior + 1 new). Desktop `flutter analyze` clean, `flutter test` 197/197 (196 prior + 1 new in
+`flows_layout_test.dart` asserting the real computed dialog target numbers, not just that a
+dialog opened) — the one `shell_layout_test.dart` failure seen mid-session was confirmed
+pre-existing on a clean `feat/v2-ui-overhaul` tip via `git stash`, unrelated to this work. Mobile
+`flutter analyze` clean (the one pre-existing `thumbnail_cache.dart` lint, untouched). Deployed
+for real: `Insta-Automate`'s `feat/control-center` pushed (`921551b`), `ia build`'d, both the
+scheduler and worker pods restarted (the worker needed a real rebuild, not just a rollout, since
+`entity_follow`'s signature changed — D86's precedent again), `ia prefect deploy` re-run for
+D38's known work-pool-orphaning gap, both pods' loaded source confirmed via `kubectl exec` to
+match the fixed commit. `ia-agent.exe` restarted for the new `KNOWN_COMMANDS` entry, confirmed
+live via a real command POST and all three supervised services still `adopted` with uptime
+intact (D87's lesson, checked again). Desktop app built and started for you, mobile APK built and
+installed on the test phone, neither driven by Claude. **You tested both live, confirmed
+everything worked functionally, then flagged the mobile Reduce-reserve dialog's layout — fixed
+and reconfirmed live in the same session.** Session closed here on your call.
+
+---
+
 ## 2026-08-05 (continued) — V2.5 follow-up: cap-hit false urgency and cramped nav icons (D112)
 
 ### D112 · The Overview hero stops warning on today's cap; nav rail icons enlarged

@@ -58,35 +58,49 @@ Future<void> forceRunFlow(BuildContext context, WidgetRef ref, FlowState state) 
 /// since backpressure and the daily cap are most likely to be hit together —
 /// your own call, confirmed before building this. Shared by `FlowCard` and
 /// the Live screen's header, same as `forceRunFlow`.
+///
+/// Two variants behind the one button: draining to exactly the reserve
+/// target leaves entity-scrape's own backpressure gate (`count < target`,
+/// strict) still blocked at that boundary; draining one further unblocks it
+/// on the same tick. Both send `force=true` under the hood — the wire
+/// command name is the only difference, so the pipeline needs no payload
+/// plumbing for this.
 Future<void> reduceReserveFlow(BuildContext context, WidgetRef ref, FlowState state) async {
   final limits = ref.read(configControllerProvider).value?.values.limits;
   final follow = limits?['FOLLOW'] ?? 60;
   final factor = limits?['SCRAPE_RESERVE_FACTOR'] ?? 3;
   final target = follow * factor;
-  final confirmed = await showDialog<bool>(
+  final unblockTarget = target - 1;
+  final choice = await showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Reduce reserve?'),
+      title: const Text('Reduce reserve'),
       content: Text(
         'Keeps Follow running — real follows and skips (already requested, not found) alike — '
-        'until scraped+follow_queued drops to $target (FOLLOW × SCRAPE_RESERVE_FACTOR), instead '
-        "of stopping at FOLLOW_BATCH successful follows. This bypasses today's daily follow "
-        'limit if needed to get there, so it can perform more real follows than the normal '
-        'daily cap in one run.',
+        "until scraped+follow_queued drops to the chosen target, instead of stopping at "
+        "FOLLOW_BATCH successful follows. This bypasses today's daily follow limit if needed to "
+        'get there, so it can perform more real follows than the normal daily cap in one run.',
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton.tonal(
+          onPressed: () => Navigator.of(context).pop('reduce_reserve'),
+          child: Text('Reduce to $target'),
+        ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Reduce reserve'),
+          onPressed: () => Navigator.of(context).pop('reduce_reserve_unblock_scrape'),
+          child: Text('Reduce to $unblockTarget — unblocks Scrape'),
         ),
       ],
     ),
   );
-  if (confirmed != true) return;
-  await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, 'reduce_reserve');
+  if (choice == null) return;
+  await ref.read(flowsControllerProvider.notifier).sendCommand(state.flow, choice);
   if (context.mounted) {
-    AppSnackBar.show(context, '${flowTitle[state.flow]}: reduce reserve queued');
+    final label = choice == 'reduce_reserve_unblock_scrape'
+        ? 'reduce reserve to $unblockTarget (unblocks Scrape)'
+        : 'reduce reserve to $target';
+    AppSnackBar.show(context, '${flowTitle[state.flow]}: $label queued');
   }
 }
 

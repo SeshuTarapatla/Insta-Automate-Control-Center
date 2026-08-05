@@ -11,10 +11,26 @@ import 'surface_common.dart';
 /// entity-scrape: the queued row strip resolves into either a reason chip
 /// (skipped, with the real numbers ARCHITECTURE §5.1 calls for) or the full
 /// profile-report composite (done) — most recent item large, history below.
+/// Which `run_summary.dart` counter bucket a subject's events resolve to —
+/// `null` for a subject still in progress (neither `scrape.done` nor
+/// `scrape.skipped` seen yet), which never matches an active filter.
+String? _bucketFor(List<FlowEvent> events) {
+  if (events.any((e) => e.kind == 'scrape.done')) return 'scraped';
+  if (events.any((e) => e.kind == 'scrape.skipped')) return 'failed';
+  return null;
+}
+
 class ScrapeSurface extends StatelessWidget {
-  const ScrapeSurface({super.key, required this.events});
+  const ScrapeSurface({super.key, required this.events, this.selectedVerdicts = const {}});
 
   final List<FlowEvent> events;
+
+  /// The active `run_summary.dart` counter-chip filter (`scraped`/`failed`)
+  /// — applies to the resolved history list only. The single still-in-
+  /// progress "large card" (if any) is a subject with no resolved bucket
+  /// yet, so it's shown regardless of the filter rather than disappearing
+  /// the instant a filter is toggled on.
+  final Set<String> selectedVerdicts;
 
   @override
   Widget build(BuildContext context) {
@@ -39,11 +55,21 @@ class ScrapeSurface extends StatelessWidget {
     // other finished card, not pinned above it just for being most recent.
     final latestInProgress = !latestEvents.any((e) => e.kind == 'scrape.done' || e.kind == 'scrape.skipped');
 
+    Iterable<String> filterHistory(Iterable<String> candidates) => selectedVerdicts.isEmpty
+        ? candidates
+        : candidates.where((s) => selectedVerdicts.contains(_bucketFor(bySubject[s]!)));
+
     if (!latestInProgress) {
-      return _HistoryWrap(subjects: subjects.reversed, bySubject: bySubject, theme: theme);
+      final history = filterHistory(subjects.reversed).toList();
+      if (history.isEmpty) {
+        return const SurfaceEmpty(message: 'No scrape activity matches the selected filter.');
+      }
+      return _HistoryWrap(subjects: history, bySubject: bySubject, theme: theme);
     }
 
     final tokens = theme.tokens;
+    // Newest-first, skipping the subject already shown large above.
+    final history = filterHistory(subjects.reversed.skip(1)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -53,8 +79,9 @@ class ScrapeSurface extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          // Newest-first, skipping the subject already shown large above.
-          child: _HistoryWrap(subjects: subjects.reversed.skip(1), bySubject: bySubject, theme: theme),
+          child: history.isEmpty
+              ? const SurfaceEmpty(message: 'No resolved scrape activity matches the selected filter.')
+              : _HistoryWrap(subjects: history, bySubject: bySubject, theme: theme),
         ),
       ],
     );

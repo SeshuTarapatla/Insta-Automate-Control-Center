@@ -21,15 +21,35 @@ class SelectedFlowNotifier extends Notifier<String> {
 final selectedFlowProvider = NotifierProvider<SelectedFlowNotifier, String>(SelectedFlowNotifier.new);
 
 class LiveState {
-  const LiveState({required this.flow, required this.runId, required this.logs, required this.events});
+  const LiveState({
+    required this.flow,
+    required this.runId,
+    required this.logs,
+    required this.events,
+    this.selectedVerdicts = const {},
+  });
 
   final String flow;
   final String? runId;
   final List<FlowRunLogEntry> logs;
   final List<FlowEvent> events;
 
-  LiveState copyWith({List<FlowRunLogEntry>? logs, List<FlowEvent>? events}) =>
-      LiveState(flow: flow, runId: runId, logs: logs ?? this.logs, events: events ?? this.events);
+  /// The active click-to-filter selection on this run's result-card list —
+  /// e.g. `{'MALE', 'FEMALE'}` on Classify, or `{'scraped'}` on Scrape.
+  /// Multi-select (any card matching any selected key shows), empty means
+  /// "show everything." Scoped to the currently displayed run: reset
+  /// whenever the flow switches or a new run starts, same lifetime as
+  /// [events] itself.
+  final Set<String> selectedVerdicts;
+
+  LiveState copyWith({List<FlowRunLogEntry>? logs, List<FlowEvent>? events, Set<String>? selectedVerdicts}) =>
+      LiveState(
+        flow: flow,
+        runId: runId,
+        logs: logs ?? this.logs,
+        events: events ?? this.events,
+        selectedVerdicts: selectedVerdicts ?? this.selectedVerdicts,
+      );
 }
 
 /// Logs and events for whichever flow is selected, scoped to that flow's
@@ -91,13 +111,27 @@ class LiveController extends AsyncNotifier<LiveState> {
     final newRunId = snapshot.flows[current.flow]?.lastRun?.id;
     if (newRunId == _runId) return;
     _runId = newRunId;
-    _reload(current.flow, newRunId);
+    // A genuinely new run starting — clear any active counter filter along
+    // with the stale event/log history it was scoped to.
+    _reload(current.flow, newRunId, resetFilter: true);
   }
 
-  Future<void> _reload(String flow, String? runId) async {
+  Future<void> _reload(String flow, String? runId, {bool resetFilter = false}) async {
     final logs = runId == null ? const <FlowRunLogEntry>[] : await _fetchLogs(runId);
     final events = await _fetchEvents(flow, runId);
-    state = AsyncValue.data(LiveState(flow: flow, runId: runId, logs: logs, events: events));
+    final selectedVerdicts = resetFilter ? const <String>{} : state.value?.selectedVerdicts ?? const {};
+    state = AsyncValue.data(
+      LiveState(flow: flow, runId: runId, logs: logs, events: events, selectedVerdicts: selectedVerdicts),
+    );
+  }
+
+  /// Toggles a counter's verdict/bucket key in or out of the active filter.
+  void toggleVerdict(String key) {
+    final current = state.value;
+    if (current == null) return;
+    final next = {...current.selectedVerdicts};
+    if (!next.remove(key)) next.add(key);
+    state = AsyncValue.data(current.copyWith(selectedVerdicts: next));
   }
 
   void _handleWsEvent(AgentEvent wsEvent) {
