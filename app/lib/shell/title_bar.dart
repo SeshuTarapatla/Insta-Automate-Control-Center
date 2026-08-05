@@ -4,18 +4,21 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/connection_state.dart';
+import '../core/dependency_models.dart';
 import '../core/shortcuts_reference.dart';
 import '../core/theme/tokens.dart';
 import '../core/window_work_area.dart';
 import '../features/notifications/notification_center.dart';
+import '../features/services/dependencies_controller.dart';
 import '../ui/icons.dart';
+import '../ui/overlays.dart';
+import '../ui/status.dart';
 
 class TitleBar extends ConsumerWidget {
   const TitleBar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(connectionProvider);
     final theme = Theme.of(context);
     final tokens = theme.tokens;
 
@@ -35,10 +38,20 @@ class TitleBar extends ConsumerWidget {
                     style: theme.textTheme.labelLarge,
                   ),
                   SizedBox(width: tokens.space.xl),
-                  _StatusChip(status: status),
+                  const _StatusCluster(),
                 ],
               ),
             ),
+          ),
+          IconButton(
+            // The command palette itself is V2.12's scope (SCREENS.md §8) —
+            // this checkpoint only places the discoverable affordance
+            // (SCREENS.md §0), disabled rather than wired to a dead action.
+            tooltip: 'Command palette — coming soon',
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            icon: AppIcon(AppIcons.command, size: IconSize.sm),
+            onPressed: null,
           ),
           IconButton(
             tooltip: 'Keyboard shortcuts  (?)',
@@ -55,34 +68,90 @@ class TitleBar extends ConsumerWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final AgentConnection status;
+/// SCREENS.md §0 — five `StatusDot`s replacing the old single text chip
+/// (`'Agent: connected'`), each with a rich tooltip naming the component and
+/// its latency. Reads exactly the two providers the plan calls out —
+/// `connectionProvider` for the agent itself, `dependenciesControllerProvider`
+/// for the other four — no new agent endpoint.
+class _StatusCluster extends ConsumerWidget {
+  const _StatusCluster();
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = theme.tokens;
-    final (Color color, String label) = switch (status) {
-      AgentConnection.connected => (tokens.status.good.fg, 'Agent: connected'),
-      AgentConnection.connecting => (tokens.status.info.fg, 'Agent: connecting'),
-      AgentConnection.disconnected => (tokens.status.bad.fg, 'Agent: disconnected'),
-    };
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = Theme.of(context).tokens;
+    final connection = ref.watch(connectionProvider);
+    final dependencies = ref.watch(dependenciesControllerProvider).value;
+
+    Dependency? dep(String key) => dependencies?.items.where((d) => d.key == key).firstOrNull;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        SizedBox(width: tokens.space.xs),
-        Text(label, style: theme.textTheme.bodySmall),
+        _agentDot(connection),
+        SizedBox(width: tokens.space.sm),
+        _depDot('k3s', dep('k3s')),
+        SizedBox(width: tokens.space.sm),
+        _depDot('Postgres', dep('postgres')),
+        SizedBox(width: tokens.space.sm),
+        _prefectDot(dep('prefect-server'), dep('prefect-pool')),
+        SizedBox(width: tokens.space.sm),
+        _depDot('Phone', dep('adb-device')),
       ],
     );
   }
+}
+
+StatusKind _kindOf(DependencyLevel level) => switch (level) {
+  DependencyLevel.ok => StatusKind.good,
+  DependencyLevel.warn => StatusKind.warn,
+  DependencyLevel.fail => StatusKind.bad,
+};
+
+Widget _statusDot({required StatusKind kind, required String title, required String detail, bool pulsing = false}) {
+  return AppTooltip(
+    rich: true,
+    title: title,
+    message: detail,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: StatusDot(kind: kind, pulsing: pulsing, size: 9),
+    ),
+  );
+}
+
+Widget _agentDot(AgentConnection connection) {
+  final (kind, detail) = switch (connection) {
+    AgentConnection.connected => (StatusKind.good, 'Connected'),
+    AgentConnection.connecting => (StatusKind.info, 'Connecting…'),
+    AgentConnection.disconnected => (StatusKind.bad, 'Disconnected'),
+  };
+  return _statusDot(kind: kind, title: 'Agent', detail: detail, pulsing: connection == AgentConnection.connecting);
+}
+
+Widget _depDot(String title, Dependency? dep) {
+  if (dep == null) return _statusDot(kind: StatusKind.neutral, title: title, detail: 'Checking…');
+  return _statusDot(kind: _kindOf(dep.level), title: title, detail: '${dep.detail}\n${dep.latencyMs.round()}ms');
+}
+
+Widget _prefectDot(Dependency? server, Dependency? pool) {
+  if (server == null && pool == null) return _statusDot(kind: StatusKind.neutral, title: 'Prefect', detail: 'Checking…');
+
+  final levels = <DependencyLevel>[
+    if (server != null) server.level,
+    if (pool != null) pool.level,
+  ];
+  final worst = levels.contains(DependencyLevel.fail)
+      ? DependencyLevel.fail
+      : levels.contains(DependencyLevel.warn)
+      ? DependencyLevel.warn
+      : DependencyLevel.ok;
+
+  final detail = [
+    if (server != null) 'Server: ${server.detail}',
+    if (pool != null) 'Work pool: ${pool.detail}',
+  ].join('\n');
+
+  return _statusDot(kind: _kindOf(worst), title: 'Prefect', detail: detail);
 }
 
 /// Maximize is faked via `setBounds` to the monitor's real work area instead

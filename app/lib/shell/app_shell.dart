@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../core/nav_state.dart';
 import '../core/onboarding.dart';
@@ -14,25 +13,10 @@ import '../features/live/live_page.dart';
 import '../features/overview/overview_page.dart';
 import '../features/services/services_page.dart';
 import '../features/settings/settings_page.dart';
-import '../ui/icons.dart';
+import '../ui/motion.dart';
 import 'connection_banner.dart';
+import 'nav_rail.dart';
 import 'title_bar.dart';
-
-class _Destination {
-  const _Destination(this.label, this.glyph);
-  final String label;
-  final PhosphorIconData Function(PhosphorIconsStyle) glyph;
-}
-
-const _destinations = [
-  _Destination('Overview', AppIcons.overview),
-  _Destination('Flows', AppIcons.flow),
-  _Destination('Live', AppIcons.sensor),
-  _Destination('Services', AppIcons.service),
-  _Destination('Library', AppIcons.library),
-  _Destination('Insights', AppIcons.insight),
-  _Destination('Settings', AppIcons.settings),
-];
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -76,6 +60,22 @@ class _AppShellState extends ConsumerState<AppShell> {
       // the focused leaf.
       bindings: {
         const SingleActivator(LogicalKeyboardKey.slash, shift: true): () => showShortcutsReference(context),
+        const SingleActivator(LogicalKeyboardKey.digit1, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(overviewIndex),
+        const SingleActivator(LogicalKeyboardKey.digit2, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(flowsIndex),
+        const SingleActivator(LogicalKeyboardKey.digit3, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(liveIndex),
+        const SingleActivator(LogicalKeyboardKey.digit4, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(servicesIndex),
+        const SingleActivator(LogicalKeyboardKey.digit5, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(libraryIndex),
+        const SingleActivator(LogicalKeyboardKey.digit6, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(insightsIndex),
+        const SingleActivator(LogicalKeyboardKey.digit7, control: true): () =>
+            ref.read(selectedNavIndexProvider.notifier).select(settingsIndex),
+        const SingleActivator(LogicalKeyboardKey.keyB, control: true): () =>
+            ref.read(navRailCollapsedProvider.notifier).toggle(),
       },
       child: Focus(
         autofocus: true,
@@ -97,33 +97,27 @@ class _AppShellState extends ConsumerState<AppShell> {
               Expanded(
                 child: Row(
                   children: [
-                    NavigationRail(
-                      selectedIndex: selected,
-                      onDestinationSelected: (i) => ref.read(selectedNavIndexProvider.notifier).select(i),
-                      labelType: NavigationRailLabelType.all,
-                      destinations: [
-                        for (final d in _destinations)
-                          NavigationRailDestination(
-                            icon: AppIcon(d.glyph),
-                            label: Text(d.label),
-                          ),
-                      ],
-                    ),
+                    const AppNavRail(),
                     const VerticalDivider(width: 1),
                     Expanded(
                       // Rebuilt rather than kept alive: the agent's log ring is
                       // the source of truth for terminal output, so a pane that
                       // comes back replays from the server instead of holding
-                      // state here.
-                      child: switch (selected) {
-                        flowsIndex => const FlowsPage(),
-                        liveIndex => const LivePage(),
-                        servicesIndex => const ServicesPage(),
-                        libraryIndex => const LibraryPage(),
-                        insightsIndex => const InsightsPage(),
-                        settingsIndex => const SettingsPage(),
-                        _ => const OverviewPage(),
-                      },
+                      // state here. `PageTransition` (SCREENS.md §0) keys on
+                      // `selected` so a rail switch reads as a real transition
+                      // instead of a hard cut.
+                      child: PageTransition(
+                        transitionKey: selected,
+                        child: switch (selected) {
+                          flowsIndex => const FlowsPage(),
+                          liveIndex => const LivePage(),
+                          servicesIndex => const ServicesPage(),
+                          libraryIndex => const LibraryPage(),
+                          insightsIndex => const InsightsPage(),
+                          settingsIndex => const SettingsPage(),
+                          _ => const OverviewPage(),
+                        },
+                      ),
                     ),
                   ],
                 ),

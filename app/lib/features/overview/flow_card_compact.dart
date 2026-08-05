@@ -51,7 +51,7 @@ class FlowCardCompact extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: kind == FlowStatusKind.blocked ? tokens.status.warn.fg : tokens.content.secondary,
+                color: kind == FlowStatusKind.standingBy ? tokens.status.info.fg : tokens.content.secondary,
               ),
             ),
           ],

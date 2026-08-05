@@ -83,10 +83,33 @@
 > fixed 220px columns; `LibraryToolbar`'s Apply/Delete are always visible, disabled rather than
 > absent with nothing selected; counts go through a new shared `plural()` helper; the grid gets
 > a real skeleton loading state. **D48's selection mechanics were not touched.** Full account
-> in DECISIONS.md's D110. `flutter test` 191/191. **Next up: V2.5 (Shell)** — title bar status
-> cluster, nav rail groups/badges/`Ctrl+1..7`, page transitions. See PLAN_V2.md's `## V2.5 —
-> Shell` section before starting; new session recommended (PLAN_V2's own "one checkpoint per
-> session" guidance for Sonnet).
+> in DECISIONS.md's D110. `flutter test` 191/191.
+>
+> **V2.5 (Shell) done and accepted, D111.** The title bar's old `'Agent: connected'` text chip
+> is a five-dot `_StatusCluster` (agent/k3s/postgres/prefect/phone), each a rich-tooltip
+> `StatusDot` reading `connectionProvider`/`dependenciesControllerProvider` — no new agent
+> endpoint. A ⌘K button sits next to `?`, deliberately disabled ("coming soon") rather than
+> wired to a placeholder, since the palette itself is V2.12. The flat `NavigationRail` became a
+> hand-built, grouped `AppNavRail` (`shell/nav_rail.dart`) — MONITOR/OPERATE/ANALYZE, a Review
+> sub-item under Library jumping straight into a review folder, collapsible to icons-only via a
+> new persisted `Ctrl+B`, and `Ctrl+1..7` destination jumps, both alongside the existing `?`
+> binding. Destination switches now go through the existing `PageTransition`. **Same session, a
+> second real fix from your own live read, not just a rename:** `FlowStatusKind.blocked` named
+> a flow whose condition simply hasn't arrived yet (backpressure, the daily cap, nothing
+> queued) as if something were stopping it against its will — renamed to `standingBy`
+> ("Standing by"), moved from `StatusKind.warn` to `.info` (the same "on schedule, not stuck"
+> bucket as `cooldown`/`polling`), dropped entirely from the Overview hero tile's "needs
+> attention" computation (a standing-by flow no longer makes the hero warn at all), and dropped
+> from the nav rail's Flows badge outright rather than just recolored — a resting-flow count
+> isn't the actionable signal `CountBadge` exists to carry. `flow_card.dart`, the pre-V2.6
+> private duplicate of this exact enum and dead code since V2.7, was deleted rather than kept in
+> sync by hand. Full account in DECISIONS.md's D111. `flutter test` 195/195. **You flagged two
+> more real issues from the same screenshots, scoped as the immediate next work, not blocking
+> this commit:** the hero tile still treats hitting today's cap as "needs attention" — the same
+> false-urgency shape as `standingBy`, just a different trigger; and the nav rail's icons read
+> too small/cramped for the space available. **Next up: those two fixes, then V2.8 (Live)** —
+> see PLAN_V2.md's `## V2.8 — Live` section once they're done; new session recommended (PLAN_V2's
+> own "one checkpoint per session" guidance for Sonnet).
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

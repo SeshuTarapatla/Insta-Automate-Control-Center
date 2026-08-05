@@ -313,7 +313,12 @@ void main() {
       expect(find.text('vl-server has failed'), findsOneWidget);
     });
 
-    testWidgets('warn: a blocked flow, with a Go to Flows action', (tester) async {
+    testWidgets('good: a flow standing by on its condition is normal, not a warning', (tester) async {
+      // A flow with `gate.ok: false` (backpressure/day_limit/no_work) isn't
+      // stuck — it just hasn't reached its condition yet, and will pick
+      // back up the moment it does. This must not read as "needs
+      // attention": the hero should stay in its good state exactly as if
+      // every flow were idle-and-waiting normally.
       await _pump(
         tester,
         flows: SchedulerSnapshot(
@@ -328,7 +333,8 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('flow blocked'), findsOneWidget);
+      expect(find.text('All five flows running normally'), findsOneWidget);
+      // "Go to Flows" is unconditional, not tied to any warning state.
       expect(find.text('Go to Flows'), findsWidgets);
     });
 

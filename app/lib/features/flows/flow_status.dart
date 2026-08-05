@@ -1,13 +1,9 @@
 // Shared "what state is this flow really in, and how do I say so" logic for
 // the pipeline nodes (`flow_node.dart`) built for SCREENS.md §2 / V2.6.
-//
-// This mirrors `flow_card.dart`'s private `_StatusKind`/`_kindOf`/
-// `_subtitleFor`/mechanism-line derivation (D84/D93) exactly — re-derived
-// here rather than imported from `flow_card.dart`, because that file stays
-// untouched: it's what `overview_page.dart` renders today and is due to be
-// replaced by `FlowCardCompact` in V2.7, not this checkpoint. Keep the two
-// derivations in sync by hand until V2.7 lands and `flow_card.dart` goes
-// away.
+// `flow_card.dart`'s own private `_StatusKind`/`_kindOf` this originally
+// mirrored is dead code now that `FlowCardCompact` (V2.7) replaced it on
+// Overview — deleted alongside this file's terminology fix rather than left
+// to drift.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -21,7 +17,15 @@ import '../settings/config_controller.dart';
 /// visually continuous from node to node.
 const flowNodeIconGutter = 40.0;
 
-enum FlowStatusKind { off, running, dayPaused, cooldown, blocked, polling }
+// `standingBy` (until 2026-08-05, `blocked`) is a flow whose condition
+// hasn't arrived yet — SCAN_RESERVE_TARGET not cleared, the daily cap hit,
+// nothing queued. Nothing is preventing it against its will; it doesn't
+// need to run right now and will pick back up the moment its condition is
+// true again. Naming and treating this the same as an actual problem
+// (`StatusKind.warn`, "needs attention") was a real false signal — fixed
+// by renaming it and dropping its accent to `info`, the same "still on
+// schedule, not stuck" bucket `cooldown`/`polling` already use.
+enum FlowStatusKind { off, running, dayPaused, cooldown, standingBy, polling }
 
 FlowStatusKind flowStatusKindOf(FlowState state) {
   if (!state.switchOn) return FlowStatusKind.off;
@@ -30,7 +34,7 @@ FlowStatusKind flowStatusKindOf(FlowState state) {
   if (state.gate.ok && state.gate.reason == 'cooldown' && state.nextTriggerAt != null) {
     return FlowStatusKind.cooldown;
   }
-  if (!state.gate.ok) return FlowStatusKind.blocked;
+  if (!state.gate.ok) return FlowStatusKind.standingBy;
   return FlowStatusKind.polling;
 }
 
@@ -44,24 +48,23 @@ String flowStatusLabel(FlowStatusKind kind, FlowState state) => switch (kind) {
   },
   FlowStatusKind.dayPaused => 'Paused for the day',
   FlowStatusKind.cooldown => 'Cooling down',
-  FlowStatusKind.blocked => 'Waiting on condition',
+  FlowStatusKind.standingBy => 'Standing by',
   FlowStatusKind.polling => 'Checking…',
 };
 
 /// The status's `accentEdge`/icon color, one level up from raw tokens — good
-/// (running), warn (blocked), info (cooldown/polling — still "on schedule",
-/// not stuck), neutral (off/paused).
+/// (running), info (cooldown/polling/standingBy — still on schedule, not
+/// stuck, nothing wrong), neutral (off/paused).
 StatusKind flowAccent(FlowStatusKind kind) => switch (kind) {
   FlowStatusKind.running => StatusKind.good,
-  FlowStatusKind.blocked => StatusKind.warn,
-  FlowStatusKind.cooldown || FlowStatusKind.polling => StatusKind.info,
+  FlowStatusKind.cooldown || FlowStatusKind.polling || FlowStatusKind.standingBy => StatusKind.info,
   FlowStatusKind.off || FlowStatusKind.dayPaused => StatusKind.neutral,
 };
 
 PhosphorIconData Function(PhosphorIconsStyle) flowStatusIcon(FlowStatusKind kind) => switch (kind) {
   FlowStatusKind.running => AppIcons.play,
   FlowStatusKind.dayPaused => AppIcons.pause,
-  FlowStatusKind.blocked => AppIcons.hourglass,
+  FlowStatusKind.standingBy => AppIcons.hourglass,
   FlowStatusKind.polling => AppIcons.sync,
   FlowStatusKind.off || FlowStatusKind.cooldown => AppIcons.schedule,
 };
@@ -130,12 +133,12 @@ String? flowTodayLine(FlowState state) {
 }
 
 /// The node's always-visible second line (SCREENS.md §2): the raw gate
-/// detail when blocked — "why isn't this running" is too important to be
-/// hover-only in the roomier node layout, unlike D93's card, which had to
-/// push it into a tooltip — otherwise today's real counters when there are
-/// any, otherwise the mechanism line.
+/// detail while standing by — "why isn't this running right now" is too
+/// important to be hover-only in the roomier node layout, unlike D93's
+/// card, which had to push it into a tooltip — otherwise today's real
+/// counters when there are any, otherwise the mechanism line.
 String flowDetailLine(WidgetRef ref, FlowStatusKind kind, FlowState state) {
-  if (kind == FlowStatusKind.blocked) {
+  if (kind == FlowStatusKind.standingBy) {
     return state.gate.detail ?? state.gate.reason ?? flowMechanismLine(ref, state.flow);
   }
   return flowTodayLine(state) ?? flowMechanismLine(ref, state.flow);

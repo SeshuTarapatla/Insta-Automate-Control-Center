@@ -7,7 +7,8 @@ import 'theme/tokens.dart';
 /// the closest thing to a registry rather than a read of one. Keep in step
 /// with `settings/config_file_bar.dart` (Ctrl+E), `settings/devices_tab.dart`
 /// (Ctrl+F/Esc), `library/library_grid.dart` (the rest), `shell/hotkey.dart`
-/// (Ctrl+Alt+I) and this file's own global `?` binding.
+/// (Ctrl+Alt+I), `shell/app_shell.dart` (Ctrl+1..7/Ctrl+B, V2.5) and this
+/// file's own global `?` binding.
 class ShortcutEntry {
   const ShortcutEntry({required this.keys, required this.description, required this.scope});
 
@@ -19,6 +20,8 @@ class ShortcutEntry {
 const shortcutReference = [
   ShortcutEntry(keys: 'Ctrl+Alt+I', description: 'Show or hide the window', scope: 'Global'),
   ShortcutEntry(keys: '?', description: 'Open this shortcut list', scope: 'Global'),
+  ShortcutEntry(keys: 'Ctrl+1..7', description: 'Jump to a nav rail destination', scope: 'Global'),
+  ShortcutEntry(keys: 'Ctrl+B', description: 'Collapse or expand the nav rail', scope: 'Global'),
   ShortcutEntry(keys: 'Ctrl+E', description: 'Open config.env for editing', scope: 'Settings'),
   ShortcutEntry(keys: 'Ctrl+F', description: 'Search paired devices', scope: 'Settings › Devices'),
   ShortcutEntry(keys: 'Esc', description: 'Close device search', scope: 'Settings › Devices'),

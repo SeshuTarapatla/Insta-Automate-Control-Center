@@ -19,8 +19,8 @@ import 'package:ia_control_center/ui/icons.dart';
 const _iconWeight = PhosphorIconsStyle.regular;
 
 /// The exact backpressure detail string from ARCHITECTURE §4.3 — now shown
-/// inline on the node when blocked (SCREENS.md §2), not just in a tooltip
-/// (D93's card).
+/// inline on the node while standing by (SCREENS.md §2), not just in a
+/// tooltip (D93's card).
 const _backpressureDetail = 'scraped+follow_queued = 180 ≥ FOLLOW×3 = 180';
 
 class _FakeFlowsController extends FlowsController {
@@ -116,7 +116,7 @@ Future<void> _renderNode(
 }
 
 void main() {
-  testWidgets('FlowNode lays out without overflow: scrape blocked by backpressure', (tester) async {
+  testWidgets('FlowNode lays out without overflow: scrape standing by on backpressure', (tester) async {
     await _renderNode(
       tester,
       _state(
@@ -126,10 +126,10 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    // Blocked on a false condition is not a countdown to anything — no
+    // Standing by on a false condition is not a countdown to anything — no
     // progress line, just the reason, so it can't be misread as "about to
     // trigger."
-    expect(find.text('Waiting on condition'), findsOneWidget);
+    expect(find.text('Standing by'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
     // The raw gate detail is now shown inline (SCREENS.md §2), not just in
     // the tooltip — "why isn't this running" is too important to be

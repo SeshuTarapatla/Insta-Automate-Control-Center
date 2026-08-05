@@ -45,6 +45,8 @@ class AppIcons {
   static PhosphorIconData terminal(PhosphorIconsStyle w) => PhosphorIcons.terminal(w);
   static PhosphorIconData job(PhosphorIconsStyle w) => PhosphorIcons.gearSix(w);
   static PhosphorIconData pair(PhosphorIconsStyle w) => PhosphorIcons.qrCode(w);
+  static PhosphorIconData command(PhosphorIconsStyle w) => PhosphorIcons.command(w);
+  static PhosphorIconData sidebarCollapse(PhosphorIconsStyle w) => PhosphorIcons.sidebarSimple(w);
 
   /// The human-review waypoint marker (Flows' two ⚑ edges, V2.6; Library's
   /// folder-rail review markers, V2.9) — one glyph for "the pipeline is

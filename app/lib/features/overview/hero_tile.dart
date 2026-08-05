@@ -2,8 +2,10 @@
 // sentence plus, at most, two actions, with its `StatusKind` driving the
 // whole tile's `accentEdge` so overall health is legible from peripheral
 // vision. Priority, worst first: agent disconnected → bad; any service
-// failed → bad; any flow blocked, any dependency down, any cap hit → warn;
-// otherwise → good.
+// failed → bad; any dependency down, any cap hit → warn; otherwise → good.
+// A standing-by flow (its condition hasn't arrived yet — nothing queued,
+// today's cap already hit, the reserve not cleared) deliberately does
+// *not* factor in here — it's normal operation, not something to flag.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,14 +14,11 @@ import '../../core/dependency_models.dart';
 import '../../core/insights_models.dart';
 import '../../core/library_models.dart';
 import '../../core/nav_state.dart';
-import '../../core/scheduler_models.dart';
 import '../../core/service_models.dart';
 import '../../core/theme/tokens.dart';
 import '../../ui/buttons.dart';
 import '../../ui/status.dart';
 import '../../ui/surfaces.dart';
-import '../flows/flow_status.dart';
-import '../flows/flows_controller.dart';
 import '../insights/insights_controller.dart';
 import '../library/library_controller.dart';
 import '../services/dependencies_controller.dart';
@@ -36,7 +35,6 @@ class _Hero {
 _Hero _compute({
   required AgentConnection connection,
   required List<ServiceStatus> services,
-  required SchedulerSnapshot flows,
   required DependencySnapshot dependencies,
   required Burndown burndown,
 }) {
@@ -50,10 +48,6 @@ _Hero _compute({
     return _Hero(kind: StatusKind.bad, headline: headline, detail: failed.map((s) => s.label).join(' · '));
   }
 
-  final blocked = [
-    for (final flow in flowOrder)
-      if (flows.flows[flow] != null && flowStatusKindOf(flows.flows[flow]!) == FlowStatusKind.blocked) flow,
-  ];
   final down = dependencies.items.where((d) => d.level != DependencyLevel.ok).toList();
   final atCap = <String>[];
   void checkCap(String label, List<BurndownDay> days, String field, int? limit) {
@@ -68,7 +62,6 @@ _Hero _compute({
   checkCap('follow', burndown.follow, 'followed', burndown.limits['follow']);
 
   final reasons = [
-    for (final flow in blocked) '${flowTitle[flow] ?? flow} is blocked',
     for (final dep in down) '${dep.label} is ${dep.level.name}',
     for (final cap in atCap) '$cap is at today\'s cap',
   ];
@@ -77,9 +70,7 @@ _Hero _compute({
     return const _Hero(kind: StatusKind.good, headline: 'All five flows running normally');
   }
 
-  final headline = blocked.isNotEmpty
-      ? '${blocked.length} flow${blocked.length == 1 ? '' : 's'} blocked · everything else nominal'
-      : '${reasons.length} thing${reasons.length == 1 ? '' : 's'} need attention';
+  final headline = '${reasons.length} thing${reasons.length == 1 ? '' : 's'} need attention';
   return _Hero(kind: StatusKind.warn, headline: headline, detail: reasons.take(3).join(' · '));
 }
 
@@ -93,7 +84,6 @@ class HeroTile extends ConsumerWidget {
 
     final connection = ref.watch(connectionProvider);
     final services = ref.watch(servicesControllerProvider).value ?? const [];
-    final flows = ref.watch(flowsControllerProvider).value ?? SchedulerSnapshot.empty;
     final dependencies = ref.watch(dependenciesControllerProvider).value;
     final burndown = ref.watch(burndownProvider).value;
     final folders = ref.watch(libraryFoldersControllerProvider).value ?? const <LibraryFolderInfo>[];
@@ -104,7 +94,7 @@ class HeroTile extends ConsumerWidget {
       return const AppCard(child: SizedBox(height: 56, child: Center(child: CircularProgressIndicator(strokeWidth: 2))));
     }
 
-    final hero = _compute(connection: connection, services: services, flows: flows, dependencies: dependencies, burndown: burndown);
+    final hero = _compute(connection: connection, services: services, dependencies: dependencies, burndown: burndown);
     final waiting = curationFolders.fold<int>(
       0,
       (sum, folder) => sum + (folders.where((f) => f.name == folder).map((f) => f.total).firstOrNull ?? 0),

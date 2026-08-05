@@ -5,6 +5,67 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-05 (continued) — V2.5, Shell, plus a same-session terminology/semantics fix (D111)
+
+### D111 · Status cluster + grouped nav rail landed; "blocked" renamed to "standing by" and stopped reading as a warning
+
+**Chosen:** V2.5's three PLAN_V2.md bullets, each reusing an existing component rather than
+inventing one: the title bar's old single-text `_StatusChip` (`'Agent: connected'`) became a
+`_StatusCluster` of five `StatusDot`s (agent, k3s, postgres, prefect [`prefect-server`/
+`prefect-pool` combined, worst level wins], phone) each with a rich `AppTooltip` naming the
+component, its detail and its latency — reading only `connectionProvider` and
+`dependenciesControllerProvider`, no new agent endpoint. A ⌘K button sits next to the existing
+`?` button, **disabled** with a "coming soon" tooltip rather than wired to a placeholder
+action — the palette itself is V2.12's scope, and a clickable button that does nothing would
+be a worse affordance than an honestly-disabled one. The flat seven-item `NavigationRail` (no
+grouping API exists in the stock widget) was replaced with a hand-built `AppNavRail`
+(`shell/nav_rail.dart`) — MONITOR/OPERATE/ANALYZE groups, a `Review` sub-item under Library
+jumping straight into a review folder (the same `selectedFolderProvider` mechanism V2.6/V2.7's
+⚑ jumps already use), collapsible to icons-only via a new `Ctrl+B` binding persisted through
+`shared_preferences` (`NavRailCollapsedNotifier`, mirroring `ThemeController`'s pattern), and
+new `Ctrl+1..7` destination jumps — both live in `AppShell`'s existing `CallbackShortcuts` map
+alongside the untouched `?` binding. The destination switch is wrapped in the already-existing
+`PageTransition`. The faked-maximize workaround (`title_bar.dart`) is untouched, verbatim.
+
+**A second, real correction landed the same session, from your own live read of the running
+app, not a code review.** "Blocked" (`FlowStatusKind.blocked`, `_StatusKind.blocked` before
+V2.6 collapsed it into one shared `flow_status.dart`) named a flow whose `gate.ok` is false —
+backpressure, the daily cap, nothing queued — as if something were preventing it against its
+will. It isn't: the flow doesn't need to run yet and will pick back up the moment its
+condition is true again, the same way `cooldown`/`polling` already do. Renamed to
+`standingBy` ("Standing by"), and — because the old name wasn't just wrong wording but wrong
+*severity* — its accent moved from `StatusKind.warn` (amber) to `StatusKind.info`, the same
+"still on schedule, not stuck" bucket `cooldown`/`polling` sit in. That forced a real logic
+change, not just a rename: `hero_tile.dart`'s `_compute()` previously put a standing-by flow
+into the same "N things need attention" warn bucket as a failed service or a dependency down —
+deleted from that computation entirely, so the Overview hero now stays "All five flows running
+normally" regardless of how many flows are standing by. `nav_rail.dart`'s Flows destination
+lost its badge outright for the same reason — a count of resting flows isn't the kind of
+actionable signal `CountBadge` exists to carry, unlike an unhealthy-service count or a real
+curation backlog, so badging it under a calmer color would still have been the same false
+urgency wearing a new name. `flow_card.dart` — the pre-V2.6 private duplicate of this exact
+enum, orphaned dead code since `FlowCardCompact` replaced it in V2.7 (its own header comment
+said as much) — was deleted rather than kept in sync by hand a second time.
+
+**Verified:** `flutter analyze` clean; `flutter test` 195/195 (191 prior + 4 new in
+`test/shell_layout_test.dart` — rail overflow expanded/collapsed at the 1024px floor, real
+badge counts including the standing-by-gets-no-badge assertion, and a `Ctrl+B` round trip
+through the real persisted notifier — plus 3 existing tests in `flows_layout_test.dart`/
+`overview_layout_test.dart` updated to the new label/behavior rather than deleted).
+`flutter build windows --debug` succeeds. Built and started for you twice (once per round),
+per rule 5.
+
+**You confirmed the shell live and flagged two more real issues from the same screenshots,
+both left open for the next round rather than guessed at here:** the Overview hero still
+treats a flow hitting today's cap as "needs attention" — the same false-urgency shape as
+`standingBy`, just a different trigger (`atCap`, not a flow's gate at all) that this round
+didn't touch; and the nav rail's icons read as too small/cramped now, needing more of the
+rail's own width than the current `IconSize.sm`/tight padding give them. Committed on your
+explicit "commit to this point," with those two items scoped as the immediate next work
+rather than blocking this commit.
+
+---
+
 ## 2026-08-05 (continued) — V2.9, Library browse (D110)
 
 ### D110 · Per-folder grid aspect ratio, stage-grouped rail, ResizableSplit rails, always-visible toolbar

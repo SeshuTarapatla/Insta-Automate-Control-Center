@@ -112,17 +112,17 @@ class FlowNode extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.right,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: kind == FlowStatusKind.blocked ? tokens.status.warn.fg : tokens.content.secondary,
+                        color: kind == FlowStatusKind.standingBy ? tokens.status.info.fg : tokens.content.secondary,
                       ),
                     ),
                   ),
                   SizedBox(width: tokens.space.sm),
                   Switch(value: state.switchOn, onChanged: (value) => _toggleSwitch(context, ref, value)),
                   SizedBox(width: tokens.space.xs),
-                  // The same warn amber as the accent edge and the label
-                  // above, not a harsher error red — "blocked on a false
-                  // condition" is a normal operating state this pipeline
-                  // sits in every day, not a failure.
+                  // The same info tint as the accent edge and the label
+                  // above, never the warn amber — standing by on a false
+                  // condition is a normal operating state this pipeline sits
+                  // in every day, not a problem asking for attention.
                   gateText == null
                       ? AppTooltip(
                           rich: true,
@@ -137,7 +137,7 @@ class FlowNode extends ConsumerWidget {
                           child: AppIcon(
                             AppIcons.info,
                             size: IconSize.sm,
-                            color: !state.gate.ok ? tokens.status.warn.fg : tokens.content.secondary,
+                            color: !state.gate.ok ? tokens.status.info.fg : tokens.content.secondary,
                           ),
                         ),
                   SizedBox(width: tokens.space.xs),
@@ -159,7 +159,7 @@ class FlowNode extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: kind == FlowStatusKind.blocked ? tokens.status.warn.fg : tokens.content.secondary,
+                    color: kind == FlowStatusKind.standingBy ? tokens.status.info.fg : tokens.content.secondary,
                   ),
                 ),
               ),
@@ -235,7 +235,6 @@ class FlowNode extends ConsumerWidget {
   static Color _statusColor(AppTokens tokens, FlowState state) {
     if (!state.switchOn) return tokens.content.secondary;
     if (state.phase == 'running') return tokens.status.good.fg;
-    if (!state.gate.ok) return tokens.status.warn.fg;
     return tokens.status.info.fg;
   }
 
