@@ -124,6 +124,24 @@
 > Not v2 work and doesn't change the line above: V2.8 (Live) is still next whenever this branch
 > picks the checklist back up. Full account in DECISIONS.md's D113.
 >
+> **V2.8 (Live) built, 🟡, awaiting your checkpoint test — D114.** The fixed 420px visualization
+> column (D45's own comment flagged it as tuned to scrape alone) is now a `ResizableSplit` with a
+> ⤢ expand/restore toggle on each pane; `RunSummary` dissolved from its own ~180px card into a
+> one-line header strip (phase, a real elapsed timer off `GET /api/flow-runs/{id}`'s recorded start
+> time, click-to-filter counters unchanged from D113, run id/last-run behind an ⓘ tooltip); the
+> five level `FilterChip`s collapsed into one dropdown; log search is new (highlight, "n of m",
+> `Enter`/`Shift+Enter` to step); Scrape/Follow card widths are computed rather than hardcoded; the
+> scrape before→after morph ARCHITECTURE §9 specified and AUDIT §10 found missing now exists
+> (`AnimatedReveal`, which already had this exact use case in its own doc comment, just no call
+> site until now); `DeviceBar`'s mirror button is now `Start mirror`/`Stop mirror`, not bare
+> `Start`/`Stop`, next to the flow's own `Stop`. `flutter analyze` clean, `flutter test` 205/206
+> (the one `shell_layout_test.dart` failure confirmed pre-existing on the branch tip via
+> `git stash`, unrelated). Built and started for you per rule 5 — **your checkpoint test is what's
+> still open**: a real scrape run watched end to end (elapsed timer, counters, the morph, full-width
+> images, log search, the split dragging and persisting across a restart), then at least one other
+> flow to confirm the computed card widths hold up where the old numbers were scrape-only. Full
+> account in DECISIONS.md's D114.
+>
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is
 > already served by an existing endpoint. If a checkpoint seems to need an agent change, it

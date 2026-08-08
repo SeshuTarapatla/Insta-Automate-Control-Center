@@ -116,7 +116,10 @@ class DeviceBar extends ConsumerWidget {
                     }
                   }
                 },
-                child: Text(status.mirroring ? 'Stop' : 'Start'),
+                // Scoped in the label (SCREENS §3) — the Live header can
+                // have two bare "Stop" buttons inches apart (the flow's own
+                // and the mirror's); ambiguous at a glance without this.
+                child: Text(status.mirroring ? 'Stop mirror' : 'Start mirror'),
               ),
             ),
           ],

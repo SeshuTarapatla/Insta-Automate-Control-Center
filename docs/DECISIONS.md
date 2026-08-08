@@ -5,6 +5,101 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-08 — V2.8, Live screen rework (D114)
+
+### D114 · Fixed 420px visualization column replaced with a resizable, expandable split; RunSummary dissolved into a header strip; log search and the scrape morph added
+
+**Chosen, per PLAN_V2.md's `## V2.8 — Live` / SCREENS.md §3 scope** (V2.8 is next in the fixed
+V2.6→V2.7→V2.9→V2.5→V2.8→... sequence, D107): the log console and visualization surface move
+into a `ResizableSplit` (`persistKey: 'live.split'`, `initialFirstSize: 480` for the log pane,
+`minFirst: 320`/`minSecond: 360`) — replacing the hardcoded `SizedBox(width: 420)` the code's own
+comment (D45) already flagged as tuned to `entity-scrape` alone and ~95% empty for `entity-ingest`
+(SCREENS §3). Each pane gained a slim frame (`_Pane` in `live_page.dart`) with a title and a ⤢
+expand/restore `IconButton` — tapping either maximises that pane to the full body width, tapping
+again restores the split; new `AppIcons.expand`/`.collapse` (`PhosphorIcons.arrowsOut`/`arrowsIn`).
+The split stays **horizontal** (side-by-side, full height each), per SCREENS §3's own reversal of
+an earlier vertical-stack proposal once the real window was observed (D97) to be landscape, not
+tall-and-narrow.
+
+**`RunSummary` dissolved from its own ~180px scrolling card into a one-line header strip.** Reused
+`features/flows/flow_status.dart`'s existing `flowStatusKindOf`/`flowStatusLabel`/`flowAccent`/
+`flowStatusIcon`/`flowTodayLine`/`formatFlowCountdown` (already the Flows screen's own phase/gate
+vocabulary, D91-D93) rather than re-deriving a second copy of "what does this phase mean" —
+`run_summary.dart`'s private `_todayLine` duplicate is gone. A new once-a-second
+`StreamProvider.autoDispose` (`_secondTickProvider`, same shape as `device_bar.dart`'s 5s poll)
+drives a real elapsed-run timer, only ever watched while `FlowStatusKind.running` — an idle/
+waiting flow never pays for it. Elapsed comes from a new `GET /api/flow-runs/{id}` fetch in
+`LiveController` (`LiveState.runStartedAt`, Prefect's own recorded start time) rather than "when
+did the app first notice this run," which would drift by however long the next heartbeat took to
+reach this screen. Run id and last-run detail move into a rich `AppTooltip` behind an ⓘ icon — the
+same collapse-behind-a-tooltip pattern D93 already used for the Flows cards' own gate detail.
+D113's click-to-filter counter chips are preserved exactly, just re-hosted as a new `_CounterChip`
+(the same visual shape as `ui/status.dart`'s shared `StatusChip`, but with an `AnimatedCounter` in
+place of a plain string — kept local rather than widening the shared component's API for one call
+site) — the "implicit animation on counters" ARCHITECTURE §9 promised, applied to the one number in
+this app that changes every few seconds while you're watching it.
+
+**The five level `FilterChip`s collapsed into one control**, not `ui/fields.dart`'s `AppSelect` —
+its `T value` shape is single-select only, and this needs several levels on at once. A local
+`_LevelFilterMenu` (`MenuAnchor` + stock `CheckboxMenuButton`, `closeOnActivate: false`) gets the
+same collapsed-dropdown affordance without widening a shared component's API for one call site.
+
+**Log search is new** (`_LogSearchBar` in `log_console.dart`): a debounced (250ms, matching
+`SearchField`'s existing precedent) text field showing "n of m" and stepping with `Enter`/
+`Shift+Enter` (`CallbackShortcuts`, `Escape` clears) — not built on `SearchField` itself, which has
+no `onSubmitted`/keyboard hook to step through matches with. Matches are counted and stepped by
+*line*, not by individual occurrence within a line (a line with three hits is still one stop),
+matching how a quick visual scan of a log naturally works; every occurrence still highlights inline
+via a hand-rolled `TextSpan` walk (`_highlightSpans`). Jumping to an off-screen match in a
+virtualized `ListView.builder` needed a two-step approximation, since items outside the viewport
+aren't built and have no element to `Scrollable.ensureVisible` toward: jump to a proportional
+estimate first (log lines are roughly uniform height), then correct exactly on the next frame once
+the target's `GlobalKey` (grown, never rebuilt fresh, so keys stay stable across builds) has a real
+context. A search in progress also suspends auto-follow-the-newest-line — the user is deliberately
+reviewing a specific match, possibly well above the bottom.
+
+**Structured (JSON-shaped) log messages now render via `MonoText`'s font instead of the body
+proportional face** (`_looksStructured`: trimmed message starts with `{` or `[`) — SCREENS §3 called
+out a real ingest-flow JSON blob rendering broken in the old proportional-font-only version.
+
+**Card widths for Scrape/Follow are computed, not the three hardcoded per-flow constants** (380
+scrape / 420 follow — D45; classify was already full-width and needed no change). New
+`wrapCardWidth()` in `surfaces/surface_common.dart` picks a per-card width so the available width
+(read via `LayoutBuilder`) holds a whole number of columns with no ragged trailing gutter, clamped
+between a per-surface `minWidth`/`maxWidth`.
+
+**The scrape before→after morph, specified in ARCHITECTURE §9 and never built (AUDIT §10), now
+exists** — `ui/motion.dart`'s `AnimatedReveal` already had this exact use case in its own doc
+comment, just no call site. `_ScrapeCard`'s two layouts (in-progress strip / resolved composite)
+are both built, and the large card wraps whichever's current in
+`AnimatedReveal(visible: true, child: KeyedSubtree(key: ValueKey(inProgress), ...))` — the key
+change on `scrape.done`/`scrape.skipped` arriving is what `AnimatedSwitcher` (under `AnimatedReveal`)
+detects as a swap to cross-fade, rather than an instant cut.
+
+**`DeviceBar`'s mirror button renamed `Start mirror`/`Stop mirror`** (was bare `Start`/`Stop`) —
+SCREENS §3 flagged two unscoped "Stop" buttons inches apart in the same header (the flow's own and
+the mirror's) as genuinely ambiguous at a glance.
+
+**Verified:** `flutter analyze` clean. `flutter test`: 205 passing / 206 total — the one
+`shell_layout_test.dart` failure (`AppShell ... rail expanded`) reproduces identically on the
+branch tip from *before* this session's changes (confirmed via `git stash`), unrelated to this
+work. Eight new checks in `live_layout_test.dart`: three `wrapCardWidth` unit tests, the scrape
+morph transition, log search (highlight/step/clear), a JSON-shaped log line, and two full `LivePage`
+mounts — one at SCREENS §3's own measured real window size (1168×973, D97) exercising the
+expand/restore round trip on both panes, one at the app's documented 1024×700 floor — plus a new
+assertion in the existing `DeviceBar` test confirming the disambiguated label. `flutter build
+windows --debug` succeeds. Built and started for you per rule 5 — not clicked through by Claude;
+five stale prior-session instances found running were killed first and replaced with one fresh one
+(D87's precedent).
+
+**Checkpoint test (yours, per PLAN_V2.md's own V2.8 gate) — still needed:** trigger a real scrape
+and watch the elapsed timer, the counters, the in-progress card morph into the resolved composite,
+images filling the pane's actual width, log search working, and the split dragging and persisting
+across a restart; then check at least one other flow (scan or classify) to confirm the computed
+card widths hold up where the old hardcoded numbers were tuned only for scrape.
+
+---
+
 ## 2026-08-05 (continued) — Reduce reserve variants + counter click-to-filter, cross-repo (D113)
 
 ### D113 · Two feature requests, planned first and confirmed before implementation, landed on both clients

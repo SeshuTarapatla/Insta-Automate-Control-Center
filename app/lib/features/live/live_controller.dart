@@ -27,6 +27,7 @@ class LiveState {
     required this.logs,
     required this.events,
     this.selectedVerdicts = const {},
+    this.runStartedAt,
   });
 
   final String flow;
@@ -42,14 +43,27 @@ class LiveState {
   /// [events] itself.
   final Set<String> selectedVerdicts;
 
-  LiveState copyWith({List<FlowRunLogEntry>? logs, List<FlowEvent>? events, Set<String>? selectedVerdicts}) =>
-      LiveState(
-        flow: flow,
-        runId: runId,
-        logs: logs ?? this.logs,
-        events: events ?? this.events,
-        selectedVerdicts: selectedVerdicts ?? this.selectedVerdicts,
-      );
+  /// The run's real start time, from `GET /api/flow-runs/{id}` (Prefect's
+  /// own record) — not a client-side "when did the app first notice this
+  /// run" guess, which would drift from the actual trigger time by however
+  /// long the next heartbeat/poll took to reach this screen. Powers the
+  /// header ribbon's elapsed timer (V2.8/SCREENS §3); `null` before the
+  /// fetch resolves or when there's no run to time.
+  final DateTime? runStartedAt;
+
+  LiveState copyWith({
+    List<FlowRunLogEntry>? logs,
+    List<FlowEvent>? events,
+    Set<String>? selectedVerdicts,
+    DateTime? runStartedAt,
+  }) => LiveState(
+    flow: flow,
+    runId: runId,
+    logs: logs ?? this.logs,
+    events: events ?? this.events,
+    selectedVerdicts: selectedVerdicts ?? this.selectedVerdicts,
+    runStartedAt: runStartedAt ?? this.runStartedAt,
+  );
 }
 
 /// Logs and events for whichever flow is selected, scoped to that flow's
@@ -87,13 +101,20 @@ class LiveController extends AsyncNotifier<LiveState> {
 
     final logs = runId == null ? const <FlowRunLogEntry>[] : await _fetchLogs(runId);
     final events = await _fetchEvents(flow, runId);
-    return LiveState(flow: flow, runId: runId, logs: logs, events: events);
+    final startedAt = runId == null ? null : await _fetchRunStartedAt(runId);
+    return LiveState(flow: flow, runId: runId, logs: logs, events: events, runStartedAt: startedAt);
   }
 
   Future<List<FlowRunLogEntry>> _fetchLogs(String runId) async {
     final dio = ref.read(agentClientProvider);
     final response = await dio.get('/api/flow-runs/$runId/logs');
     return FlowRunLogsReplay.fromJson(response.data as Map<String, dynamic>).entries;
+  }
+
+  Future<DateTime?> _fetchRunStartedAt(String runId) async {
+    final dio = ref.read(agentClientProvider);
+    final response = await dio.get('/api/flow-runs/$runId');
+    return FlowRunSummary.fromJson(response.data as Map<String, dynamic>).startTime;
   }
 
   Future<List<FlowEvent>> _fetchEvents(String flow, String? runId) async {
@@ -119,9 +140,10 @@ class LiveController extends AsyncNotifier<LiveState> {
   Future<void> _reload(String flow, String? runId, {bool resetFilter = false}) async {
     final logs = runId == null ? const <FlowRunLogEntry>[] : await _fetchLogs(runId);
     final events = await _fetchEvents(flow, runId);
+    final startedAt = runId == null ? null : await _fetchRunStartedAt(runId);
     final selectedVerdicts = resetFilter ? const <String>{} : state.value?.selectedVerdicts ?? const {};
     state = AsyncValue.data(
-      LiveState(flow: flow, runId: runId, logs: logs, events: events, selectedVerdicts: selectedVerdicts),
+      LiveState(flow: flow, runId: runId, logs: logs, events: events, selectedVerdicts: selectedVerdicts, runStartedAt: startedAt),
     );
   }
 

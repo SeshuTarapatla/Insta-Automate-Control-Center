@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/agent_image.dart';
 import '../../../core/flow_event_models.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../ui/motion.dart';
 import '../../../ui/status.dart';
 import '../../../ui/surfaces.dart';
 import '../../../ui/text.dart';
@@ -106,16 +107,29 @@ class _HistoryWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = theme.tokens;
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(tokens.space.md),
-      child: Wrap(
-        spacing: tokens.space.md,
-        runSpacing: tokens.space.md,
-        children: [
-          for (final subject in subjects)
-            SizedBox(width: 380, child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Computed rather than the old hardcoded 380 (D45, tuned to scrape
+        // alone) — a whole number of columns at whatever width this pane
+        // actually has, SCREENS §3's "no ragged gutter at any window size."
+        final width = wrapCardWidth(
+          constraints.maxWidth - tokens.space.md * 2,
+          minWidth: 320,
+          maxWidth: 460,
+          spacing: tokens.space.md,
+        );
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(tokens.space.md),
+          child: Wrap(
+            spacing: tokens.space.md,
+            runSpacing: tokens.space.md,
+            children: [
+              for (final subject in subjects)
+                SizedBox(width: width, child: _ScrapeCard(events: bySubject[subject]!, theme: theme, large: false)),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -168,29 +182,27 @@ class _ScrapeCard extends StatelessWidget {
     // scan/classify's row crops are, not the tall scraped composite) — laid
     // out as a strip on top rather than squeezed into the portrait-oriented
     // Row every resolved card uses, which assumes a tall image.
-    if (large && inProgress) {
-      return ResultCardActions(
-        subject: (done ?? skipped ?? started)?.subject,
-        root: root,
-        child: AppCard(
-          padding: EdgeInsets.all(tokens.space.sm),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
-              SizedBox(height: tokens.space.sm),
-              details,
-            ],
-          ),
+    final stripCard = ResultCardActions(
+      subject: (done ?? skipped ?? started)?.subject,
+      root: root,
+      child: AppCard(
+        padding: EdgeInsets.all(tokens.space.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AgentImage(imageKey: started?.imageKey, width: 600, aspectRatio: 1080 / 198),
+            SizedBox(height: tokens.space.sm),
+            details,
+          ],
         ),
-      );
-    }
+      ),
+    );
 
     // Everything else is resolved: `done` has a real scraped composite
     // (portrait, ~1080×2000); `skipped` never gets one, so it still only
     // ever has the queued row crop — shown at its own real (wide) shape
     // rather than squeezed into the composite's, same reasoning as above.
-    return ResultCardActions(
+    final rowCard = ResultCardActions(
       subject: (done ?? skipped ?? started)?.subject,
       root: root,
       child: AppCard(
@@ -211,6 +223,18 @@ class _ScrapeCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    if (!large) return rowCard;
+
+    // The scrape before→after morph (SCREENS §3, ARCHITECTURE §9 — specified
+    // and never built until now, AUDIT §10): the same subject genuinely
+    // changing state, not decoration — `AnimatedReveal` cross-fades between
+    // the strip and row layouts the instant `inProgress` flips, keyed so it
+    // reads as a swap rather than two unrelated cards appearing/disappearing.
+    return AnimatedReveal(
+      visible: true,
+      child: KeyedSubtree(key: ValueKey(inProgress), child: inProgress ? stripCard : rowCard),
     );
   }
 }

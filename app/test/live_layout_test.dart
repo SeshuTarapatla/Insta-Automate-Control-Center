@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:ia_control_center/core/device_models.dart';
 import 'package:ia_control_center/core/flow_event_models.dart';
@@ -9,6 +12,7 @@ import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/features/flows/flows_controller.dart';
 import 'package:ia_control_center/features/live/device_bar.dart';
 import 'package:ia_control_center/features/live/live_controller.dart';
+import 'package:ia_control_center/features/live/live_page.dart';
 import 'package:ia_control_center/features/live/log_console.dart';
 import 'package:ia_control_center/features/live/run_summary.dart';
 import 'package:ia_control_center/features/live/surfaces/classify_surface.dart';
@@ -16,6 +20,7 @@ import 'package:ia_control_center/features/live/surfaces/follow_surface.dart';
 import 'package:ia_control_center/features/live/surfaces/ingest_surface.dart';
 import 'package:ia_control_center/features/live/surfaces/scan_surface.dart';
 import 'package:ia_control_center/features/live/surfaces/scrape_surface.dart';
+import 'package:ia_control_center/features/live/surfaces/surface_common.dart';
 
 /// The Live screen's left column (run summary over the log console) is a
 /// fixed 420px regardless of window size (D42's follow-up, `live_page.dart`)
@@ -114,7 +119,13 @@ Future<void> _render(WidgetTester tester, Widget child, Size size, {required Liv
   await tester.pump(const Duration(milliseconds: 100));
 }
 
+// `PhosphorIconsStyle.regular` is the right weight for a bare `ThemeData()`
+// in these tests — same precedent as `flows_layout_test.dart`.
+const _iconWeight = PhosphorIconsStyle.regular;
+
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   final longUsername = 'a' * 60;
   final longReason = 'f=${'9' * 40} < FMIN=100 — an implausibly long detail string with no spaces at all here';
 
@@ -345,6 +356,256 @@ void main() {
               ],
             ),
           ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+    // SCREENS §3 — this button and the flow's own "Stop" (`live_page.dart`)
+    // used to both just say "Stop", inches apart in the same header. The
+    // mirror's own now names what it stops.
+    expect(find.text('Stop mirror'), findsOneWidget);
+  });
+
+  group('wrapCardWidth', () {
+    test('fits a whole number of columns with no ragged trailing gutter', () {
+      // 1000px available, 20px spacing, min 320: 3 columns of 320 leaves
+      // real slack, so it should grow each card to fill it exactly rather
+      // than leaving a visible gap after the last one.
+      final width = wrapCardWidth(1000, minWidth: 320, maxWidth: 460, spacing: 20);
+      const columns = 3; // floor((1000+20)/(320+20)) == 3
+      expect(width * columns + 20 * (columns - 1), closeTo(1000, 0.01));
+    });
+
+    test('never grows past maxWidth even with slack to spare', () {
+      final width = wrapCardWidth(2000, minWidth: 320, maxWidth: 460, spacing: 20);
+      expect(width, lessThanOrEqualTo(460));
+    });
+
+    test('never shrinks below minWidth even in a too-narrow pane', () {
+      final width = wrapCardWidth(200, minWidth: 320, maxWidth: 460, spacing: 20);
+      expect(width, lessThanOrEqualTo(320)); // clamped to the available space itself, not stretched
+    });
+  });
+
+  testWidgets('ScrapeSurface morphs without overflow: the in-progress strip resolving into the composite card', (
+    tester,
+  ) async {
+    // The exact transition SCREENS §3 calls the "scrape before→after morph"
+    // — re-pumping the same subject's events from in-progress to done
+    // exercises `AnimatedReveal`'s cross-fade rather than just each static
+    // shape in isolation (the two prior `ScrapeSurface` tests above).
+    final inProgress = [_event(kind: 'scrape.started', subject: 'someone', image: 'scrape_queued/root/someone.jpg', seq: 1)];
+    final resolved = [
+      _event(
+        kind: 'scrape.done',
+        subject: 'someone',
+        image: 'scrape_queued/root/someone.jpg',
+        counters: {'posts': 4, 'followers': 55, 'following': 12},
+        seq: 1,
+      ),
+    ];
+
+    await _render(
+      tester,
+      SizedBox(width: 700, height: 700, child: ScrapeSurface(events: inProgress)),
+      const Size(700, 700),
+      liveState: LiveState(flow: 'entity-scrape', runId: 'run-1', logs: const [], events: inProgress),
+    );
+    expect(find.text('scraping…'), findsOneWidget);
+
+    await _render(
+      tester,
+      SizedBox(width: 700, height: 700, child: ScrapeSurface(events: resolved)),
+      const Size(700, 700),
+      liveState: LiveState(flow: 'entity-scrape', runId: 'run-1', logs: const [], events: resolved),
+    );
+    // AnimatedReveal keeps both children mounted mid cross-fade — settle it.
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('scraping…'), findsNothing);
+  });
+
+  testWidgets('LogConsole search: highlights matches, steps with Enter/Shift+Enter, and Esc clears', (tester) async {
+    final state = LiveState(
+      flow: 'entity-scan',
+      runId: 'run-1',
+      logs: [
+        FlowRunLogEntry(seq: 1, ts: 0, source: 'flow', level: 'INFO', task: null, message: 'Opening profile @needle_one'),
+        FlowRunLogEntry(seq: 2, ts: 1, source: 'flow', level: 'INFO', task: null, message: 'Nothing interesting here'),
+        FlowRunLogEntry(seq: 3, ts: 2, source: 'flow', level: 'INFO', task: null, message: 'Found @needle_two, scanning'),
+      ],
+      events: const [],
+    );
+    await _render(
+      tester,
+      const SizedBox(width: 700, height: 700, child: LogConsole()),
+      const Size(700, 700),
+      liveState: state,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(find.byType(TextField).first, 'needle');
+    // The search box debounces like `SearchField` (250ms) before it
+    // actually filters/highlights.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    expect(find.text('1 of 2'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.text('2 of 2'), findsOneWidget);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.text('1 of 2'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    expect(find.text('1 of 2'), findsNothing);
+  });
+
+  testWidgets('LogConsole renders a JSON-shaped message without overflow', (tester) async {
+    final payload = '{"key": "${'x' * 120}", "nested": {"a": 1, "b": [1, 2, 3]}}';
+    final state = LiveState(
+      flow: 'entity-ingest',
+      runId: 'run-1',
+      logs: [FlowRunLogEntry(seq: 1, ts: 0, source: 'flow', level: 'INFO', task: null, message: payload)],
+      events: const [],
+    );
+    await _render(
+      tester,
+      const SizedBox(width: 420, height: 400, child: LogConsole()),
+      const Size(420, 400),
+      liveState: state,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('LivePage lays out without overflow at the real observed window size and expands/restores each pane', (
+    tester,
+  ) async {
+    // 1168 × 973 is SCREENS §3's own measured body size for this screen
+    // (OBSERVED.md, D97) — the size the old hardcoded-420px column was
+    // tuned against and everything else was guessed for.
+    tester.view.physicalSize = const Size(1168, 973);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final liveState = LiveState(
+      flow: 'entity-scrape',
+      runId: 'run-1',
+      logs: [FlowRunLogEntry(seq: 1, ts: 0, source: 'flow', level: 'INFO', task: null, message: 'Opening profile @someone')],
+      events: [_event(kind: 'scrape.started', subject: 'someone', image: 'scrape_queued/root/someone.jpg', seq: 1)],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          flowsControllerProvider.overrideWith(
+            () => _FakeFlowsController(
+              SchedulerSnapshot(
+                online: true,
+                lastHeartbeatAt: 0,
+                flows: {
+                  'entity-scrape': FlowState(
+                    flow: 'entity-scrape',
+                    switchOn: true,
+                    phase: 'running',
+                    nextTriggerAt: null,
+                    gate: const FlowGate(ok: true),
+                    today: const {'scraped': 42, 'limit': 300},
+                    lastRun: const FlowLastRun(id: 'run-1', state: 'RUNNING', durationS: null),
+                  ),
+                },
+              ),
+            ),
+          ),
+          liveControllerProvider.overrideWith(() => _FakeLiveController(liveState)),
+          deviceControllerProvider.overrideWith(
+            () => _FakeDeviceController(const DeviceStatus(serial: '1', model: 'Pixel 7', bridgeReachable: true, mirroring: false)),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+          home: const Scaffold(body: LivePage()),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+
+    // Both panes visible side by side, the resizable handle between them.
+    expect(find.text('LOGS'), findsOneWidget);
+    expect(find.text('VISUALIZATION'), findsOneWidget);
+    expect(find.byKey(const ValueKey('resizable_split_handle:live.split')), findsOneWidget);
+
+    // Expand the visualization pane — the log pane's own frame disappears
+    // entirely rather than just losing its content (SCREENS §3's "just show
+    // me the images" mode). Two ⤢ buttons exist (one per pane); the second
+    // is visualization's, matching `first`/`second` order in `live_page.dart`.
+    final expandButtons = find.widgetWithIcon(IconButton, PhosphorIcons.arrowsOut(_iconWeight));
+    expect(expandButtons, findsNWidgets(2));
+    await tester.tap(expandButtons.last);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('LOGS'), findsNothing);
+    expect(find.text('VISUALIZATION'), findsOneWidget);
+    expect(find.byKey(const ValueKey('resizable_split_handle:live.split')), findsNothing);
+
+    // Restore — both panes and the handle come back.
+    await tester.tap(find.widgetWithIcon(IconButton, PhosphorIcons.arrowsIn(_iconWeight)));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('LOGS'), findsOneWidget);
+    expect(find.text('VISUALIZATION'), findsOneWidget);
+    expect(find.byKey(const ValueKey('resizable_split_handle:live.split')), findsOneWidget);
+  });
+
+  testWidgets('LivePage lays out without overflow at the app\'s 1024×700 floor', (tester) async {
+    tester.view.physicalSize = const Size(1024, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final liveState = LiveState(flow: 'entity-follow', runId: 'run-1', logs: const [], events: const []);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          flowsControllerProvider.overrideWith(
+            () => _FakeFlowsController(
+              SchedulerSnapshot(
+                online: true,
+                lastHeartbeatAt: 0,
+                flows: {
+                  'entity-follow': FlowState(
+                    flow: 'entity-follow',
+                    switchOn: true,
+                    phase: 'waiting',
+                    nextTriggerAt: null,
+                    gate: const FlowGate(ok: true),
+                    today: const {'followed': 5, 'limit': 300},
+                    lastRun: null,
+                  ),
+                },
+              ),
+            ),
+          ),
+          liveControllerProvider.overrideWith(() => _FakeLiveController(liveState)),
+          deviceControllerProvider.overrideWith(
+            () => _FakeDeviceController(const DeviceStatus(serial: null, model: null, bridgeReachable: false, mirroring: false)),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
+          home: const Scaffold(body: LivePage()),
         ),
       ),
     );

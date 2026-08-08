@@ -4,77 +4,106 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/flow_event_models.dart';
 import '../../core/scheduler_models.dart';
 import '../../core/theme/tokens.dart';
-import '../../ui/layout.dart';
+import '../../ui/icons.dart';
+import '../../ui/overlays.dart';
 import '../../ui/status.dart';
 import '../../ui/text.dart';
+import '../flows/flow_status.dart';
 import '../flows/flows_controller.dart';
 import 'live_controller.dart';
 import 'surfaces/surface_common.dart';
 
-String? _todayLine(FlowState state) {
-  final today = state.today;
-  if (today == null) return null;
-  return switch (state.flow) {
-    'entity-scan' =>
-      'profiles ${today['profiles']}/${today['profiles_limit']} · '
-          'reels ${today['reels']}/${today['reels_limit']} · '
-          'posts ${today['posts']}/${today['posts_limit']}',
-    'entity-scrape' => 'scraped ${today['scraped']}/${today['limit']}',
-    'entity-follow' => 'followed ${today['followed']}/${today['limit']}',
-    _ => null,
-  };
+/// A once-a-second rebuild trigger for the elapsed-run timer below — same
+/// `StreamProvider.autoDispose` shape as `device_bar.dart`'s 5s device poll,
+/// just faster, and only ever watched while a run is actually `running`
+/// (`RunSummary.build`), so an idle/waiting flow costs nothing extra.
+final _secondTickProvider = StreamProvider.autoDispose<int>(
+  (ref) => Stream<int>.periodic(const Duration(seconds: 1), (tick) => tick),
+);
+
+String _tooltipMessage(FlowState flowState, LiveState? live) {
+  final lines = <String>[];
+  final today = flowTodayLine(flowState);
+  if (today != null) lines.add('Today: $today');
+  if (flowState.lastRun != null) {
+    final lastRun = flowState.lastRun!;
+    lines.add('Last run: ${lastRun.state}${lastRun.durationS != null ? ' · ${lastRun.durationS!.round()}s' : ''}');
+  }
+  if (live?.runId != null) lines.add('Run id: ${live!.runId}');
+  return lines.isEmpty ? 'No further detail yet.' : lines.join('\n');
 }
 
-/// Counters for the run currently shown, plus the day's running totals.
-/// Device control moved to a compact `DeviceBar` in the Live screen's header
-/// (D46) — it no longer competes with the log console for space here.
+/// The Live screen's header ribbon strip (V2.8/SCREENS §3). What used to be
+/// its own scrolling card of label/value rows (~180px, the first thing you'd
+/// see on the app's showpiece screen, and visually inert) is now one line:
+/// phase, an elapsed timer while actually running, and the live per-item
+/// counters — still click-to-filter (D113), unchanged. Run id and last-run
+/// detail move into an info tooltip, since they're reference info you check
+/// once, not something you watch tick over. Device control stays separate
+/// (`DeviceBar`, D46) — this widget only ever renders flow state.
 class RunSummary extends ConsumerWidget {
   const RunSummary({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = theme.tokens;
     final live = ref.watch(liveControllerProvider).value;
     final schedulerSnapshot = ref.watch(flowsControllerProvider).value;
     final flow = live?.flow;
     final flowState = flow == null ? null : schedulerSnapshot?.flows[flow];
 
-    final tokens = theme.tokens;
+    if (flowState == null) {
+      return Text(
+        'No scheduler data yet.',
+        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
+      );
+    }
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(tokens.space.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Run summary', style: theme.textTheme.titleMedium),
-          SizedBox(height: tokens.space.md),
-          if (flowState == null)
-            Text('No scheduler data yet.', style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary))
+    final kind = flowStatusKindOf(flowState);
+    final running = kind == FlowStatusKind.running;
+    if (running) ref.watch(_secondTickProvider);
+    final elapsed = running && live?.runStartedAt != null
+        ? DateTime.now().toUtc().difference(live!.runStartedAt!.toUtc())
+        : null;
+
+    final counters = _liveCounters(flow, live?.events ?? const []);
+    final canFilter = _filterableCounterFlows.contains(flow);
+    final selectedVerdicts = live?.selectedVerdicts ?? const {};
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: tokens.space.sm,
+      runSpacing: tokens.space.xs,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIcon(flowStatusIcon(kind), size: IconSize.sm, color: flowAccent(kind).fg(tokens)),
+            SizedBox(width: tokens.space.xs),
+            Text(flowStatusLabel(kind, flowState), style: theme.textTheme.bodyMedium),
+          ],
+        ),
+        if (elapsed != null)
+          NumericText('${formatFlowCountdown(elapsed)} elapsed', role: TextRole.caption, color: tokens.content.secondary),
+        for (final entry in counters.entries)
+          if (canFilter && !_nonFilterableCounterKeys.contains(entry.key))
+            _CounterChip(
+              kind: _counterTone(flow, entry.key),
+              label: entry.key,
+              value: entry.value,
+              selected: selectedVerdicts.contains(entry.key),
+              onTap: () => ref.read(liveControllerProvider.notifier).toggleVerdict(entry.key),
+            )
           else
-            KeyValueList(
-              labelWidth: 76,
-              rows: [
-                MetricRow(label: 'Phase', value: Text(phaseLabel[flowState.phase] ?? flowState.phase, style: theme.textTheme.bodyMedium)),
-                if (_todayLine(flowState) != null)
-                  MetricRow(label: 'Today', value: NumericText(_todayLine(flowState)!, role: TextRole.body)),
-                if (flowState.lastRun != null)
-                  MetricRow(
-                    label: 'Last run',
-                    value: Text(
-                      '${flowState.lastRun!.state}'
-                      '${flowState.lastRun!.durationS != null ? ' · ${flowState.lastRun!.durationS!.round()}s' : ''}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                if (live?.runId != null) MetricRow(label: 'Run id', value: MonoText(live!.runId!, role: TextRole.caption)),
-              ],
-            ),
-          SizedBox(height: tokens.space.xl),
-          Text('Counters this run', style: theme.textTheme.titleSmall),
-          SizedBox(height: tokens.space.sm),
-          _EventCounters(flow: flow),
-        ],
-      ),
+            _CounterChip(kind: StatusKind.neutral, label: entry.key, value: entry.value),
+        AppTooltip(
+          rich: true,
+          title: 'Run detail',
+          message: _tooltipMessage(flowState, live),
+          child: AppIcon(AppIcons.info, size: IconSize.sm, color: tokens.content.secondary),
+        ),
+      ],
     );
   }
 }
@@ -155,43 +184,48 @@ StatusKind _counterTone(String? flow, String key) {
   return toneFor(key);
 }
 
-class _EventCounters extends ConsumerWidget {
-  const _EventCounters({required this.flow});
+/// `StatusChip`'s visual shape, with an [AnimatedCounter] in place of a
+/// plain string value — the "implicit animation on counters" ARCHITECTURE §9
+/// promised, applied to the one place in this app a number changes every
+/// few seconds while you're watching it. Kept local rather than widening
+/// `StatusChip` itself: every other call site wants a plain string label,
+/// and `StatusChip` is shared app-wide (COMPONENTS.md §3).
+class _CounterChip extends StatelessWidget {
+  const _CounterChip({required this.kind, required this.label, required this.value, this.selected = false, this.onTap});
 
-  final String? flow;
+  final StatusKind kind;
+  final String label;
+  final int value;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final tokens = theme.tokens;
-    final live = ref.watch(liveControllerProvider).value;
-    final events = live?.events ?? const [];
-    final selectedVerdicts = live?.selectedVerdicts ?? const {};
-    final counters = _liveCounters(flow, events);
-    if (counters.isEmpty) {
-      return Text(
-        'No counters yet.',
-        style: theme.textTheme.bodySmall?.copyWith(color: tokens.content.secondary),
-      );
-    }
-    final canFilter = _filterableCounterFlows.contains(flow);
-    return Wrap(
-      spacing: tokens.space.xs,
-      runSpacing: tokens.space.xs,
-      children: [
-        for (final entry in counters.entries)
-          if (canFilter && !_nonFilterableCounterKeys.contains(entry.key))
-            StatusChip(
-              kind: _counterTone(flow, entry.key),
-              label: '${entry.key}: ${entry.value}',
-              dense: true,
-              selected: selectedVerdicts.contains(entry.key),
-              onTap: () => ref.read(liveControllerProvider.notifier).toggleVerdict(entry.key),
-            )
-          else
-            StatusChip(kind: StatusKind.neutral, label: '${entry.key}: ${entry.value}', dense: true),
-      ],
+  Widget build(BuildContext context) {
+    final tokens = Theme.of(context).tokens;
+    final fg = kind.onContainer(tokens);
+    final radius = BorderRadius.circular(tokens.geometry.radiusSm);
+
+    final chip = Container(
+      padding: EdgeInsets.symmetric(horizontal: tokens.space.xs, vertical: 1),
+      decoration: BoxDecoration(
+        color: kind.container(tokens),
+        borderRadius: radius,
+        border: selected ? Border.all(color: tokens.accent.primary, width: 1.5) : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$label ', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+          AnimatedCounter(value, role: TextRole.label, color: fg),
+        ],
+      ),
+    );
+
+    if (onTap == null) return chip;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: radius,
+      child: InkWell(onTap: onTap, borderRadius: radius, child: chip),
     );
   }
 }
-

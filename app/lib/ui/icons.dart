@@ -111,6 +111,11 @@ class AppIcons {
   static PhosphorIconData windowRestore(PhosphorIconsStyle w) => PhosphorIcons.copy(w);
   static PhosphorIconData windowClose(PhosphorIconsStyle w) => PhosphorIcons.x(w);
 
+  /// Maximise/restore a single pane (the Live screen's log/visualization
+  /// split, V2.8) — distinct from the window-chrome icons above.
+  static PhosphorIconData expand(PhosphorIconsStyle w) => PhosphorIcons.arrowsOut(w);
+  static PhosphorIconData collapse(PhosphorIconsStyle w) => PhosphorIcons.arrowsIn(w);
+
   // Density/zoom steps — the library grid's small/medium/large tile-size
   // control, small→large by dot/square count so the icon itself communicates
   // scale.

@@ -45,19 +45,31 @@ class FollowSurface extends StatelessWidget {
     // full-bleed row each — same reasoning as `scrape_surface.dart`'s
     // `_HistoryWrap` (D43's follow-up): a single-column list of `Row`-shaped
     // cards left most of the pane's width empty once the visualization
-    // surface got more room. Slightly wider than scrape's own cards since
+    // surface got more room. A higher minimum than scrape's own cards since
     // the outcome badge here (e.g. `WANTS_TO_FOLLOW`) needs more room.
     final tokens = theme.tokens;
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(tokens.space.md),
-      child: Wrap(
-        spacing: tokens.space.md,
-        runSpacing: tokens.space.md,
-        children: [
-          for (final subject in subjects.reversed)
-            SizedBox(width: 420, child: _FollowCard(events: bySubject[subject]!, theme: theme)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Computed rather than the old hardcoded 420 (D45, tuned to follow
+        // alone) — SCREENS §3's "no ragged gutter at any window size."
+        final width = wrapCardWidth(
+          constraints.maxWidth - tokens.space.md * 2,
+          minWidth: 360,
+          maxWidth: 500,
+          spacing: tokens.space.md,
+        );
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(tokens.space.md),
+          child: Wrap(
+            spacing: tokens.space.md,
+            runSpacing: tokens.space.md,
+            children: [
+              for (final subject in subjects.reversed)
+                SizedBox(width: width, child: _FollowCard(events: bySubject[subject]!, theme: theme)),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -16,6 +16,21 @@ StatusKind toneFor(String? verdict) => switch (verdict) {
   _ => StatusKind.neutral,
 };
 
+/// Picks a per-card width so [availableWidth] holds a whole number of
+/// columns with no ragged trailing gutter — replacing the three hardcoded
+/// per-flow constants (380 scrape / 420 follow) SCREENS §3 called out as
+/// tuned to one flow's card and one window size (D45). Never narrower than
+/// [minWidth] (below which a card's own content starts to crowd) or wider
+/// than [maxWidth] (beyond which a wrap card just becomes dead padding
+/// around the same content, the exact thing D44 fixed for the old
+/// single-column list).
+double wrapCardWidth(double availableWidth, {required double minWidth, required double maxWidth, required double spacing}) {
+  if (availableWidth <= minWidth) return availableWidth.clamp(0, maxWidth);
+  final columns = ((availableWidth + spacing) / (minWidth + spacing)).floor().clamp(1, 1 << 20);
+  final width = (availableWidth - (columns - 1) * spacing) / columns;
+  return width.clamp(minWidth, maxWidth);
+}
+
 /// The source entity a scrape/follow candidate was found under —
 /// `scrape_queued/<root>/<user>.jpg` and `follow_queued/<root>/<user>.jpg`
 /// both carry it as their parent directory, and every event on that image
