@@ -8,13 +8,14 @@ import '../../core/library_image.dart';
 import '../../core/library_models.dart';
 import '../../ui/icons.dart';
 
-/// One grid cell: a thumbnail, a selection ring/badge, and the three
-/// interactions CP 5.3 asks for — double-click copies the id, right-click
-/// opens a context menu to open the real Instagram URL (or copy the id from
-/// there too). Left-click selection semantics (plain toggle vs shift-range)
-/// are decided by the caller, which owns the selection state — this widget
-/// only reports whether Shift was held. A plain click always toggles (no
-/// ctrl needed), so clicking several images in a row builds up a batch.
+/// One grid cell: a thumbnail, a selection ring/badge, and the interactions
+/// CP 5.3/V2.10 ask for — double-click opens the lightbox (SCREENS.md §5c;
+/// copy-id lives only in the context menu now, unchanged), right-click opens
+/// a context menu to open the real Instagram URL or copy the id/entity name.
+/// Left-click selection semantics (plain toggle vs shift-range) are decided
+/// by the caller, which owns the selection state — this widget only reports
+/// whether Shift was held. A plain click always toggles (no ctrl needed), so
+/// clicking several images in a row builds up a batch.
 class LibraryTile extends StatelessWidget {
   const LibraryTile({
     super.key,
@@ -25,6 +26,7 @@ class LibraryTile extends StatelessWidget {
     required this.entityLabel,
     required this.onPrimaryTap,
     required this.onRequestFocus,
+    required this.onOpenLightbox,
   });
 
   final LibraryImageEntry entry;
@@ -34,6 +36,7 @@ class LibraryTile extends StatelessWidget {
   final String? entityLabel;
   final void Function({required bool shift}) onPrimaryTap;
   final VoidCallback onRequestFocus;
+  final VoidCallback onOpenLightbox;
 
   String get _id => entry.name.endsWith('.jpg') ? entry.name.substring(0, entry.name.length - 4) : entry.name;
 
@@ -82,7 +85,7 @@ class LibraryTile extends StatelessWidget {
         onRequestFocus();
         onPrimaryTap(shift: HardwareKeyboard.instance.isShiftPressed);
       },
-      onDoubleTap: () => _copy(context, _id, 'Copied'),
+      onDoubleTap: onOpenLightbox,
       onSecondaryTapDown: (details) {
         onRequestFocus();
         _showMenu(context, details.globalPosition);

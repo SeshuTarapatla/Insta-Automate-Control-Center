@@ -47,24 +47,26 @@ const libraryFolderAspectRatio = {
 double libraryAspectRatioFor(String? folder) => libraryFolderAspectRatio[folder] ?? 1.0;
 
 /// SCREENS.md §5a — the folder rail grouped by pipeline stage rather than
-/// seven undifferentiated rows, so it's visible at a glance which two
-/// folders are actually the user's job (⚑) versus just pipeline state.
+/// seven undifferentiated rows, so it's visible at a glance which folders are
+/// actually the user's job (⚑) versus just pipeline state.
 class LibraryStageGroup {
   const LibraryStageGroup({required this.label, required this.folders, this.review = false});
 
   final String label;
   final List<String> folders;
 
-  /// True for the two human-in-the-loop folders (`gender_valid`, `scraped`)
-  /// — ARCHITECTURE §9's "two humans-in-the-loop steps," the pipeline's
-  /// actual bottleneck.
+  /// True for the review group — ARCHITECTURE §9's two human-in-the-loop
+  /// folders (`gender_valid`, `scraped`), the pipeline's actual bottleneck,
+  /// plus `gender_invalid` alongside them (the user's own call — a place to
+  /// catch classifier mistakes, not a pipeline gate the way the other two
+  /// are).
   final bool review;
 }
 
 const libraryStageGroups = [
   LibraryStageGroup(label: 'INTAKE', folders: ['entities']),
-  LibraryStageGroup(label: 'SCANNING', folders: ['scanned', 'gender_invalid']),
-  LibraryStageGroup(label: 'YOUR REVIEW', folders: ['gender_valid', 'scraped'], review: true),
+  LibraryStageGroup(label: 'SCANNING', folders: ['scanned']),
+  LibraryStageGroup(label: 'YOUR REVIEW', folders: ['gender_invalid', 'gender_valid', 'scraped'], review: true),
   LibraryStageGroup(label: 'QUEUED', folders: ['scrape_queued', 'follow_queued']),
 ];
 

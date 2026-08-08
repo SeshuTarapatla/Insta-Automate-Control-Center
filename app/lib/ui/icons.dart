@@ -73,6 +73,7 @@ class AppIcons {
   static PhosphorIconData chevronDown(PhosphorIconsStyle w) => PhosphorIcons.caretDown(w);
   static PhosphorIconData chevronUp(PhosphorIconsStyle w) => PhosphorIcons.caretUp(w);
   static PhosphorIconData chevronRight(PhosphorIconsStyle w) => PhosphorIcons.caretRight(w);
+  static PhosphorIconData chevronLeft(PhosphorIconsStyle w) => PhosphorIcons.caretLeft(w);
   static PhosphorIconData link(PhosphorIconsStyle w) => PhosphorIcons.link(w);
   static PhosphorIconData linkOff(PhosphorIconsStyle w) => PhosphorIcons.linkBreak(w);
   static PhosphorIconData image(PhosphorIconsStyle w) => PhosphorIcons.image(w);

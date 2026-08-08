@@ -124,7 +124,7 @@
 > Not v2 work and doesn't change the line above: V2.8 (Live) is still next whenever this branch
 > picks the checklist back up. Full account in DECISIONS.md's D113.
 >
-> **V2.8 (Live) built, 🟡, awaiting your checkpoint test — D114.** The fixed 420px visualization
+> **V2.8 (Live) built and accepted, D114.** The fixed 420px visualization
 > column (D45's own comment flagged it as tuned to scrape alone) is now a `ResizableSplit` with a
 > ⤢ expand/restore toggle on each pane; `RunSummary` dissolved from its own ~180px card into a
 > one-line header strip (phase, a real elapsed timer off `GET /api/flow-runs/{id}`'s recorded start
@@ -140,7 +140,44 @@
 > still open**: a real scrape run watched end to end (elapsed timer, counters, the morph, full-width
 > images, log search, the split dragging and persisting across a restart), then at least one other
 > flow to confirm the computed card widths hold up where the old numbers were scrape-only. Full
-> account in DECISIONS.md's D114.
+> account in DECISIONS.md's D114. **You confirmed the full checkpoint test live 2026-08-08 —
+> V2.8 accepted.**
+>
+> **V2.10 (Library review mode) built and accepted, D115.** The headline
+> feature of all of v2: a full-window keep/discard decision buffer for one `(folder, entity)` at a
+> time (`LibraryReviewPage`), pushed as a real full-screen route covering the title bar and nav
+> rail entirely, matching SCREENS.md §5b's own mockup. The exact keyboard map from that spec —
+> `→`/`L` keep-and-advance, `←`/`H` discard-and-advance, `↑`/`K` back-and-un-decide, `Space`
+> toggle-without-advancing, `Enter` apply, `Del` immediate single-image delete (still through the
+> shared confirm dialog), `Z` zoom-to-fit/actual-size, `O` open on Instagram, `Esc` exit writing
+> nothing. Apply reuses a newly-shared `applyLibrarySelection` (extracted from the toolbar's own
+> Apply button) — no second implementation of what "apply" means. **The checkpoint's own flagged
+> risk — never presenting a partial set as the whole folder, D90's mobile bug in a new shape — is
+> enforced structurally**: Apply stays disabled until every loaded image is decided *and* nothing
+> more is left to page in, with pages requested well before the reviewer actually reaches the
+> loaded boundary. The double-click lightbox (§5c, already ✅ confirmed D98) landed the same
+> session — double-click now opens a large browse-only view instead of copying the id (still in
+> the right-click menu). All four SCREENS-listed entry points exist, including the nav rail's
+> Review sub-item and the Flows ⚑ edge, both upgraded from "navigate to the folder" to actually
+> resolve an entity and push straight into review mode, delivering on `pipeline_edge.dart`'s own
+> long-standing comment. **A real bug caught by the new test suite before it ever shipped, not
+> live**: the first version mutated a provider from inside `build()` (Riverpod forbids this, and
+> the real controller's `loadMore()` would have hit the identical assertion in production, not
+> just in tests) — fixed with a post-frame callback. `flutter analyze` clean, `flutter test` 210
+> checks / 209 passing (the one `shell_layout_test.dart` failure is D114's same pre-existing,
+> unrelated issue). **Two same-session follow-ups from your own retest/request.** The
+> small/medium/large zoom control reset to medium on every restart — `LibraryZoomNotifier` never
+> persisted at all; fixed with the same `SharedPreferences` pattern
+> `NavRailCollapsedNotifier`/`ThemeController` already use (a synchronous default, a real saved
+> value loading a moment later). And `gender_invalid` moved from SCANNING into YOUR REVIEW in the
+> folder rail's grouping — a place to catch classifier mistakes, your own call, not a pipeline gate
+> the way `gender_valid`/`scraped` are; `curationFolders` (Overview's hero tile/nav badge) stayed
+> at just those two, deliberately, since widening it would also grow the Overview's "needs
+> attention" surface. **One more same-session follow-up, your own request: YOUR REVIEW reordered
+> to `gender_invalid` → `gender_valid` → `scraped`** (was `gender_valid` first). Full account,
+> including all four follow-ups, in DECISIONS.md's D115. **You confirmed the full checkpoint test
+> live 2026-08-08 — V2.10 accepted.** **Next up: V2.12 (Command palette)** — see PLAN_V2.md's
+> `## V2.12 — Command palette` section; `Ctrl+K` doesn't exist at all today.
 >
 > **Scope boundary: v2 is entirely inside `app/`.** No agent, pipeline, helm or mobile
 > changes; no redeploys; no cross-repo branches. Every piece of data the redesign needs is

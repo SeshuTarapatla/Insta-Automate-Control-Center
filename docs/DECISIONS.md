@@ -5,6 +5,129 @@ session can tell a settled question from an open one.
 
 ---
 
+## 2026-08-08 — V2.10, Library review mode (D115)
+
+### D115 · A full-window keep/discard decision buffer for one `(folder, entity)` at a time, writing only through the existing `POST /api/library/apply`; the double-click lightbox lands in the same session
+
+**Built per PLAN_V2.md's `## V2.10 — Library review mode` / SCREENS.md §5b-§5c** — the headline
+feature of all of v2, next after V2.8 in the fixed V2.6→V2.7→V2.9→V2.5→V2.8→V2.10→... sequence
+(D107). New `app/lib/features/library/review_page.dart`: `LibraryReviewPage` (the decision
+buffer) and `LibraryLightboxPage` (§5c's browse-only sibling — prev/next, no buffer) share the
+same large-image stage, pushed as a genuine full-screen route via
+`Navigator.of(context, rootNavigator: true).push(...)` — this covers the title bar and nav rail
+entirely, matching SCREENS.md's own mockup (no app chrome shown at all), a deliberate reading of
+"full-window" over a variant that keeps the shell visible. Esc always returns to it.
+
+**The keyboard map is exactly SCREENS §5b's table** — `→`/`L` keep-and-advance, `←`/`H`
+discard-and-advance, `↑`/`K` back one *and un-decide it*, `Space` toggles the current decision
+without advancing, `Enter` applies, `Del` deletes the current image immediately (bypassing the
+buffer, but still through the same confirm dialog every other delete path in this app uses —
+SCREENS' "immediately" read as "not deferred to Apply," not "skip the confirm," since nothing
+else in this codebase deletes without one), `Z` toggles zoom-to-fit/actual-size
+(`LibraryFullImage`, new in `core/library_image.dart`, backing `GET /api/library/image` — the
+original file, not the grid's thumbnail), `O` opens the real Instagram URL.
+
+**Apply reuses `applyLibrarySelection`, extracted from `library_toolbar.dart`'s private `_apply`
+into a shared top-level function** (same shape as the existing `deleteLibrarySelection`) — the
+toolbar's own Apply button and review mode's Apply both now call the identical
+`POST /api/library/apply` + confirm dialog, so there is no second implementation of what "apply"
+means or looks like.
+
+**The one correctness rule PLAN_V2.md flagged as this checkpoint's real risk — "never present a
+partial set as the whole folder," D90's mobile bug in a new shape — is enforced structurally, not
+just documented.** `apply()` is whole-directory-scoped server-side (everything not selected gets
+trashed), so Apply is disabled until every *loaded* image has a decision **and** `hasMore` is
+false — reaching the loaded boundary while pages remain shows a spinner, not the "done" screen,
+since `_maybePageMore` requests the next page well before the reviewer actually reaches it (a
+20-item lookahead against the current position, not a scroll listener — there's no scrolling in a
+one-at-a-time reviewer).
+
+**A real bug this same rule surfaced, caught by the new test suite before it ever shipped, not
+found live:** the first version called `loadMore()` directly from `_maybePageMore`, itself called
+from `build()`. Riverpod forbids mutating a provider from inside a widget's own build — and the
+real `LibraryImagesController.loadMore()` writes `state` (`loadingMore: true`) as its literal
+first statement, so this would have thrown the identical assertion in production the moment a
+reviewer paged past a folder's first batch, not just in the test harness. Fixed by deferring the
+call through `WidgetsBinding.instance.addPostFrameCallback`.
+
+**The double-click lightbox (§5c, ✅ already confirmed by the user in D98) landed in the same
+session** — `library_tile.dart`'s double-click now opens `LibraryLightboxPage` instead of copying
+the id; copy-id already lived in the right-click context menu too, so nothing is lost, matching
+SCREENS' own framing. `library_grid.dart` passes the tapped tile's index as the lightbox's start
+position.
+
+**All four SCREENS-listed entry points exist**: the toolbar's own Review button (enabled exactly
+like Apply/Delete — visible always, disabled with nothing loaded); `R` via a page-level
+`CallbackShortcuts` in `library_page.dart`; and the nav rail's Review sub-item /
+`pipeline_edge.dart`'s ⚑ tap, both upgraded from "navigate to the folder" (all they ever did) to
+actually deliver on `pipeline_edge.dart`'s own long-standing comment — a new
+`openReviewModeForFolder` selects the folder, awaits its first entity with a real backlog, and
+pushes straight into review mode for it, rather than landing on "pick an entity to browse."
+
+**Verified:** `flutter analyze` clean. New `test/review_mode_test.dart` (5/5) — Keep/Discard/
+Back/Space's exact semantics including the Up-then-redecide case verified end to end against a
+real (faked) Apply call; Apply staying disabled while more pages remain even with every *loaded*
+image decided; the pagination-boundary `loadMore()` trigger (via a recording fake, not a real
+agent); Esc popping the route and writing nothing; Del showing the shared confirm dialog and
+writing nothing on Cancel. `FileOpener.openUrl` (the `O` key) is deliberately never exercised —
+same reasoning `library_layout_test.dart` already established for the tile's own "Open on
+Instagram" menu item, since it shells out to the real OS via win32 `ShellExecute`.
+`flows_layout_test.dart`'s existing ⚑-edge test needed updating for the richer behavior (it now
+also resolves an entity and pushes a real route) — without fakes for the folder/entity/images
+providers it touches, the tap would have hit a real `dio.get` and left a pending `Timer` past
+the widget tree's teardown; fixed with the same fake-controller shape `library_layout_test.dart`
+already established. Full suite: 210 checks, 209 passing — the one `shell_layout_test.dart`
+failure (`AppShell ... rail expanded`) reproduces identically on the pre-session branch tip
+(confirmed via `git diff --stat` showing `nav_rail.dart`'s only change this session was a 10-line,
+non-layout edit to `openReview()`), matching the same pre-existing failure D114 already recorded.
+`flutter build windows --debug` succeeds. Two stale prior-session instances found running were
+killed first and replaced with one fresh one (D87's precedent). Built and started for you per
+rule 5 — not clicked through by Claude.
+
+**Checkpoint test (yours, per PLAN_V2.md's own V2.10 gate — the only checkpoint that writes to
+real curation data):** review a real batch end to end in `gender_valid` (or `scraped`), Apply it,
+and confirm the files moved exactly as the grid's own Apply would have. Test `Esc` mid-batch and
+confirm nothing was written. Test the pagination boundary on an entity with a large backlog — the
+next page should already be loading well before you reach the end of what's on screen. Try the
+four entry points (toolbar Review button, `R`, the nav rail's Review sub-item, a Flows ⚑ edge) and
+the double-click lightbox. Then do the same review flow once more in `scraped`.
+
+**Same-session follow-up, caught by your own retest: the small/medium/large zoom control reset to
+medium on every restart.** `LibraryZoomNotifier` (`library_controller.dart`) never persisted at
+all — `build()` always returned the hardcoded default. Fixed with the same pattern
+`NavRailCollapsedNotifier` (`core/nav_state.dart`) and `ThemeController` already use: a
+synchronous `LibraryZoom.medium` default so the first frame never waits on disk, `build()` kicking
+off an async `SharedPreferences` read that updates `state` a moment later if a saved value exists,
+and `set()` now persisting (`prefs.setString('library_zoom', zoom.name)`) alongside updating state.
+`flutter analyze` clean, `flutter test` unchanged (16/16 across `library_layout_test.dart` +
+`review_mode_test.dart` — the layout test's `_FixedZoom` fake fully overrides `build()` and never
+touches `SharedPreferences`, so it was unaffected). Rebuilt and restarted for you.
+
+**Same-session follow-up, your own request: `gender_invalid` moved from SCANNING into YOUR
+REVIEW.** Purely a `libraryStageGroups` regrouping (`core/library_models.dart`) — `gender_invalid`
+was classify's rejected-gender output with no curation step attached, unlike `gender_valid`/
+`scraped`'s real pipeline gates (ARCHITECTURE §9's two human-in-the-loop steps); the user's own
+call to give it a place to catch classifier mistakes rather than leave it unreviewable. No
+behavior change beyond the grouping — review mode was already generically available for any
+folder (the toolbar's Review button/`R` only ever gated on "is something loaded," never on which
+folder), so `gender_invalid` could already be reviewed, it just read as pipeline state rather than
+an invitation to. `curationFolders` (`overview/curation_tile.dart` — the Overview hero tile/
+nav-rail badge/default review-entry-point folder) was deliberately left at just
+`['gender_valid', 'scraped']`, since widening it would also grow the Overview's "needs attention"
+surface area and nothing asked for that. Doc comments in `library_models.dart`/`library_rail.dart`
+and the matching `library_layout_test.dart` assertion updated from "two" to "three" review
+folders. `flutter analyze` clean, `flutter test` 11/11 in `library_layout_test.dart`. Rebuilt and
+restarted for you.
+
+**Same-session follow-up, your own request: YOUR REVIEW reordered to `gender_invalid` →
+`gender_valid` → `scraped`.** A one-line reorder of the same `libraryStageGroups` list (was
+`gender_valid` first). Rebuilt and restarted for you.
+
+**Checkpoint test passed 2026-08-08 — you confirmed all four follow-ups plus the core review
+flow live. V2.10 accepted.** Next: V2.12 (Command palette).
+
+---
+
 ## 2026-08-08 — V2.8, Live screen rework (D114)
 
 ### D114 · Fixed 420px visualization column replaced with a resizable, expandable split; RunSummary dissolved into a header strip; log search and the scrape morph added
@@ -92,11 +215,12 @@ windows --debug` succeeds. Built and started for you per rule 5 — not clicked 
 five stale prior-session instances found running were killed first and replaced with one fresh one
 (D87's precedent).
 
-**Checkpoint test (yours, per PLAN_V2.md's own V2.8 gate) — still needed:** trigger a real scrape
-and watch the elapsed timer, the counters, the in-progress card morph into the resolved composite,
-images filling the pane's actual width, log search working, and the split dragging and persisting
-across a restart; then check at least one other flow (scan or classify) to confirm the computed
-card widths hold up where the old hardcoded numbers were tuned only for scrape.
+**Checkpoint test (yours, per PLAN_V2.md's own V2.8 gate) — passed, 2026-08-08.** A real scrape
+was watched end to end: elapsed timer, counters, the in-progress card morphing into the resolved
+composite, images filling the pane's actual width, log search working, and the split dragging and
+persisting across a restart; at least one other flow was also checked to confirm the computed card
+widths hold up where the old hardcoded numbers were tuned only for scrape. **V2.8 accepted.** Next:
+V2.10 (Library review mode).
 
 ---
 

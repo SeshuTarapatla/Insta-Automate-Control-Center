@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:ia_control_center/core/config_models.dart';
+import 'package:ia_control_center/core/library_models.dart';
 import 'package:ia_control_center/core/nav_state.dart';
 import 'package:ia_control_center/core/scheduler_models.dart';
 import 'package:ia_control_center/features/flows/flow_node.dart';
@@ -55,6 +56,27 @@ class _FakeConfigController extends ConfigController {
     schema: [],
     provenance: {},
   );
+}
+
+/// V2.10 — the ⚑ edge now calls `openReviewModeForFolder`, which resolves a
+/// real folder/entity round trip before pushing the review route; these
+/// stand in for that so the tap doesn't hit a real `dio.get` and leave a
+/// pending Timer once the widget tree is torn down.
+class _FakeFoldersController extends LibraryFoldersController {
+  @override
+  Future<List<LibraryFolderInfo>> build() async =>
+      const [LibraryFolderInfo(name: 'gender_valid', flat: false, total: 1204, entities: 3)];
+}
+
+class _FakeEntitiesController extends LibraryEntitiesController {
+  @override
+  Future<List<LibraryEntityInfo>> build() async => const [LibraryEntityInfo(root: 'someone', count: 42)];
+}
+
+class _FakeImagesController extends LibraryImagesController {
+  @override
+  Future<LibraryImagesState> build() async =>
+      const LibraryImagesState(images: [], total: 0, hasMore: false, loadingMore: false);
 }
 
 FlowState _state({
@@ -318,10 +340,15 @@ void main() {
     expect(find.textContaining('YOU REVIEW'), findsNothing);
   });
 
-  testWidgets('PipelineEdge ⚑ review edge jumps to the right Library folder on tap', (tester) async {
+  testWidgets('PipelineEdge ⚑ review edge jumps straight into review mode, entity and all', (tester) async {
     late ProviderContainer container;
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          libraryFoldersControllerProvider.overrideWith(_FakeFoldersController.new),
+          libraryEntitiesControllerProvider.overrideWith(_FakeEntitiesController.new),
+          libraryImagesControllerProvider.overrideWith(_FakeImagesController.new),
+        ],
         child: Consumer(
           builder: (context, ref, _) {
             container = ProviderScope.containerOf(context);
@@ -342,10 +369,16 @@ void main() {
     expect(find.textContaining('YOU REVIEW'), findsOneWidget);
 
     await tester.tap(find.byType(PipelineEdge));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(container.read(selectedFolderProvider), 'gender_valid');
+    // V2.10 — `openReviewModeForFolder` now also picks the folder's first
+    // entity with a real backlog and pushes straight into review mode,
+    // delivering on this comment's own long-standing promise (D108) instead
+    // of just landing on the Library screen with nothing picked.
+    expect(container.read(selectedEntityProvider), 'someone');
     expect(container.read(selectedNavIndexProvider), libraryIndex);
+    expect(find.textContaining('REVIEW'), findsWidgets);
   });
 
   testWidgets('PipelineEdge turns warn when the backlog exceeds the reserve target', (tester) async {

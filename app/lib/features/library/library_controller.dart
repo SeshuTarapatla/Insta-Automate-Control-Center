@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/agent_client.dart';
 import '../../core/agent_ws.dart';
@@ -251,11 +252,31 @@ enum LibraryZoom {
   final double tileWidth;
 }
 
+/// Persisted the same way `NavRailCollapsedNotifier` (`core/nav_state.dart`)
+/// and `ThemeController`'s appearance settings are — a synchronous default so
+/// the first frame never flashes an unstyled grid, the real saved value
+/// loading a moment later.
 class LibraryZoomNotifier extends Notifier<LibraryZoom> {
-  @override
-  LibraryZoom build() => LibraryZoom.medium;
+  static const _prefsKey = 'library_zoom';
 
-  void set(LibraryZoom zoom) => state = zoom;
+  @override
+  LibraryZoom build() {
+    _load();
+    return LibraryZoom.medium;
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_prefsKey);
+    final zoom = saved == null ? null : LibraryZoom.values.where((z) => z.name == saved).firstOrNull;
+    if (zoom != null) state = zoom;
+  }
+
+  Future<void> set(LibraryZoom zoom) async {
+    state = zoom;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKey, zoom.name);
+  }
 }
 
 final libraryZoomProvider = NotifierProvider<LibraryZoomNotifier, LibraryZoom>(LibraryZoomNotifier.new);

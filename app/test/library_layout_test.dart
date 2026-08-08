@@ -256,7 +256,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('FolderRail groups the seven folders by pipeline stage, marking the two review folders', (
+  testWidgets('FolderRail groups the seven folders by pipeline stage, marking the three review folders', (
     tester,
   ) async {
     await _render(

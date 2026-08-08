@@ -12,6 +12,7 @@ import '../core/nav_state.dart';
 import '../core/service_models.dart';
 import '../core/theme/tokens.dart';
 import '../features/library/library_controller.dart';
+import '../features/library/review_page.dart';
 import '../features/overview/curation_tile.dart';
 import '../features/services/services_controller.dart';
 import '../ui/icons.dart';
@@ -87,11 +88,10 @@ class AppNavRail extends ConsumerWidget {
     final badges = {servicesIndex: serviceIssueCount};
 
     void select(int index) => ref.read(selectedNavIndexProvider.notifier).select(index);
-    void openReview() {
-      ref.read(selectedFolderProvider.notifier).select(curationFolders.first);
-      ref.read(selectedEntityProvider.notifier).select(null);
-      select(libraryIndex);
-    }
+    // V2.10 — delivers on this tile's own promise for real: jumps straight
+    // into review mode for the first curation folder with a real backlog,
+    // not just to the Library screen with nothing picked.
+    void openReview() => openReviewModeForFolder(context, ref, curationFolders.first);
 
     return AnimatedContainer(
       duration: tokens.motion.reduced ? Duration.zero : tokens.motion.standard,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/library_models.dart';
@@ -10,6 +11,7 @@ import 'library_controller.dart';
 import 'library_grid.dart';
 import 'library_rail.dart';
 import 'library_toolbar.dart';
+import 'review_page.dart';
 
 /// Three columns: the seven folders, the entity roots inside whichever one is
 /// selected (skipped for the flat `entities` folder), and the grid itself
@@ -81,15 +83,34 @@ class LibraryPage extends ConsumerWidget {
             persistKey: 'library.rail.entities',
           );
 
-    return AppPage(
-      title: 'Library',
-      body: ResizableSplit(
-        first: AppPanel(padding: EdgeInsets.zero, child: const FolderRail()),
-        second: rightOfFolders,
-        initialFirstSize: 220,
-        minFirst: 160,
-        minSecond: 400,
-        persistKey: 'library.rail.folders',
+    // `R` — SCREENS.md §5b's keyboard entry point into review mode, next to
+    // the toolbar's own Review button and the nav rail/Flows ⚑ edge (which
+    // pick a folder+entity themselves via `openReviewModeForFolder`). A
+    // plain character key, same as the app-wide `?` binding (D79/D80) — a
+    // focused `TextField` (the entity filter box) consumes its own character
+    // input before this ever sees it, so typing "r" while filtering isn't
+    // expected to fire this.
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyR): () {
+          final images = ref.read(libraryImagesControllerProvider).value;
+          if (selectedFolder == null || images == null || images.total == 0) return;
+          openReviewMode(context, ref, folder: selectedFolder, entity: flat ? null : selectedEntity);
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: AppPage(
+          title: 'Library',
+          body: ResizableSplit(
+            first: AppPanel(padding: EdgeInsets.zero, child: const FolderRail()),
+            second: rightOfFolders,
+            initialFirstSize: 220,
+            minFirst: 160,
+            minSecond: 400,
+            persistKey: 'library.rail.folders',
+          ),
+        ),
       ),
     );
   }

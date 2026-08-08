@@ -11,7 +11,7 @@ import 'library_controller.dart';
 
 /// Left column: the seven stage folders, grouped by pipeline stage
 /// (SCREENS.md §5a) rather than seven undifferentiated rows — INTAKE /
-/// SCANNING / ⚑ YOUR REVIEW / QUEUED, so it's visible at a glance which two
+/// SCANNING / ⚑ YOUR REVIEW / QUEUED, so it's visible at a glance which
 /// folders are actually the user's job.
 class FolderRail extends ConsumerWidget {
   const FolderRail({super.key});

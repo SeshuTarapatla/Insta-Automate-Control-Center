@@ -7,6 +7,7 @@ import '../../core/theme/tokens.dart';
 import '../../ui/feedback.dart';
 import 'library_controller.dart';
 import 'library_tile.dart';
+import 'review_page.dart';
 
 /// The virtualized image grid: `GridView.builder` already only builds visible
 /// tiles (Flutter-level virtualization), and `_maybeLoadMore` pages in the
@@ -126,6 +127,7 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
     final imagesAsync = ref.watch(libraryImagesControllerProvider);
     final zoom = ref.watch(libraryZoomProvider);
     final selection = ref.watch(librarySelectionProvider);
+    final folder = ref.watch(selectedFolderProvider);
     // Per-folder, not a bare `1` — SCREENS.md §5a-0, the highest-impact
     // single Library fix: a row-crop folder's real cells are a 5.45:1
     // strip, a full-page folder's are a 1:2.08 portrait, and a near-square
@@ -179,6 +181,13 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
                     thumbWidth: zoom.tileWidth.round(),
                     entityLabel: widget.entityLabel,
                     onRequestFocus: _focusNode.requestFocus,
+                    onOpenLightbox: () => openLightbox(
+                      context,
+                      ref,
+                      folder: folder!,
+                      entity: widget.entityLabel,
+                      startIndex: index,
+                    ),
                     onPrimaryTap: ({required shift}) {
                       if (shift) {
                         ref.read(librarySelectionProvider.notifier).selectRange(index, data.images);

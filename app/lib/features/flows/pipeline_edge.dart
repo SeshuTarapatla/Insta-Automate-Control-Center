@@ -7,11 +7,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/nav_state.dart';
 import '../../core/theme/tokens.dart';
 import '../../ui/icons.dart';
 import '../../ui/text.dart';
-import '../library/library_controller.dart';
+import '../library/review_page.dart';
 import 'flow_status.dart';
 
 class PipelineEdge extends ConsumerWidget {
@@ -98,11 +97,10 @@ class PipelineEdge extends ConsumerWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: InkWell(
-        onTap: () {
-          ref.read(selectedFolderProvider.notifier).select(reviewFolder);
-          ref.read(selectedEntityProvider.notifier).select(null);
-          ref.read(selectedNavIndexProvider.notifier).select(libraryIndex);
-        },
+        // V2.10 — delivers on this comment's own promise for real: jumps
+        // straight into review mode for the first entity with a backlog in
+        // this folder, not just to the Library screen with nothing picked.
+        onTap: () => openReviewModeForFolder(context, ref, reviewFolder!),
         borderRadius: BorderRadius.circular(tokens.geometry.radiusSm),
         child: row,
       ),
